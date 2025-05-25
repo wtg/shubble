@@ -164,6 +164,7 @@ def webhook():
             app.logger.info(f'Geofence exit event for vehicle {event_vehicle_id}')
             if event_vehicle_id in vehicles:
                 vehicles.remove(event_vehicle_id)
+                after_token = None
                 latest_locations.pop(event_vehicle_id, None)
             else:
                 app.logger.warning(f'Vehicle {event_vehicle_id} not in geofence list')
