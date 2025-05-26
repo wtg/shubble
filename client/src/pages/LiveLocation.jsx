@@ -2,7 +2,7 @@ import React, {
     useState,
     useEffect,
 } from 'react';
-import MapKitMap from './MapKitMap';
+import MapKitMap from '../components/MapKitMap';
 
 export default function LiveLocation() {
 

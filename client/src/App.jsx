@@ -8,6 +8,7 @@ import './App.css';
 import LiveLocation from './pages/LiveLocation';
 import Schedule from './pages/Schedule';
 import About from './pages/About';
+import Feedback from './components/Feedback';
 
 function App() {
   return (
@@ -40,6 +41,7 @@ function App() {
           <Route path='/schedule' element={ <Schedule /> } />
           <Route path='/about' element={ <About /> } />
         </Routes>
+        <Feedback />
       </div>
       <footer>
         <nav className='small'>
