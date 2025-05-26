@@ -48,10 +48,8 @@ def update_locations():
         while has_next_page:
             has_next_page = False
             response = requests.get(url, headers=headers, params=url_params)
-            app.logger.error(url_params)
             if response.status_code == 200:
                 data = response.json()
-                app.logger.error(data)
                 pagination = data.get('pagination', None)
                 if not pagination:
                     app.logger.error('Invalid pagination')
