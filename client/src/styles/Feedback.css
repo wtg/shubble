@@ -1,4 +1,14 @@
 .feedback-p {
+    display: flex;
+    flex-direction: row;
     margin: 0;
     padding: 0;
+}
+
+.flex-feedback {
+    display: flex;
+    flex-direction: row;
+    gap: 10px;
+    align-items: center;
+    padding: 0 10px;
 }
