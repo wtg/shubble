@@ -10,7 +10,7 @@ export default function Feedback() {
 		</g>
 	    </svg>
             <p className='feedback-p'>
-		Have feedback? Please fill out&nbsp;<a href='https://forms.office.com/r/VTC45CRPV3'>our feedback form</a>!
+		Have feedback? Please fill out <a href='https://forms.office.com/r/VTC45CRPV3'>our feedback form</a>!
             </p>
 	</div>
     );
