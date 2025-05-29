@@ -3,6 +3,10 @@ from pathlib import Path
 import os
 from apscheduler.schedulers.background import BackgroundScheduler
 import requests
+import logging
+
+# log only errors
+logging.basicConfig(level=logging.ERROR)
 
 flask_debug = os.environ.get('FLASK_DEBUG', 'true').lower() == 'true'
 production = os.environ.get('FLASK_ENV', 'development').lower() == 'production'
@@ -153,19 +157,21 @@ def webhook():
             app.logger.error('Invalid event type')
             return {'status': 'error', 'message': 'Invalid event type'}, 400
 
+        event_time = data.get('eventTime', None)
+
         # handle geofence events
         if event_type == 'GeofenceEntry':
-            app.logger.info(f'Geofence entry event for vehicle {event_vehicle_id}')
+            app.logger.error(f'Geofence entry event for vehicle {event_vehicle_id} at {event_time}')
             vehicles.append(event_vehicle_id)
             after_token = None
         elif event_type == 'GeofenceExit':
-            app.logger.info(f'Geofence exit event for vehicle {event_vehicle_id}')
+            app.logger.error(f'Geofence exit event for vehicle {event_vehicle_id} at {event_time}')
             if event_vehicle_id in vehicles:
                 vehicles.remove(event_vehicle_id)
                 after_token = None
                 latest_locations.pop(event_vehicle_id, None)
             else:
-                app.logger.warning(f'Vehicle {event_vehicle_id} not in geofence list')
+                app.logger.error(f'Vehicle {event_vehicle_id} not in geofence list')
         else:
             app.logger.error(f'Unknown event type: {event_type}')
             return {'status': 'error', 'message': 'Unknown event type'}, 400
