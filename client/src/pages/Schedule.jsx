@@ -1,5 +1,6 @@
 import { useState } from 'react';
 
+
 export default function Schedule() {
 
     // schedules store the times for each shuttle
@@ -69,8 +70,12 @@ export default function Schedule() {
         '16:00',
     ]
 
-    const today = new Date();
-    const [day, setDay] = useState(today.getDay());
+    const [fullSchedule, setFullSchedule] = useState(false);
+    const handleViewToggle = () => {
+	setFullSchedule(prevView => !prevView)
+    }
+
+    const [day, setDay] = useState(0);
     const handleDayChange = (e) => {
         setDay(parseInt(e.target.value));
     }
@@ -81,6 +86,32 @@ export default function Schedule() {
 
     // Flatten the schedule for display
     const flatSchedule = schedule.flat().sort();
+
+    // Converting Date object into String comparable with format 'HH:MM'
+    const now = new Date();
+    let currentHours = now.getHours();
+    let currentMinutes = now.getMinutes();
+    const formattedHours = currentHours < 10 ? '0' + currentHours : String(currentHours);
+    const formattedMinutes = currentMinutes < 10 ? '0' + currentMinutes : String(currentMinutes);
+    const currentTimeString = formattedHours + ":" + formattedMinutes;
+
+    // Binary searching for last departure
+
+    let lastDeparture = flatSchedule.length - 1;
+    if (currentTimeString <= flatSchedule[lastDeparture]) {
+	let low = 0;
+	let high = lastDeparture;
+	while (low <= high) {
+	    let mid = Math.floor((low+high)/2);
+	    if (currentTimeString <= flatSchedule[mid + 1]) {
+		lastDeparture = mid;
+		high = mid - 1;
+	    }
+	    else {
+		low = mid + 1;
+	    }
+	}
+    }
 
     return (
         <>
@@ -101,6 +132,8 @@ export default function Schedule() {
                     }
                 </select>
             </p>
+
+	    {fullSchedule ?
             <table>
                 <thead>
                 <tr>
@@ -117,6 +150,25 @@ export default function Schedule() {
                 }
                 </tbody>
             </table>
+
+	     : <table>
+		<thead>
+                <tr>
+                    <th className="">Time</th>
+                </tr>
+                </thead>
+		   <tbody>
+		       <tr> { flatSchedule[lastDeparture] } </tr>
+		       <tr> { flatSchedule[lastDeparture+1] } </tr>
+		       <tr> { flatSchedule[lastDeparture+2] } </tr>
+		       <tr> { flatSchedule[lastDeparture+3] } </tr>
+		 </tbody>
+		 </table>
+		   }	
+	    <button
+		onClick={handleViewToggle}>
+		{fullSchedule ? '...hide full schedule' : '...see full schedule'}
+	    </button>
             </div>
         </>
     );
