@@ -69,7 +69,8 @@ export default function Schedule() {
         '16:00',
     ]
 
-    const [day, setDay] = useState(0);
+    const today = new Date();
+    const [day, setDay] = useState(today.getDay());
     const handleDayChange = (e) => {
         setDay(parseInt(e.target.value));
     }
