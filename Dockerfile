@@ -10,17 +10,16 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY server/ ./server/
 COPY client/ ./client/
 
+COPY entrypoint.sh ./entrypoint.sh
+RUN chmod +x entrypoint.sh
+ENTRYPOINT ["./entrypoint.sh"]
+
 # Install Node.js dependencies and build vite app
 WORKDIR /app/client
 RUN npm install && npm run build
 
 # move back to app
 WORKDIR /app
-
-COPY entrypoint.sh ./entrypoint.sh
-RUN chmod +x entrypoint.sh
-# Set entrypoint
-ENTRYPOINT ["./entrypoint.sh"]
 
 # Set environment variable for Flask (production mode)
 ENV FLASK_DEBUG=false

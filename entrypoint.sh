@@ -1,7 +1,12 @@
 #!/bin/sh
 
-echo "📦 Environment variables at runtime:"
-printenv | sort
+echo "📦 Injecting .env into /app/client"
 
-echo "🚀 Starting application..."
+# Create .env file for Vite with only VITE_ prefixed vars
+printenv | grep '^VITE_' > /app/client/.env
+
+echo "✅ /app/client/.env contents:"
+cat /app/client/.env
+
+echo "🚀 Starting application: $@"
 exec "$@"
