@@ -10,13 +10,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY server/ ./server/
 COPY client/ ./client/
 
-COPY entrypoint.sh ./entrypoint.sh
-RUN chmod +x entrypoint.sh
-ENTRYPOINT ["./entrypoint.sh"]
-
 # Install Node.js dependencies and build vite app
 WORKDIR /app/client
-RUN npm install && npm run build
+RUN npm install
 
 # move back to app
 WORKDIR /app
@@ -28,6 +24,11 @@ ENV FLASK_HOST=0.0.0.0
 
 # Expose port
 EXPOSE 80
+
+# run setup script
+COPY entrypoint.sh ./entrypoint.sh
+RUN chmod +x entrypoint.sh
+ENTRYPOINT ["./entrypoint.sh"]
 
 # Start Flask app
 CMD ["python", "server/shubble.py"]

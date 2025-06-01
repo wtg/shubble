@@ -1,12 +1,11 @@
 #!/bin/sh
 
-echo "📦 Injecting .env into /app/client"
-
-# Create .env file for Vite with only VITE_ prefixed vars
+echo "📦 Injecting Vite .env into /app/client"
 printenv | grep '^VITE_' > /app/client/.env
 
-echo "✅ /app/client/.env contents:"
-cat /app/client/.env
+echo "⚙️ Building Vite app..."
+cd /app/client
+npm run build
 
-echo "🚀 Starting application: $@"
+echo "🚀 Starting Flask app..."
 exec "$@"
