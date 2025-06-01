@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY server/ ./server/
 COPY client/ ./client/
 
-# Install Node.js dependencies and build vite app
+# Install Node.js dependencies
 WORKDIR /app/client
 RUN npm install
 
