@@ -17,6 +17,11 @@ RUN npm install && npm run build
 # move back to app
 WORKDIR /app
 
+COPY entrypoint.sh ./entrypoint.sh
+RUN chmod +x entrypoint.sh
+# Set entrypoint
+ENTRYPOINT ["./entrypoint.sh"]
+
 # Set environment variable for Flask (production mode)
 ENV FLASK_DEBUG=false
 ENV FLASK_ENV=production
