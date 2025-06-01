@@ -31,4 +31,4 @@ RUN chmod +x entrypoint.sh
 ENTRYPOINT ["./entrypoint.sh"]
 
 # Start Flask app
-CMD ["python", "server/shubble.py"]
+CMD ["python", "/app/server/shubble.py"]

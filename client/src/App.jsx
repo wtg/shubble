@@ -11,7 +11,6 @@ import About from './pages/About';
 import Feedback from './components/Feedback';
 
 function App() {
-  console.log(import.meta.env.VITE_APP_MAPKIT_KEY);
   return (
     <Router>
       <header>

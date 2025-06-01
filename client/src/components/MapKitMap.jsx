@@ -5,9 +5,9 @@ export default function MapKitMap({ vehicles }) {
 
     const mapRef = useRef(null);
     const [mapLoaded, setMapLoaded] = useState(false);
-    const [token, setToken] = useState(null);
     const [map, setMap] = useState(null);
     const vehicleOverlays = useRef({});
+    const token = import.meta.env.VITE_APP_MAPKIT_KEY;
 
     // source: https://developer.apple.com/documentation/mapkitjs/loading-the-latest-version-of-mapkit-js
     const setupMapKitJs = async() => {
@@ -16,24 +16,6 @@ export default function MapKitMap({ vehicles }) {
             delete window.initMapKit;
         }
     };
-
-
-    // fetch the MapKit token from the server
-    useEffect(() => {
-        fetch('/api/mapkit')
-            .then((response) => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-                return response.json();
-            })
-            .then((data) => {
-                setToken(data);
-            })
-            .catch((error) => {
-                console.error('Error fetching MapKit token:', error);
-            });
-    }, []);
 
     // initialize mapkit
     useEffect(() => {
@@ -54,7 +36,6 @@ export default function MapKitMap({ vehicles }) {
     // create the map
     useEffect(() => {
         if (mapLoaded) {
-
             const center = new window.mapkit.Coordinate(42.730216326401114, -73.67568961656735);
             const span = new window.mapkit.CoordinateSpan(0.02, 0.005);
             const region = new window.mapkit.CoordinateRegion(center, span);

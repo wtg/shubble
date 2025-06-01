@@ -1,12 +1,15 @@
 #!/bin/sh
 
-echo "📦 Injecting Vite .env into /app/client"
+# inject .env into vite app
+set -e
 printenv | grep '^VITE_' > /app/client/.env
 
-echo "⚙️ Building Vite app..."
+# build vite app
 cd /app/client
 npm run build
 
-cd /app
-echo "🚀 Starting Flask app..."
+# remove .env file
+rm /app/client/.env
+
+# run CMD and subsequently the flask app
 exec "$@"
