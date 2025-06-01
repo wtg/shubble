@@ -1,4 +1,4 @@
-FROM nikolaik/python3.13-nodejs24
+FROM nikolaik/python-nodejs:python3.13-nodejs24
 
 WORKDIR /app
 
