@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.13-nodejs24
 
 WORKDIR /app
 
@@ -8,7 +8,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy server app and React build output
 COPY server/ ./server/
-COPY client/dist/ ./client/dist/
+COPY client/ ./client/
+
+# Install Node.js dependencies and build vite app
+WORKDIR /app/client
+RUN npm install && npm run build
+
+# move back to app
+WORKDIR /app
 
 # Set environment variable for Flask (production mode)
 ENV FLASK_DEBUG=false
