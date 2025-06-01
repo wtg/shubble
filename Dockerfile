@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM nikolaik/python-nodejs:python3.13-nodejs24
 
 WORKDIR /app
 
@@ -8,7 +8,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy server app and React build output
 COPY server/ ./server/
-COPY client/dist/ ./client/dist/
+COPY client/ ./client/
+
+# Install Node.js dependencies
+WORKDIR /app/client
+RUN npm install
+
+# move back to app
+WORKDIR /app
 
 # Set environment variable for Flask (production mode)
 ENV FLASK_DEBUG=false
@@ -18,5 +25,10 @@ ENV FLASK_HOST=0.0.0.0
 # Expose port
 EXPOSE 80
 
+# run setup script
+COPY entrypoint.sh ./entrypoint.sh
+RUN chmod +x entrypoint.sh
+ENTRYPOINT ["./entrypoint.sh"]
+
 # Start Flask app
-CMD ["python", "server/shubble.py"]
+CMD ["python", "/app/server/shubble.py"]
