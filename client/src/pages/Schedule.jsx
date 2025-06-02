@@ -70,12 +70,14 @@ export default function Schedule() {
         '16:00',
     ]
 
+    const today = new Date();
+    const [day, setDay] = useState(today.getDay());
+
     const [fullSchedule, setFullSchedule] = useState(false);
     const handleViewToggle = () => {
 	setFullSchedule(prevView => !prevView)
     }
 
-    const [day, setDay] = useState(0);
     const handleDayChange = (e) => {
         setDay(parseInt(e.target.value));
     }
@@ -89,8 +91,8 @@ export default function Schedule() {
 
     // Converting Date object into String comparable with format 'HH:MM'
     const now = new Date();
-    let currentHours = now.getHours();
-    let currentMinutes = now.getMinutes();
+    const currentHours = now.getHours();
+    const currentMinutes = now.getMinutes();
     const formattedHours = currentHours < 10 ? '0' + currentHours : String(currentHours);
     const formattedMinutes = currentMinutes < 10 ? '0' + currentMinutes : String(currentMinutes);
     const currentTimeString = formattedHours + ":" + formattedMinutes;
