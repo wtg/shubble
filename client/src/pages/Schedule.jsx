@@ -160,10 +160,10 @@ export default function Schedule() {
                 </tr>
                 </thead>
 		   <tbody>
-		       <tr> { flatSchedule[lastDeparture] } </tr>
-		       <tr> { flatSchedule[lastDeparture+1] } </tr>
-		       <tr> { flatSchedule[lastDeparture+2] } </tr>
-		       <tr> { flatSchedule[lastDeparture+3] } </tr>
+		       <tr> <td> { flatSchedule[lastDeparture] } </td> </tr>
+		       <tr> <td> { flatSchedule[lastDeparture+1] } </td> </tr>
+		       <tr> <td> { flatSchedule[lastDeparture+2] } </td> </tr>
+		       <tr> <td> { flatSchedule[lastDeparture+3] } </td>  </tr>
 		 </tbody>
 		 </table>
 		   }	
