@@ -115,6 +115,13 @@ export default function Schedule() {
 	}
     }
 
+    const buttonStyle = {
+	backgroundColor: 'transparent',
+	border: 'none',
+	color: '#206ef9',
+	fontStyle: 'italic',
+    };
+
     return (
         <>
         <div className="p-4">
@@ -168,6 +175,7 @@ export default function Schedule() {
 		 </table>
 		   }	
 	    <button
+		style = {buttonStyle}
 		onClick={handleViewToggle}>
 		{fullSchedule ? '...hide full schedule' : '...see full schedule'}
 	    </button>
