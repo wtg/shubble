@@ -114,6 +114,14 @@ export default function Schedule() {
 	    }
 	}
     }
+    
+
+    let shortSchedule = [];
+    for (let i = 0; i < 3; i++) {
+	if (lastDeparture + i > -1 && lastDeparture + i < flatSchedule.length) {
+	    shortSchedule[i] = flatSchedule[lastDeparture + i];
+	}
+    }
 
     const buttonStyle = {
 	backgroundColor: 'transparent',
@@ -167,10 +175,11 @@ export default function Schedule() {
                 </tr>
                 </thead>
 		   <tbody>
-		       <tr><td>{ flatSchedule[lastDeparture] }</td></tr>
-		       <tr><td>{ flatSchedule[lastDeparture+1] }</td></tr>
-		       <tr><td>{ flatSchedule[lastDeparture+2] }</td></tr>
-		       <tr><td>{ flatSchedule[lastDeparture+3] }</td></tr>
+		       {shortSchedule.map((time, index) => (
+			   <tr key={index}>
+			       <td>{time}</td>
+			   </tr>
+		       ))}
 		 </tbody>
 		 </table>
 		   }	
