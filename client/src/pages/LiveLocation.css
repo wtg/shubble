@@ -1,0 +1,16 @@
+.LiveLocation-div {
+    display: flex;
+    flex-direction: row;
+    gap: 20px;
+}
+
+.scheduleTable {
+    display: none;
+}
+
+@media (min-width: 1024px) {
+    .scheduleTable {
+	display: block;
+    }
+}
+
