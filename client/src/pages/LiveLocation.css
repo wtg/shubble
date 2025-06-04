@@ -1,15 +1,15 @@
-.LiveLocation-div {
+.live-location-div {
     display: flex;
     flex-direction: row;
     gap: 20px;
 }
 
-.scheduleTable {
+.schedule-table {
     display: none;
 }
 
 @media (min-width: 1024px) {
-    .scheduleTable {
+    .schedule-table {
 	display: block;
     }
 }
