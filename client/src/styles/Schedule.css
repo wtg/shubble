@@ -3,4 +3,12 @@
     border: none;
     color: #206ef9;
     font-style: italic;
+   
 }
+
+.button-style:hover {
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+
