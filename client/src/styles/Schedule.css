@@ -1,6 +1,52 @@
-.buttonStyle {
+.button-style {
     background-color: transparent;
     border: none;
     color: #206ef9;
     font-style: italic;
+}
+
+.button-style:hover {
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.schedule-scroll {
+    padding: 10px 15px;
+    height: 200px;
+    overflow: scroll;
+    border-style: solid;
+    border-width: thin;
+}
+
+@media (min-height: 300px) {
+    .schedule-scroll {
+	height: 50px;
+    }
+}
+
+@media (min-height: 400px) {
+    .schedule-scroll {
+	height: 150px;
+    }
+}
+
+@media (min-height: 500px) {
+    .schedule-scroll {
+	height: 250px;
+    }
+}
+
+@media (min-height: 700px) {
+    .schedule-scroll {
+	height: 450px;
+    }
+}
+
+.schedule-scroll::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+.schedule-scroll::-webkit-scrollbar-thumb:hover {
+    background: #555;
 }

@@ -145,22 +145,24 @@ export default function Schedule() {
             </p>
 
 	    {fullSchedule ?
-            <table>
-                <thead>
-                <tr>
-                    <th className="">Time</th>
-                </tr>
-                </thead>
-                <tbody>
-                {
-                    flatSchedule.map((time, index) => (
-                        <tr key={index} className="">
-                        <td className="">{time}</td>
-                        </tr>
-                    ))
-                }
-                </tbody>
-            </table>
+	    <div className = "schedule-scroll">
+		<table>
+                    <thead>
+			<tr>
+			    <th className="">Time</th>
+			</tr>
+                    </thead>
+                    <tbody>
+			{
+			    flatSchedule.map((time, index) => (
+				<tr key={index} className="">
+				    <td className="">{time}</td>
+				</tr>
+			    ))
+			}
+                    </tbody>
+		</table>
+	    </div>
 
 	     : <table>
 		<thead>
@@ -178,7 +180,7 @@ export default function Schedule() {
 		 </table>
 		   }	
 	    <button
-		className = "buttonStyle"
+		className = "button-style"
 		onClick={handleViewToggle}>
 		{fullSchedule ? '...hide full schedule' : '...see full schedule'}
 	    </button>
