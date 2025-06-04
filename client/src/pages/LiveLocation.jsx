@@ -38,9 +38,9 @@ export default function LiveLocation() {
     }, []);
 
     return (
-	<div className = "LiveLocation-div">
+	<div className = "live-location-div">
 	    <MapKitMap vehicles={ location } />
-	    <div className = "scheduleTable">
+	    <div className = "schedule-table">
 		<Schedule />
 	    </div>
 	</div>

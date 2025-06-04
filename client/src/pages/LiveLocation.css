@@ -1,7 +1,7 @@
 .live-location-div {
     display: flex;
     flex-direction: row;
-    gap: 20px;
+    gap: 40px;
 }
 
 .schedule-table {
