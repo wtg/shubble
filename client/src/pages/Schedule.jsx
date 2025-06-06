@@ -178,7 +178,7 @@ export default function Schedule() {
 		 </table>
 		   }	
 	    <button
-		className = "buttonStyle"
+		className = "button-style"
 		onClick={handleViewToggle}>
 		{fullSchedule ? '...hide full schedule' : '...see full schedule'}
 	    </button>
