@@ -419,6 +419,8 @@ export default function MapKitMap({ vehicles }) {
                     title: `Vehicle ID: ${key}`,
                     subtitle: `Speed: ${vehicle.speed} mph`,
                     color: '#444444',
+                    glyphImage: { 1: 'shubble20.png' },
+                    selectedGlyphImage: { 1: 'shubble20.png', 2: 'shubble40.png' },
                 });
                 map.addAnnotation(annotation);
                 vehicleOverlays[key] = annotation;
