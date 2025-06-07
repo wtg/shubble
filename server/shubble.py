@@ -188,15 +188,6 @@ def webhook():
         return {'status': 'error', 'message': 'error processing'}, 400
     return {'status': 'success'}, 200
 
-@app.route('/api/mapkit', methods=['GET'])
-def get_mapkit():
-    api_key = os.environ.get('MAPKIT_API_KEY')
-    if not api_key:
-        app.logger.error('MAPKIT_API_KEY not set')
-        return {'status': 'error', 'message': 'MAPKIT_API_KEY not set'}, 400
-    return jsonify(api_key)
-
-
 if __name__ == '__main__':
     scheduler.start()
     scheduler.add_job(update_locations, trigger="interval", seconds=5)
