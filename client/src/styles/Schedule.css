@@ -16,7 +16,8 @@
     overflow: scroll;
     border-style: solid;
     border-width: thin;
-    height: calc(50% - 100px);
+    margin-bottom: 0;
+    height: calc(50vh - 150px);
 }
 
 
