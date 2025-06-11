@@ -2,7 +2,10 @@ import React, {
     useState,
     useEffect,
 } from 'react';
+
 import MapKitMap from '../components/MapKitMap';
+import Schedule from './Schedule';
+import "./LiveLocation.css";
 
 export default function LiveLocation() {
 
@@ -35,6 +38,11 @@ export default function LiveLocation() {
     }, []);
 
     return (
-        <MapKitMap vehicles={ location }/>
-    )
+	<div className = "live-location-div">
+	    <MapKitMap vehicles={ location } />
+	    <div className = "schedule-table">
+		<Schedule />
+	    </div>
+	</div>
+    );
 }

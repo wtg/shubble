@@ -80,6 +80,11 @@ def update_locations():
                             app.logger.error('Invalid vehicle ID')
                             app.logger.error(vehicle)
                             continue
+                        vehicle_name = vehicle.get('name', None)
+                        if not vehicle_name:
+                            app.logger.error('Invalid vehicle name')
+                            app.logger.error(vehicle)
+                            continue
                         gps_data_list = vehicle.get('gps', None)
                         if gps_data_list == []:
                             # no GPS data since last update
@@ -96,7 +101,7 @@ def update_locations():
                         if vehicle_id not in vehicles:
                             app.logger.warning(f'Vehicle {vehicle_id} not in geofence list')
                             continue
-                        latest_locations[vehicle_id] = {
+                        latest_locations[vehicle_name] = {
                             'lat': gps_data.get('latitude', None),
                             'lng': gps_data.get('longitude', None),
                             'timestamp': gps_data.get('time', None),
@@ -156,6 +161,11 @@ def webhook():
             app.logger.error('Invalid vehicle ID')
             app.logger.error(event_vehicle)
             return {'status': 'error', 'message': 'Invalid vehicle ID'}, 400
+        event_vehicle_name = event_vehicle.get('name', None)
+        if not event_vehicle_name:
+            app.logger.error('Invalid vehicle name')
+            app.logger.error(event_vehicle)
+            return {'status': 'error', 'message': 'Invalid vehicle name'}, 400
 
         event_type = data.get('eventType', None)
         if not event_type:
@@ -175,8 +185,8 @@ def webhook():
                 if event_vehicle_id in vehicles:
                     # stop removing vehicles for now
                     # vehicles.remove(event_vehicle_id)
+                    # latest_locations.pop(event_vehicle_name, None)
                     after_token = None
-                    latest_locations.pop(event_vehicle_id, None)
                 else:
                     app.logger.error(f'Vehicle {event_vehicle_id} not in geofence list')
             else:
