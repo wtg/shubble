@@ -12,34 +12,10 @@
 
 .schedule-scroll {
     padding: 10px 15px;
-    height: 200px;
     overflow: scroll;
     border-style: solid;
     border-width: thin;
-}
-
-@media (min-height: 300px) {
-    .schedule-scroll {
-	height: 50px;
-    }
-}
-
-@media (min-height: 400px) {
-    .schedule-scroll {
-	height: 150px;
-    }
-}
-
-@media (min-height: 500px) {
-    .schedule-scroll {
-	height: 250px;
-    }
-}
-
-@media (min-height: 700px) {
-    .schedule-scroll {
-	height: 450px;
-    }
+    height: calc(50% - 100px);
 }
 
 .schedule-scroll::-webkit-scrollbar-track {
