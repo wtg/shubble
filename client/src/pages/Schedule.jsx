@@ -145,7 +145,7 @@ export default function Schedule() {
             </p>
 
 	    {fullSchedule ?
-	    <div className = "schedule-scroll">
+	     <div className = "schedule-scroll">
 		<table>
                     <thead>
 			<tr>
