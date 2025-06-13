@@ -9,6 +9,7 @@ import LiveLocation from './pages/LiveLocation';
 import Schedule from './pages/Schedule';
 import About from './pages/About';
 import Feedback from './components/Feedback';
+import Data from './pages/Data';
 
 function App() {
   return (
@@ -40,6 +41,7 @@ function App() {
           <Route path='/' element={ <LiveLocation /> } />
           <Route path='/schedule' element={ <Schedule /> } />
           <Route path='/about' element={ <About /> } />
+	  <Route path='/data' element={ <Data /> } />
         </Routes>
         <div class='small feedback-container'>
           <Feedback />
