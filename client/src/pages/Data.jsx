@@ -1,7 +1,12 @@
+import "../styles/Data.css"
+
 export default function Data() {
     return (
-	<p>
-	    This is the data page!
-	</p>
+	<>
+	    <div className = "header">
+		<h1>Shubble Data</h1>
+		<p>Here you can view location history by shuttle.</p>
+	    </div>
+	</>
     );
 }
