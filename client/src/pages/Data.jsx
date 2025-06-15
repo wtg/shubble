@@ -52,7 +52,31 @@ export default function Data() {
 			)
 		    }	
 		</select>
-	    </p>   
+	    </p>
+	    <table className = "table">
+		<thead>
+		    <tr>
+			<th>
+			    Timestamp
+			</th>
+			<th>
+			    Location
+			</th>
+			<th>
+			    Speed
+			</th>
+		    </tr>
+		</thead>
+		<tbody>
+		    {shuttleList.map((shuttle, index) => (
+		    <tr key={index}>
+			<td>{shuttle.timestamp}</td>
+			<td>{shuttle.lat}, {shuttle.lng}</td>
+			<td>{shuttle.speed} mph</td>
+		    </tr>
+		    ))}
+		</tbody>
+	    </table>
 	</>
     );
 }
