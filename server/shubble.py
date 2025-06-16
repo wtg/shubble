@@ -8,7 +8,9 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import requests
 import logging
 import threading
-from models import Vehicle
+from datetime import datetime
+
+from models import Vehicle, GeofenceEvent
 
 from config import Config
 
@@ -152,7 +154,6 @@ def update_locations():
         except requests.RequestException as e:
             app.logger.error(f'Error fetching locations: {e}')
 
-
 # Create background scheduler to periodically update locations
 scheduler = BackgroundScheduler()
 
@@ -170,20 +171,24 @@ def get_locations():
     global latest_locations
     return jsonify(latest_locations)
 
-# Webhook endpoint to receive geofence entry/exit events from Samsara API
-@bp.route('/api/webhook', methods=['POST'])
+@app.route('/api/webhook', methods=['POST'])
 def webhook():
+    # Attempt to parse the incoming JSON payload
     data = request.get_json()
     if not data:
         app.logger.error('Invalid JSON')
         return jsonify({'status': 'error', 'message': 'Invalid JSON'}), 400
 
     try:
-        # Extract vehicle and event info from webhook JSON payload
+        # Extract the nested "data" field from the request
         event_data = data.get('data', {})
+
+        # Extract the "vehicle" field from the event data
         vehicle_data = event_data.get('vehicle', {})
         vehicle_id = vehicle_data.get('id')
         vehicle_name = vehicle_data.get('name')
+
+        # Extract high-level event metadata
         event_type = data.get('eventType')
         event_time = data.get('eventTime')
 
@@ -194,9 +199,10 @@ def webhook():
 
         app.logger.debug(f"Event {event_type} for vehicle {vehicle_id} at {event_time}")
 
-        # Try to find existing vehicle in DB, if not create it
+        # Check if the vehicle exists in the database
         vehicle = Vehicle.query.get(vehicle_id)
         if not vehicle:
+            # Create a new vehicle record if not found
             vehicle = Vehicle(
                 id=vehicle_id,
                 name=vehicle_name,
@@ -210,7 +216,15 @@ def webhook():
             db.session.add(vehicle)
             db.session.commit()
 
-        # Update in-memory list of vehicles in geofence based on event type
+        # Record the geofence event in the database
+        geofence_event = GeofenceEvent(
+            vehicle_id=vehicle_id,
+            event_type=event_type,
+            event_time=event_time,
+        )
+        db.session.add(geofence_event)
+
+        # Update the in-memory geofence list with thread safety
         with vehicles_in_geofence_lock:
             if event_type == 'GeofenceEntry':
                 vehicles_in_geofence.add(vehicle_id)
@@ -225,15 +239,18 @@ def webhook():
                 app.logger.warning(f'Unknown event type: {event_type}')
                 return jsonify({'status': 'error', 'message': 'Unknown event type'}), 400
 
+        # Commit both vehicle and geofence event changes
+        db.session.commit()
         return jsonify({'status': 'success'}), 200
 
     except SQLAlchemyError as db_err:
-        # Rollback DB session if there's a DB error
+        # Roll back the database transaction on error
         db.session.rollback()
         app.logger.error(f'Database error: {db_err}')
         return jsonify({'status': 'error', 'message': 'Database error'}), 500
+
     except Exception as e:
-        # Log unexpected errors with stack trace
+        # Catch-all for unexpected issues
         app.logger.exception('Unexpected error in webhook handler')
         return jsonify({'status': 'error', 'message': 'Internal error'}), 500
 

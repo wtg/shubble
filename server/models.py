@@ -1,0 +1,39 @@
+from flask_sqlalchemy import SQLAlchemy
+from datetime import datetime
+
+db = SQLAlchemy()
+
+class Vehicle(db.Model):
+    __tablename__ = 'vehicles'
+
+    id = db.Column(db.String, primary_key=True)
+    name = db.Column(db.String, nullable=False)
+    asset_type = db.Column(db.String, default='vehicle')
+    license_plate = db.Column(db.String, nullable=True)
+    vin = db.Column(db.String, nullable=True)
+
+    maintenance_id = db.Column(db.String, nullable=True)
+    gateway_model = db.Column(db.String, nullable=True)
+    gateway_serial = db.Column(db.String, nullable=True)
+
+    def __repr__(self):
+        return f"<Vehicle {self.id} - {self.name}>"
+
+class GeofenceEvent(db.Model):
+    __tablename__ = 'geofence_events'
+
+    id = db.Column(db.String, primary_key=True)  # eventId from webhook
+    vehicle_id = db.Column(db.String, db.ForeignKey('vehicles.id'), nullable=False)
+    event_type = db.Column(db.String, nullable=False)
+    event_time = db.Column(db.DateTime, nullable=False)
+
+    address_name = db.Column(db.String)
+    address_formatted = db.Column(db.String)
+    latitude = db.Column(db.Float)
+    longitude = db.Column(db.Float)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    vehicle = db.relationship("Vehicle", backref=db.backref("geofence_events", lazy=True))
+
+    def __repr__(self):
+        return f"<GeofenceEvent {self.id} {self.event_type} for vehicle {self.vehicle_id}>"
