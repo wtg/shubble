@@ -42,43 +42,47 @@ export default function Data() {
 		<p>Here you can view location history by shuttle.</p>
 	    </div>
 
-	    <p className = "dropdown">
-		Shuttle:
-		<select value={shuttle} onChange={handleShuttleChange}>
-		    {
-			shuttleList.map((shuttle, index) =>
-			<option key={index} vlaue={index}>
-			    {shuttle.id}
-			</option>
-			)
-		    }	
-		</select>
-	    </p>
-	    <table className = "table">
-		<thead>
-		    <tr>
-			<th>
-			    Timestamp
-			</th>
-			<th>
-			    Location
-			</th>
-			<th>
-			    Speed
-			</th>
-		    </tr>
-		</thead>
-		<tbody>
-		    {shuttleList.map((shuttle, index) => (
-		    <tr key={index}>
-			<td>{shuttle.timestamp}</td>
-			<td>{shuttle.lat}, {shuttle.lng}</td>
-			<td>{shuttle.speed} mph</td>
-		    </tr>
-		    ))}
-		</tbody>
-	    </table>
-	    <MapKitMap vehicles={ location } />
+	    <div className = "table-map-sidebyside">
+		<div>
+		<p>
+		    Shuttle:
+		    <select value={shuttle} onChange={handleShuttleChange}>
+			{
+			    shuttleList.map((shuttle, index) =>
+				<option key={index} vlaue={index}>
+				    {shuttle.id}
+				</option>
+			    )
+			}	
+		    </select>
+		</p>
+		<table className = "data-table">
+		    <thead>
+			<tr>
+			    <th>
+				Timestamp
+			    </th>
+			    <th>
+				Location
+			    </th>
+			    <th>
+				Speed
+			    </th>
+			</tr>
+		    </thead>
+		    <tbody>
+			{shuttleList.map((shuttle, index) => (
+			    <tr key={index}>
+				<td>{shuttle.timestamp}</td>
+				<td>{shuttle.lat}, {shuttle.lng}</td>
+				<td>{shuttle.speed} mph</td>
+			    </tr>
+			))}
+		    </tbody>
+		</table>
+		</div>
+		<MapKitMap vehicles={ location } />
+	    </div>
 	</>
     );
 }
