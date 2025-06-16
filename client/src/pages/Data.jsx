@@ -9,21 +9,21 @@ export default function Data() {
 	{id: 0,
          lat: 0,
          lng: 0,
-         timestamp: "Timestamp1",
+         timestamp: "2020-07-03T02:11:51Z",
          speed: 0,
          heading: "N",
 	 address: "zero"},
 	{id: 1,
          lat: 1,
          lng: 1,
-         timestamp: "Timestamp2",
+         timestamp: "2020-07-03T12:11:51Z",
          speed: 1,
          heading: "E",
 	 address: "one"},
 	{id: 2,
          lat: 2,
          lng: 2,
-         timestamp: "Timestamp3",
+         timestamp: "2020-07-03T22:11:51Z",
          speed: 2,
          heading: "S",
 	 address: "two"}			  
@@ -71,7 +71,7 @@ export default function Data() {
 			</thead>
 			<tbody>
 			    <tr>
-				<td>{shuttle.timestamp}</td>
+				<td>{((shuttle.timestamp.substring(11, 12) === "0") ? shuttle.timestamp.substring(12, 19) : shuttle.timestamp.substring(11, 19))}</td>
 				<td>{shuttle.lat}, {shuttle.lng}</td>
 				<td>{shuttle.speed} mph</td>
 			    </tr>
