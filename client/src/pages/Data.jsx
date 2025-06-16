@@ -64,7 +64,7 @@ export default function Data() {
 				    Timestamp
 				</th>
 				<th>
-				    Location
+				    Latitude, Longitude
 				</th>
 				<th>
 				    Speed

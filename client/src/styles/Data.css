@@ -1,7 +1,5 @@
 .header {
-    text-align: left;
-    width: 100%;
-    margin-left: 100px;
+    width: 90%;
 }
 
 .data-table {
@@ -12,4 +10,16 @@
     display: flex;
     flex-direction: row;
     gap: 50px;
+    width: 90%;
+}
+
+@media (max-width: 768px){
+    .table-map-sidebyside {
+	flex-direction: column-reverse;
+    }
+
+    .data-table {
+	width: 80vw;
+    }
+    
 }
