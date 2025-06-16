@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import "../styles/Data.css"
+import MapKitMap from '../components/MapKitMap';
 
 export default function Data() {
 
@@ -77,6 +78,7 @@ export default function Data() {
 		    ))}
 		</tbody>
 	    </table>
+	    <MapKitMap vehicles={ location } />
 	</>
     );
 }
