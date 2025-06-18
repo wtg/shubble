@@ -53,7 +53,7 @@ def update_locations():
 
         # Get API key from environment variable
         api_key = os.environ.get('API_KEY')
-        if not api_key:
+        if not api_key and not flask_debug:
             app.logger.error('API_KEY not set')
             return
 
@@ -69,7 +69,8 @@ def update_locations():
         if after_token:
             url_params['after'] = after_token
 
-        url = 'https://api.samsara.com/fleet/vehicles_in_geofence/stats/feed'
+        samsara_base_url = 'http://localhost:4000' if flask_debug else 'https://api.samsara.com'
+        url = f'{samsara_base_url}/fleet/vehicles/stats/feed'
 
         try:
             has_next_page = True
