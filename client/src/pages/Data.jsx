@@ -32,6 +32,19 @@ export default function Data() {
 	}
     };
 
+
+    function formatTimestamp(tStamp) {
+	let hours = parseInt(tStamp.substring(11, 13));
+	let minutes = parseInt(tStamp.substring(14, 16));
+	let seconds = parseInt(tStamp.substring(17, 19));
+
+	if (hours > 12) {
+	    hours -= 12;
+	    return hours + ":" + minutes + ":" + seconds + "PM";
+	}
+	return hours + ":" + minutes + ":" + seconds + "AM";
+    }
+
     const [shuttleID, setShuttleID] = useState("shuttleID1");
     const handleShuttleChange = (event) => {
 	setShuttleID(event.target.value);
@@ -73,7 +86,7 @@ export default function Data() {
 			</thead>
 			<tbody>
 			    <tr> 
-				<td>{((shuttleList[shuttleID].timestamp.substring(11, 12) === "0") ? shuttleList[shuttleID].timestamp.substring(12, 19) : shuttleList[shuttleID].timestamp.substring(11, 19))}</td>
+				<td>{formatTimestamp(shuttleList[shuttleID].timestamp)}</td>
 				<td>{shuttleList[shuttleID].lat}, {shuttleList[shuttleID].lng}</td>
 				<td>{shuttleList[shuttleID].speed} mph</td>
 			    </tr>
