@@ -1,8 +1,29 @@
-import { useState } from 'react';
+import { useState, useEffect} from 'react';
 import "../styles/Data.css"
 import MapKitMap from '../components/MapKitMap';
 
 export default function Data() {
+
+    const [location, setLocation] = useState(null);
+
+    useEffect(() => {
+        const pollLocation = async () => {
+            try {
+                const response = await fetch('/api/locations');
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                const data = await response.json();
+                console.log(data);
+                setLocation(data);
+            } catch (error) {
+                console.error('Error fetching location:', error);
+            }
+        }
+
+        pollLocation();
+
+    }, []);
 
     // made up shuttle data
     const shuttleList = {
@@ -49,7 +70,7 @@ export default function Data() {
     const handleShuttleChange = (event) => {
 	setShuttleID(event.target.value);
     }
-
+    
     return (
 	<>
 	    <div className = "header">
@@ -61,7 +82,7 @@ export default function Data() {
 		<div>
 		    <p className = "dropdown-p-style">
 			Shuttle: <select value={shuttleID} onChange={handleShuttleChange} className = "dropdown-style">
-			    {Object.keys(shuttleList).map(shuttleID => (
+			    {Object.keys(location).map(shuttleID => (
 				<option key={shuttleID} value={shuttleID}>
 				    {shuttleID}
 				</option>
@@ -84,10 +105,10 @@ export default function Data() {
 			    </tr>
 			</thead>
 			<tbody>
-			    <tr> 
-				<td>{formatTimestamp(shuttleList[shuttleID].timestamp)}</td>
-				<td>{shuttleList[shuttleID].lat}, {shuttleList[shuttleID].lng}</td>
-				<td>{shuttleList[shuttleID].speed} mph</td>
+			    <tr>
+				<td>{formatTimestamp(location[shuttleID].timestamp)}</td>
+				<td>{location[shuttleID].lat}, {location[shuttleID].lng}</td>
+				<td>{location[shuttleID].speed} mph</td>
 			    </tr>
 			</tbody>
 		    </table>
