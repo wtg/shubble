@@ -59,9 +59,8 @@ export default function Data() {
 
 	    <div className = "table-map-sidebyside">
 		<div>
-		    <p>
-			Shuttle:
-			<select value={shuttleID} onChange={handleShuttleChange}>
+		    <p className = "dropdown-p-style">
+			Shuttle: <select value={shuttleID} onChange={handleShuttleChange} className = "dropdown-style">
 			    {Object.keys(shuttleList).map(shuttleID => (
 				<option key={shuttleID} value={shuttleID}>
 				    {shuttleID}
