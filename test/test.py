@@ -56,7 +56,7 @@ def mock_feed():
     })
 
 def send_webhook(vehicle_id, entry=True):
-    url = 'http://localhost:3000/api/webhook'
+    url = 'http://localhost:8000/api/webhook'
     headers = {'Content-Type': 'application/json'}
     vehicle = {
         'id': vehicle_id,

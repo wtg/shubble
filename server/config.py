@@ -8,5 +8,5 @@ class Config:
     HOST = os.environ.get('FLASK_HOST', '0.0.0.0')
 
     # database settings
-    SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL", "sqlite:///dev.db")
+    SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL")
     SQLALCHEMY_TRACK_MODIFICATIONS = False

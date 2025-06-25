@@ -3,26 +3,20 @@ import logging
 import requests
 import threading
 from time import sleep
-from flask import Flask
-from flask_sqlalchemy import SQLAlchemy
-from config import Config
+from . import create_app
 
 # Logging config
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Flask app (required for SQLAlchemy context)
-app = Flask(__name__)
-app.config.from_object(Config)
-
-db = SQLAlchemy(app)
+app = create_app()
 
 # Shared data
 vehicles_in_geofence = set()
 latest_locations = {}
 after_token = None
 vehicles_lock = threading.Lock()
-
 
 def update_locations():
     global after_token
