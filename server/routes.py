@@ -1,15 +1,12 @@
 from flask import Blueprint, request, jsonify, send_from_directory
 from . import db
-from .models import Vehicle, GeofenceEvent
+from .models import Vehicle, GeofenceEvent, VehicleLocation
 from pathlib import Path
 import os
-import threading
+from sqlalchemy import func, and_
+from datetime import datetime
 
 bp = Blueprint('routes', __name__)
-
-vehicles_in_geofence = set()
-vehicles_in_geofence_lock = threading.Lock()
-latest_locations = {}
 
 @bp.route('/')
 @bp.route('/schedule')
@@ -20,8 +17,36 @@ def serve_react():
 
 @bp.route('/api/locations', methods=['GET'])
 def get_locations():
-    global latest_locations
-    return jsonify(latest_locations)
+    # Subquery: get the max timestamp per vehicle_id
+    subquery = db.session.query(
+        VehicleLocation.vehicle_id,
+        func.max(VehicleLocation.timestamp).label('latest_time')
+    ).group_by(VehicleLocation.vehicle_id).subquery()
+
+    # Join VehicleLocation on vehicle_id and timestamp to get latest rows
+    latest_locations = db.session.query(VehicleLocation).join(
+        subquery,
+        (VehicleLocation.vehicle_id == subquery.c.vehicle_id) &
+        (VehicleLocation.timestamp == subquery.c.latest_time)
+    ).all()
+
+    # Prepare JSON response
+    result = {}
+    for loc in latest_locations:
+        result[loc.vehicle_id] = {
+            'name': loc.name,
+            'latitude': loc.latitude,
+            'longitude': loc.longitude,
+            'timestamp': loc.timestamp.isoformat(),
+            'heading_degrees': loc.heading_degrees,
+            'speed_mph': loc.speed_mph,
+            'is_ecu_speed': loc.is_ecu_speed,
+            'formatted_location': loc.formatted_location,
+            'address_id': loc.address_id,
+            'address_name': loc.address_name,
+        }
+
+    return jsonify(result)
 
 @bp.route('/api/webhook', methods=['POST'])
 def webhook():
@@ -30,12 +55,23 @@ def webhook():
         return jsonify({'status': 'error', 'message': 'Invalid JSON'}), 400
 
     try:
+        # parse event details
+        event_id = data.get('eventId')
+        event_time = datetime.fromisoformat(data.get('eventTime').replace("Z", "+00:00"))
+        event_type = data.get('eventType')
         event_data = data.get('data', {})
+
+        # parse vehicle details
         vehicle_data = event_data.get('vehicle', {})
         vehicle_id = vehicle_data.get('id')
         vehicle_name = vehicle_data.get('name')
-        event_type = data.get('eventType')
-        event_time = data.get('eventTime')
+
+        # parse event location details
+        address = event_data.get("address", {})
+        geofence = address.get("geofence", {})
+        circle = geofence.get("circle", {})
+        latitude = circle.get("latitude")
+        longitude = circle.get("longitude")
 
         if not (vehicle_id and vehicle_name and event_type):
             return jsonify({'status': 'error', 'message': 'Missing fields'}), 400
@@ -57,18 +93,17 @@ def webhook():
 
         # Create GeofenceEvent
         event = GeofenceEvent(
+            id=event_id,
             vehicle_id=vehicle_id,
             event_type=event_type,
-            event_time=event_time
+            event_time=event_time,
+            address_name=address.get("name"),
+            address_formatted=address.get("formattedAddress"),
+            latitude=latitude,
+            longitude=longitude,
         )
         db.session.add(event)
         db.session.commit()
-
-        with vehicles_in_geofence_lock:
-            if event_type == 'GeofenceEntry':
-                vehicles_in_geofence.add(vehicle_id)
-            elif event_type == 'GeofenceExit':
-                vehicles_in_geofence.discard(vehicle_id)
 
         return jsonify({'status': 'success'}), 200
 

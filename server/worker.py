@@ -1,104 +1,144 @@
+from . import create_app, db
+from .models import VehicleLocation, GeofenceEvent
+from sqlalchemy import func, and_
+import time
+import requests
 import os
 import logging
-import requests
-import threading
-from time import sleep
-from . import create_app
+from datetime import datetime
 
 # Logging config
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Flask app (required for SQLAlchemy context)
 app = create_app()
 
-# Shared data
-vehicles_in_geofence = set()
-latest_locations = {}
-after_token = None
-vehicles_lock = threading.Lock()
+def get_vehicles_in_geofence():
+    """
+    Returns a set of vehicle_ids where the latest geofence event is an entry.
+    """
+    subquery = db.session.query(
+        GeofenceEvent.vehicle_id,
+        func.max(GeofenceEvent.event_time).label('latest_time')
+    ).group_by(GeofenceEvent.vehicle_id).subquery()
 
-def update_locations():
-    global after_token
-    global latest_locations
+    latest_entries = db.session.query(GeofenceEvent.vehicle_id).join(
+        subquery,
+        and_(
+            GeofenceEvent.vehicle_id == subquery.c.vehicle_id,
+            GeofenceEvent.event_time == subquery.c.latest_time
+        )
+    ).filter(GeofenceEvent.event_type == 'GeofenceEntry').all()
 
-    with vehicles_lock:
-        if not vehicles_in_geofence:
-            logger.info('No vehicles_in_geofence to update')
-            return
+    return {row.vehicle_id for row in latest_entries}
 
+
+def update_locations(after_token, previous_vehicle_ids, app):
+
+    # Get the current list of vehicles in the geofence
+    current_vehicle_ids = get_vehicles_in_geofence()
+
+    # If vehicle list changed, reset pagination token
+    if current_vehicle_ids != previous_vehicle_ids:
+        logger.info('Vehicle list changed; resetting after_token')
+        after_token = None
+
+    if not current_vehicle_ids:
+        logger.info('No vehicles in geofence to update')
+        return after_token, current_vehicle_ids
+
+    headers = {'Accept': 'application/json'}
+    if app.config['ENV'] == 'development':
+        url = 'http://localhost:4000/fleet/vehicles/stats/feed'
+    else:
         api_key = os.environ.get('API_KEY')
         if not api_key:
             logger.error('API_KEY not set')
-            return
-
-        headers = {
-            'Authorization': f'Bearer {api_key}',
-            'Accept': 'application/json',
-        }
-
-        url_params = {
-            'vehicleIds': ','.join(vehicles_in_geofence),
-            'types': 'gps',
-        }
-
-        if after_token:
-            url_params['after'] = after_token
-
+            return after_token, current_vehicle_ids
+        headers['Authorization'] = f'Bearer {api_key}'
         url = 'https://api.samsara.com/fleet/vehicles/stats/feed'
 
-        try:
-            has_next_page = True
-            while has_next_page:
-                has_next_page = False
-                response = requests.get(url, headers=headers, params=url_params)
-                if response.status_code == 200:
-                    data = response.json()
+    url_params = {
+        'vehicleIds': ','.join(current_vehicle_ids),
+        'types': 'gps',
+    }
 
-                    pagination = data.get('pagination', {})
-                    if pagination.get('hasNextPage', False):
-                        has_next_page = True
-                    after_token = pagination.get('endCursor', after_token)
+    if after_token:
+        url_params['after'] = after_token
 
-                    api_data = data.get('data', [])
-                    for vehicle in api_data:
-                        vehicle_id = vehicle.get('id')
-                        vehicle_name = vehicle.get('name')
-                        gps_data_list = vehicle.get('gps', [])
+    try:
+        has_next_page = True
+        while has_next_page:
+            has_next_page = False
+            response = requests.get(url, headers=headers, params=url_params)
+            if response.status_code != 200:
+                logger.error(f'API error: {response.status_code} {response.text}')
+                if 'message' in response.text and 'Parameters differ' in response.text:
+                    return None, current_vehicle_ids
+                return after_token, current_vehicle_ids
 
-                        if not vehicle_id or not vehicle_name or not gps_data_list:
-                            continue
+            data = response.json()
+            pagination = data.get('pagination', {})
+            if pagination.get('hasNextPage'):
+                has_next_page = True
+            after_token = pagination.get('endCursor', after_token)
 
-                        gps_data = gps_data_list[0]
-                        latest_locations[vehicle_name] = {
-                            'lat': gps_data.get('latitude'),
-                            'lng': gps_data.get('longitude'),
-                            'timestamp': gps_data.get('time'),
-                            'speed': gps_data.get('speedMilesPerHour'),
-                            'heading': gps_data.get('headingDegrees'),
-                            'address': gps_data.get('reverseGeo', {}).get('formattedLocation', ''),
-                        }
+            for vehicle in data.get('data', []):
+                vehicle_id = vehicle.get('id')
+                vehicle_name = vehicle.get('name')
+                gps_data_list = vehicle.get('gps', [])
 
-                    logger.info(f'Updated locations: {latest_locations}')
-                else:
-                    logger.error(f'API error: {response.status_code} {response.text}')
-                    if 'message' in response.text and 'Parameters differ' in response.text:
-                        after_token = None
+                if not vehicle_id or not gps_data_list:
+                    continue
 
-        except requests.RequestException as e:
-            logger.error(f'Failed to fetch locations: {e}')
+                gps = gps_data_list[0]
+                timestamp_str = gps.get('time')
+                if not timestamp_str:
+                    continue
+                timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
 
+                exists = VehicleLocation.query.filter_by(
+                    vehicle_id=vehicle_id,
+                    timestamp=timestamp
+                ).first()
+                if exists:
+                    continue
+
+                loc = VehicleLocation(
+                    vehicle_id=vehicle_id,
+                    timestamp=timestamp,
+                    name=vehicle_name,
+                    latitude=gps.get('latitude'),
+                    longitude=gps.get('longitude'),
+                    heading_degrees=gps.get('headingDegrees'),
+                    speed_mph=gps.get('speedMilesPerHour'),
+                    is_ecu_speed=gps.get('isEcuSpeed', False),
+                    formatted_location=gps.get('reverseGeo', {}).get('formattedLocation'),
+                    address_id=gps.get('address', {}).get('id'),
+                    address_name=gps.get('address', {}).get('name'),
+                )
+                db.session.add(loc)
+
+            db.session.commit()
+            logger.info(f'Updated locations for {len(current_vehicle_ids)} vehicles')
+
+    except requests.RequestException as e:
+        logger.error(f'Failed to fetch locations: {e}')
+
+    return after_token, current_vehicle_ids
 
 def run_worker():
     logger.info('Worker started...')
+    after_token = None
+    previous_vehicle_ids = set()
+
     while True:
         try:
-            update_locations()
+            with app.app_context():
+                after_token, previous_vehicle_ids = update_locations(after_token, previous_vehicle_ids, app)
         except Exception as e:
             logger.exception(f'Error in worker loop: {e}')
-        sleep(5)  # Polling interval
-
+        time.sleep(5)
 
 if __name__ == '__main__':
-    with app.app_context():
-        run_worker()
+    run_worker()
