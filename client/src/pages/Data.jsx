@@ -54,7 +54,7 @@ export default function Data() {
     if (location === null) {
 	//alert("Location was set to null");
 	return (
-	    <p>Locaiton was set to null</p>
+	    <p>Location was set to null</p>
 	);
     }
 
