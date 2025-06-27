@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import threading
 import time
 import requests
+from datetime import datetime, timezone
 
 app = Flask(__name__)
 
@@ -38,6 +39,11 @@ def mock_feed():
 
     print(f'[MOCK API] Received stats request for vehicles {vehicle_ids} after={after}')
 
+    # update timestamps
+    new_timestamp = datetime.now(timezone.utc).isoformat(timespec='seconds').replace('+00:00', 'Z')
+    for vehicle_id in fake_data:
+        fake_data[vehicle_id]['gps']['time'] = new_timestamp
+
     data = []
     for vehicle_id in vehicle_ids:
         if vehicle_id in fake_data:
@@ -60,18 +66,40 @@ def send_webhook(vehicle_id, entry=True):
     headers = {'Content-Type': 'application/json'}
     vehicle = {
         'id': vehicle_id,
-        'name': fake_data[vehicle_id]['name']
-    }
-    data = {
-        'data': {
-            'vehicle': vehicle
+        'name': fake_data[vehicle_id]['name'],
+        'licensePlate': 'FAKE123',
+        'vin': '1HGCM82633A004352',
+        'assetType': 'vehicle',
+        'externalIds': {
+            'maintenanceId': '250020'
         },
+        'gateway': {
+            'model': 'VG34',
+            'serial': 'GFRV-43N-VGX'
+        }
+    }
+    address = {
+        'id': '123456',
+        'name': 'Test Location',
+        'formattedAddress': fake_data[vehicle_id]['gps']['reverseGeo']['formattedLocation'],
+        'externalIds': {
+            'siteId': '54'
+        },
+    }
+    payload = {
+        'eventId': str(uuid.uuid4()),
+        'eventTime': datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z'),
         'eventType': 'GeofenceEntry' if entry else 'GeofenceExit',
-        'eventTime': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+        'orgId': 20936,
+        'webhookId': '1411751028848270',
+        'data': {
+            'vehicle': vehicle,
+            'address': address
+        }
     }
     try:
-        response = requests.post(url, headers=headers, json=data)
-        print(f'[WEBHOOK] Sent {data["eventType"]} for {vehicle_id}: {response.status_code}')
+        response = requests.post(url, headers=headers, json=payload)
+        print(f'[WEBHOOK] Sent {payload["eventType"]} for {vehicle_id}: {response.status_code}')
     except Exception as e:
         print(f'[WEBHOOK] Failed: {e}')
 
