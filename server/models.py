@@ -35,3 +35,32 @@ class GeofenceEvent(db.Model):
 
     def __repr__(self):
         return f"<GeofenceEvent {self.id} {self.event_type} for vehicle {self.vehicle_id}>"
+
+class VehicleLocation(db.Model):
+    __tablename__ = 'vehicle_locations'
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    # Foreign key to vehicles.id
+    vehicle_id = db.Column(db.String, db.ForeignKey('vehicles.id'), nullable=False, index=True)
+    vehicle = db.relationship('Vehicle', backref='locations', lazy=True)
+
+    name = db.Column(db.String, nullable=True)
+
+    timestamp = db.Column(db.DateTime, nullable=False)
+    latitude = db.Column(db.Float, nullable=False)
+    longitude = db.Column(db.Float, nullable=False)
+
+    heading_degrees = db.Column(db.Float, nullable=True)
+    speed_mph = db.Column(db.Float, nullable=True)
+    is_ecu_speed = db.Column(db.Boolean, default=False)
+
+    formatted_location = db.Column(db.String, nullable=True)
+
+    address_id = db.Column(db.String, nullable=True)
+    address_name = db.Column(db.String, nullable=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<ShuttleLocation {self.vehicle_id} @ {self.timestamp}>"
