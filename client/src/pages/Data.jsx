@@ -47,25 +47,8 @@ export default function Data() {
     const [shuttleID, setShuttleID] = useState(null);
 
     const handleShuttleChange = (event) => {
-	//alert("Shuttle ID is " + event.target.value);
 	setShuttleID(event.target.value === '' ? null : event.target.value);
     }
-
-    if (location === null) {
-	//alert("Location was set to null");
-	return (
-	    <p>Location was set to null</p>
-	);
-    }
-
-    if (location.size == 0) {
-	//alert("No locations given");
-	return (
-	    <p>No locations given</p>
-	);
-    }
-
-    //console.log("Initial shuttleID: " + shuttleID);
     
     return (
 	<>
@@ -75,6 +58,7 @@ export default function Data() {
 	    </div>
 
 	    <div className = "table-map-sidebyside">
+		{location ? (
 		<div>
 		    <p className = "dropdown-p-style">
 			Shuttle: <select value={shuttleID || ''} onChange={handleShuttleChange} className = "dropdown-style">
@@ -114,8 +98,10 @@ export default function Data() {
 		    ) : (
 			<p>No shuttle selected</p>
 		    )}
-		   
 		</div>
+		) : (
+		    <p className = "no-locations-found-style">No locations found</p>
+		)}
 		<MapKitMap vehicles={ location } />
 	    </div>
 	</>
