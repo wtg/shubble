@@ -32,8 +32,8 @@ export default function Data() {
 	if ("timestamp" in shuttleLocation) {
 	    let tStamp = shuttleLocation.timestamp;
 	    let hours = parseInt(tStamp.substring(11, 13));
-	    let minutes = parseInt(tStamp.substring(14, 16));
-	    let seconds = parseInt(tStamp.substring(17, 19));
+	    let minutes = tStamp.substring(14, 16);
+	    let seconds = tStamp.substring(17, 19);
 
 	    if (hours > 12) {
 		hours -= 12;
