@@ -35,7 +35,7 @@ def update_locations():
             app.logger.info('No vehicles to update')
             return
         api_key = os.environ.get('API_KEY')
-        if not api_key:
+        if not api_key and not flask_debug:
             app.logger.error('API_KEY not set')
             return
         headers = {
@@ -48,7 +48,9 @@ def update_locations():
         }
         if after_token:
             url_params['after'] = after_token
-        url = 'https://api.samsara.com/fleet/vehicles/stats/feed'
+
+        samsara_base_url = 'http://localhost:4000' if flask_debug else 'https://api.samsara.com'
+        url = f'{samsara_base_url}/fleet/vehicles/stats/feed'
 
         try:
             has_next_page = True
@@ -210,4 +212,4 @@ def get_mapkit():
 if __name__ == '__main__':
     scheduler.start()
     scheduler.add_job(update_locations, trigger="interval", seconds=5)
-    app.run(debug=flask_debug, host=host, port=port)
+    app.run(debug=False, host=host, port=port)
