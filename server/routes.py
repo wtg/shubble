@@ -3,7 +3,7 @@ from . import db
 from .models import Vehicle, GeofenceEvent, VehicleLocation
 from pathlib import Path
 import os
-from sqlalchemy import func, and_
+from sqlalchemy import func
 from datetime import datetime
 
 bp = Blueprint('routes', __name__)
