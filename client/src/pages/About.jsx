@@ -3,6 +3,9 @@ import {
     useState,
     useEffect,
 } from 'react';
+import {
+    Link
+} from 'react-router';
 
 export default function About() {
 
@@ -29,6 +32,10 @@ export default function About() {
             <p>
                 Have an idea to improve it? Contributions are welcome. Visit our <a href='https://github.com/wtg/shubble' target='_blank'>Github Repository</a> to learn more.
             </p>
+	    <p>
+		Interested in Shubble's data? Take a look at our <Link to='/data'> <span>data page</span>
+								 </Link>.
+	    </p>
             <div className='small'>
                 <p>
                     &copy; 2025 SHUBBLE
