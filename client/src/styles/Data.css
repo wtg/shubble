@@ -3,7 +3,7 @@
 }
 
 .data-table {
-    width: 30vw;
+    width: 100%;
     text-align: left;
 }
 
@@ -12,6 +12,10 @@
     font-size: 20px;
     border: 1px solid;
     border-radius: 5px;
+}
+
+.left-screen {
+    width: 30vw;
 }
 
 .dropdown-p-style {
@@ -31,6 +35,10 @@
     }
 
     .data-table {
+	width: 90vw;
+    }
+
+    .no-locations-found-style {
 	width: 90vw;
     }
     
