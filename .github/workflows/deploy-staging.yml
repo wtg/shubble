@@ -1,0 +1,31 @@
+name: Deploy to Staging
+
+on:
+  workflow_dispatch:    # manual trigger from GitHub UI
+    inputs:
+      branch:
+        description: 'Branch to deploy'
+        required: true
+        default: 'main'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        ref: ${{ github.event.inputs.branch }}
+
+    - name: Set up SSH
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.DOKKU_SSH_KEY_STAGING }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H ${{ secrets.DOKKU_HOST_STAGING }} >> ~/.ssh/known_hosts
+
+    - name: Deploy to Dokku Staging
+      run: |
+        git remote add dokku dokku@${{ secrets.DOKKU_HOST_STAGING }}:${{ secrets.DOKKU_APP_STAGING }}
+        git push dokku HEAD:main -f
