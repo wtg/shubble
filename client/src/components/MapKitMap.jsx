@@ -407,17 +407,17 @@ export default function MapKitMap({ vehicles }) {
 
         Object.keys(vehicles).map((key) => {
             const vehicle = vehicles[key];
-            const coordinate = new window.mapkit.Coordinate(vehicle.lat, vehicle.lng);
+            const coordinate = new window.mapkit.Coordinate(vehicle.latitude, vehicle.longitude);
             if (key in vehicleOverlays) {
                 // old vehicle: update coordinate
-                console.log(`Updating vehicle ${key} to ${vehicle.lat}, ${vehicle.lng}`);
+                console.log(`Updating vehicle ${key} to ${vehicle.latitude}, ${vehicle.longitude}`);
                 vehicleOverlays[key].coordinate = coordinate;
             } else {
                 // new vehicle: add to map
-                console.log(`Adding vehicle ${key} to ${vehicle.lat}, ${vehicle.lng}`);
+                console.log(`Adding vehicle ${key} to ${vehicle.latitude}, ${vehicle.longitude}`);
                 const annotation = new window.mapkit.MarkerAnnotation(coordinate, {
                     title: `Vehicle ID: ${key}`,
-                    subtitle: `Speed: ${vehicle.speed} mph`,
+                    subtitle: `Speed: ${vehicle.speed_mph} mph`,
                     color: '#444444',
                     glyphImage: { 1: 'shubble20.png' },
                     selectedGlyphImage: { 1: 'shubble20.png', 2: 'shubble40.png' },
