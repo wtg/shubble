@@ -1,0 +1,45 @@
+.header {
+    width: 90%;
+}
+
+.data-table {
+    width: 100%;
+    text-align: left;
+}
+
+.dropdown-style {
+    padding: 5px;
+    font-size: 20px;
+    border: 1px solid;
+    border-radius: 5px;
+}
+
+.left-screen {
+    width: 30vw;
+}
+
+.dropdown-p-style {
+    font-size: 20px;
+}
+
+.table-map-sidebyside {
+    display: flex;
+    flex-direction: row;
+    gap: 50px;
+    width: 90%;
+}
+
+@media (max-width: 768px){
+    .table-map-sidebyside {
+	flex-direction: column-reverse;
+    }
+
+    .data-table {
+	width: 90vw;
+    }
+
+    .no-locations-found-style {
+	width: 90vw;
+    }
+    
+}
