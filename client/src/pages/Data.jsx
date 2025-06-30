@@ -1,4 +1,7 @@
-import { useState, useEffect} from 'react';
+import React, {
+    useState,
+    useEffect,
+} from 'react';
 import "../styles/Data.css"
 import MapKitMap from '../components/MapKitMap';
 
@@ -25,50 +28,26 @@ export default function Data() {
 
     }, []);
 
-    // made up shuttle data
-    const shuttleList = {
-	"shuttleID1": {
-	    lat: 0,
-            lng: 0,
-            timestamp: "2020-07-03T02:11:51Z",
-            speed: 0,
-            heading: "N",
-	    address: "zero"
-	},
-	"shuttleID2": {
-            lat: 1,
-            lng: 1,
-            timestamp: "2020-07-03T12:11:51Z",
-            speed: 1,
-            heading: "E",
-	    address: "one"
-	},
-	"shuttleID3": {
-            lat: 2,
-            lng: 2,
-            timestamp: "2020-07-03T22:11:51Z",
-            speed: 2,
-            heading: "S",
-	    address: "two"
+    function formatTimestamp(shuttleLocation) {
+	if ("timestamp" in shuttleLocation) {
+	    let tStamp = shuttleLocation.timestamp;
+	    let hours = parseInt(tStamp.substring(11, 13));
+	    let minutes = tStamp.substring(14, 16);
+	    let seconds = tStamp.substring(17, 19);
+
+	    if (hours > 12) {
+		hours -= 12;
+		return hours + ":" + minutes + ":" + seconds + "PM";
+	    }
+	    return hours + ":" + minutes + ":" + seconds + "AM";
 	}
-    };
-
-
-    function formatTimestamp(tStamp) {
-	let hours = parseInt(tStamp.substring(11, 13));
-	let minutes = parseInt(tStamp.substring(14, 16));
-	let seconds = parseInt(tStamp.substring(17, 19));
-
-	if (hours > 12) {
-	    hours -= 12;
-	    return hours + ":" + minutes + ":" + seconds + "PM";
-	}
-	return hours + ":" + minutes + ":" + seconds + "AM";
+	return "No timestamp given"
     }
 
-    const [shuttleID, setShuttleID] = useState("shuttleID1");
+    const [shuttleID, setShuttleID] = useState(null);
+
     const handleShuttleChange = (event) => {
-	setShuttleID(event.target.value);
+	setShuttleID(event.target.value === '' ? null : event.target.value);
     }
     
     return (
@@ -79,9 +58,12 @@ export default function Data() {
 	    </div>
 
 	    <div className = "table-map-sidebyside">
+		<div className = "left-screen">
+		{location ? (
 		<div>
 		    <p className = "dropdown-p-style">
-			Shuttle: <select value={shuttleID} onChange={handleShuttleChange} className = "dropdown-style">
+			Shuttle: <select value={shuttleID || ''} onChange={handleShuttleChange} className = "dropdown-style">
+				     <option value="">Select a shuttle</option>
 			    {Object.keys(location).map(shuttleID => (
 				<option key={shuttleID} value={shuttleID}>
 				    {shuttleID}
@@ -89,6 +71,8 @@ export default function Data() {
 			    ))}
 			</select>
 		    </p>
+
+		    {shuttleID ? (
 
 		    <table className = "data-table">
 			<thead>
@@ -106,13 +90,20 @@ export default function Data() {
 			</thead>
 			<tbody>
 			    <tr>
-				<td>{formatTimestamp(location[shuttleID].timestamp)}</td>
+				<td>{formatTimestamp(location[shuttleID])}</td>
 				<td>{location[shuttleID].lat}, {location[shuttleID].lng}</td>
 				<td>{location[shuttleID].speed} mph</td>
 			    </tr>
 			</tbody>
 		    </table>
+		    ) : (
+			<p>No shuttle selected</p>
+		    )}
 		</div>
+		) : (
+		    <p>No locations found</p>
+		)}
+		    </div>
 		<MapKitMap vehicles={ location } />
 	    </div>
 	</>
