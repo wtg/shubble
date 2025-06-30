@@ -58,6 +58,7 @@ export default function Data() {
 	    </div>
 
 	    <div className = "table-map-sidebyside">
+		<div className = "left-screen">
 		{location ? (
 		<div>
 		    <p className = "dropdown-p-style">
@@ -100,8 +101,9 @@ export default function Data() {
 		    )}
 		</div>
 		) : (
-		    <p className = "no-locations-found-style">No locations found</p>
+		    <p>No locations found</p>
 		)}
+		    </div>
 		<MapKitMap vehicles={ location } />
 	    </div>
 	</>

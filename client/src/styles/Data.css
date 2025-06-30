@@ -3,7 +3,7 @@
 }
 
 .data-table {
-    width: 30vw;
+    width: 100%;
     text-align: left;
 }
 
@@ -14,7 +14,7 @@
     border-radius: 5px;
 }
 
-.no-locations-found-style {
+.left-screen {
     width: 30vw;
 }
 
