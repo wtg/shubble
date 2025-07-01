@@ -2,6 +2,18 @@
     width: 90%;
 }
 
+.reload-button {
+    height: 50px;
+    width: 50px;
+}
+
+.flex-header-reload {
+    display: flex;
+    flex-direction: row;
+    gap: 20px;
+    align-items: center;
+}
+
 .data-table {
     width: 100%;
     text-align: left;
@@ -41,5 +53,4 @@
     .no-locations-found-style {
 	width: 90vw;
     }
-    
 }
