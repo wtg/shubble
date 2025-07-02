@@ -61,7 +61,7 @@ export default function Data() {
     const handleShuttleChange = (event) => {
 	setShuttleID(event.target.value === '' ? null : event.target.value);
     }
-    
+
     return (
 	<>
 	    <div className = "header">
@@ -108,8 +108,8 @@ export default function Data() {
 			<tbody>
 			    <tr>
 				<td>{formatTimestamp(location[shuttleID])}</td>
-				<td>{location[shuttleID].lat}, {location[shuttleID].lng}</td>
-				<td>{location[shuttleID].speed} mph</td>
+				<td>{location[shuttleID].latitude}, {location[shuttleID].longitude}</td>
+				<td>{location[shuttleID].speed_mph} mph</td>
 			    </tr>
 			</tbody>
 		    </table>
