@@ -9,8 +9,6 @@ export default function MapKitMap({ vehicles }) {
     const [map, setMap] = useState(null);
     const vehicleOverlays = useRef({});
 
-    console.log('token', token);
-
     // source: https://developer.apple.com/documentation/mapkitjs/loading-the-latest-version-of-mapkit-js
     const setupMapKitJs = async() => {
         if (!window.mapkit || window.mapkit.loadedLibraries.length === 0) {

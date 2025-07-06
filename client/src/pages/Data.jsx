@@ -17,7 +17,6 @@ export default function Data() {
                     throw new Error('Network response was not ok');
                 }
                 const data = await response.json();
-                console.log(data);
                 setLocation(data);
             } catch (error) {
                 console.error('Error fetching location:', error);
