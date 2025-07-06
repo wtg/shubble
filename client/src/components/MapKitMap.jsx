@@ -5,7 +5,7 @@ export default function MapKitMap({ vehicles }) {
 
     const mapRef = useRef(null);
     const [mapLoaded, setMapLoaded] = useState(false);
-    const token = import.meta.env;
+    const token = import.meta.env.VITE_MAPKIT_KEY;
     const [map, setMap] = useState(null);
     const vehicleOverlays = useRef({});
 
