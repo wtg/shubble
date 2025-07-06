@@ -5,9 +5,11 @@ export default function MapKitMap({ vehicles }) {
 
     const mapRef = useRef(null);
     const [mapLoaded, setMapLoaded] = useState(false);
-    const [token, setToken] = useState(null);
+    const token = import.meta.env;
     const [map, setMap] = useState(null);
     const vehicleOverlays = useRef({});
+
+    console.log('token', token);
 
     // source: https://developer.apple.com/documentation/mapkitjs/loading-the-latest-version-of-mapkit-js
     const setupMapKitJs = async() => {
@@ -17,39 +19,18 @@ export default function MapKitMap({ vehicles }) {
         }
     };
 
-
-    // fetch the MapKit token from the server
-    useEffect(() => {
-        fetch('/api/mapkit')
-            .then((response) => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-                return response.json();
-            })
-            .then((data) => {
-                setToken(data);
-            })
-            .catch((error) => {
-                console.error('Error fetching MapKit token:', error);
-            });
-    }, []);
-
     // initialize mapkit
-    useEffect(() => {
-        if (!token) return;
-        const mapkitScript = async () => {
-            // load the MapKit JS library
-            await setupMapKitJs();
-            window.mapkit.init({
-                authorizationCallback: (done) => {
-                    done(token);
-                },
-            });
-            setMapLoaded(true);
-        }
-        mapkitScript();
-    }, [token]);
+    const mapkitScript = async () => {
+        // load the MapKit JS library
+        await setupMapKitJs();
+        window.mapkit.init({
+            authorizationCallback: (done) => {
+                done(token);
+            },
+        });
+        setMapLoaded(true);
+    };
+    mapkitScript();
 
     // create the map
     useEffect(() => {
