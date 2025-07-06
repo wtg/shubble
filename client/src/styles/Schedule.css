@@ -1,6 +1,31 @@
-.buttonStyle {
+.button-style {
     background-color: transparent;
     border: none;
     color: #206ef9;
     font-style: italic;
+   
+}
+
+.button-style:hover {
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.schedule-scroll {
+    padding: 10px 15px;
+    overflow: scroll;
+    border-style: solid;
+    border-width: thin;
+    margin-bottom: 0;
+    height: calc(50vh - 150px);
+}
+
+
+.schedule-scroll::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+.schedule-scroll::-webkit-scrollbar-thumb:hover {
+    background: #555;
 }
