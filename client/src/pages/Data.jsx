@@ -116,7 +116,7 @@ export default function Data() {
 						{formatTimestamp(shuttleLocation.timestamp)}
 					    </td>
 					    <td>
-						{shuttleLocation.latitude + ", " + shuttleLocation.longitude}
+						{shuttleLocation.latitude.toFixed(3) + ", " + shuttleLocation.longitude.toFixed(3)}
 					    </td>
 					    <td>
 						{shuttleLocation.speed_mph + " mph"}
