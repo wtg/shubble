@@ -9,10 +9,7 @@ export default function Data() {
 
     const [location, setLocation] = useState(null);
 
-    const [isLoading, setIsLoading] = useState(false);
-
     const fetchLocation = async () => {
-	setIsLoading(true);
 	try {
             const response = await fetch('/api/today');
             if (!response.ok) {
@@ -24,9 +21,6 @@ export default function Data() {
         } catch (error) {
             console.error('Error fetching location:', error);
         }
-	finally {
-	    setIsLoading(false);
-	}
     }
     
     useEffect(() => {
