@@ -143,9 +143,9 @@ def data_today():
             "heading_degrees": location.heading_degrees,
             "address_id": location.address_id
         }
-        if location.id in location_today_dict:
-            location_today_dict[location_id].append(vehicle_location)
+        if location.vehicle_id in locations_today_dict:
+            locations_today_dict[location.vehicle_id].append(vehicle_location)
         else:
-            location_today_dict[location_id] = [vehicle_location]
+            locations_today_dict[location.vehicle_id] = [vehicle_location]
     return jsonify(locations_today_dict)
             

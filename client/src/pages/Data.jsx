@@ -14,7 +14,7 @@ export default function Data() {
     const fetchLocation = async () => {
 	setIsLoading(true);
 	try {
-            const response = await fetch('/api/locations');
+            const response = await fetch('/api/today');
             if (!response.ok) {
                 throw new Error('Network response was not ok');
             }
