@@ -118,3 +118,34 @@ def get_mapkit():
     if not api_key:
         return {'status': 'error', 'message': 'MAPKIT_API_KEY not set'}, 400
     return jsonify(api_key)
+
+@bp.route('/api/today', methods=['GET'])
+def data_today():
+    # Get current UTC time
+    now = datetime.now(timezone.utc)
+    # Get start of today (00:00 UTC)
+    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    # Query for ShuttleLocation events from today
+    locations_today = ShuttleLocation.query.filter(
+        and_(
+            ShuttleLocation.timestamp >= start_of_day,
+            ShuttleLocation.timestamp <= now
+        )
+    ).order_by(ShuttleLocation.timestamp.asc()).all()
+
+    locations_today_dict = {}
+    for location in locations_today:
+        vehicle_location = {
+            "latitude": location.latitude,
+            "longitude": location.longitude,
+            "timestamp": location.timestamp,
+            "speed_mph": location.speed_mph,
+            "heading_degrees": location.heading_degrees,
+            "address_id": location.address_id
+        }
+        if location.id in location_today_dict:
+            location_today_dict[location_id].append(vehicle_location)
+        else:
+            location_today_dict[location_id] = [vehicle_location]
+    return jsonify(locations_today_dict)
+            
