@@ -40,44 +40,23 @@ export default function Data() {
 	fetchLocation();
     }
 
-    /*
-    function getLatLong(shuttleId, shuttleLocation) {
-
-    }
-
-    function getSpeed(shuttleId, shuttleLocation) {
-
-    }
-    */
-
-    function formatTimestamp(shuttleId, shuttleLocation) {
-	if (String(shuttleId) in shuttleLocation) {
-	    const timestampList = [];
-	    for (let loc in shuttleLocation[shuttleId]) {
-		 //console.log(shuttleLocation[shuttleId][loc]);
-		if ("timestamp" in shuttleLocation[shuttleId][loc]) {
-		    let tStamp = shuttleLocation[shuttleId][loc].timestamp;
-		    let hours = parseInt(tStamp.substring(11, 13));
-		    let minutes = tStamp.substring(14, 16);
-		    let seconds = tStamp.substring(17, 19);
-
-		    let formattedTimestamp =  ":" + minutes + ":" + seconds;
-		    if (hours > 12) {
-			hours -= 12;
-			formattedTimestamp = formattedTimestamp + "PM";
-		    }
-		    else {
-			formattedTimestamp = formattedTimestamp + "AM";
-		    }
-		    formattedTimestamp = hours + formattedTimestamp;
-		    timestampList.push(formattedTimestamp);
-		}
-		timestampList.push("No timestamp given");
-	    }
-	    return timestampList;
+    function formatTimestamp(tStamp) {
+	if (tStamp === null) {
+	    return "timestamp was set to null";
 	}
-	console.log('Invalid shuttle ID selected: "' + shuttleId + '" not in shuttleLocation: ' + shuttleLocation);
-	return 'Invalid shuttle ID selected: "' + shuttleId + '"';
+	let hours = parseInt(tStamp.substring(11, 13));
+	let minutes = tStamp.substring(14, 16);
+	let seconds = tStamp.substring(17, 19);
+	let formattedTimestamp =  ":" + minutes + ":" + seconds;
+	if (hours > 12) {
+	    hours -= 12;
+	    formattedTimestamp = formattedTimestamp + "PM";
+	}
+	else {
+	    formattedTimestamp = formattedTimestamp + "AM";
+	}
+	formattedTimestamp = hours + formattedTimestamp;
+	    return formattedTimestamp;
     }
 
     const [selectedShuttleID, setSelectedShuttleID] = useState(null);
@@ -132,7 +111,7 @@ export default function Data() {
 			<tbody>
 			    {location[selectedShuttleID].map((shuttleLocation, index) => (
 				<tr key={index}>
-				    <td>{shuttleLocation.timestamp}</td>
+				    <td>{formatTimestamp(shuttleLocation.timestamp)}</td>
 				    <td>{shuttleLocation.latitude + ", " + shuttleLocation.longitude}</td>
 				    <td>{shuttleLocation.speed_mph + " mph"}</td>
 				</tr>
