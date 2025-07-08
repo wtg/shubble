@@ -52,11 +52,11 @@ export default function Data() {
 
     function formatTimestamp(shuttleId, shuttleLocation) {
 	if (String(shuttleId) in shuttleLocation) {
-	    let timestampList = [];
+	    const timestampList = [];
 	    for (let loc in shuttleLocation[shuttleId]) {
-		console.log(loc);
-		if ("timestamp" in loc) {
-		    let tStamp = loc.timestamp;
+		 console.log(shuttleLocation[shuttleId][loc]);
+		if ("timestamp" in shuttleLocation[shuttleId][loc]) {
+		    let tStamp = shuttleLocation[shuttleId][loc].timestamp;
 		    let hours = parseInt(tStamp.substring(11, 13));
 		    let minutes = tStamp.substring(14, 16);
 		    let seconds = tStamp.substring(17, 19);
@@ -70,9 +70,9 @@ export default function Data() {
 			formattedTimestamp = formattedTimestamp + "AM";
 		    }
 		    formattedTimestamp = hours + formattedTimestamp;
-		    timestampList.append(formattedTimestamp);
+		    timestampList.push(formattedTimestamp);
 		}
-		timestampList.append("No timestamp given");
+		timestampList.push("No timestamp given");
 	    }
 	    return timestampList[0];
 	}
