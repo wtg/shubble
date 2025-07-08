@@ -110,7 +110,7 @@ export default function Data() {
 				    </tr>
 				</thead>
 				<tbody>
-				    {location[selectedShuttleID].map((shuttleLocation, index) => (
+				    {location[selectedShuttleID].reverse().map((shuttleLocation, index) => (
 					<tr key={index}>
 					    <td>
 						{formatTimestamp(shuttleLocation.timestamp)}
