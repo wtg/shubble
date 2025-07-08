@@ -40,26 +40,50 @@ export default function Data() {
 	fetchLocation();
     }
 
-    function formatTimestamp(shuttleLocation) {
-	if ("timestamp" in shuttleLocation) {
-	    let tStamp = shuttleLocation.timestamp;
-	    let hours = parseInt(tStamp.substring(11, 13));
-	    let minutes = tStamp.substring(14, 16);
-	    let seconds = tStamp.substring(17, 19);
+    /*
+    function getLatLong(shuttleId, shuttleLocation) {
 
-	    if (hours > 12) {
-		hours -= 12;
-		return hours + ":" + minutes + ":" + seconds + "PM";
-	    }
-	    return hours + ":" + minutes + ":" + seconds + "AM";
-	}
-	return "No timestamp given"
     }
 
-    const [shuttleID, setShuttleID] = useState(null);
+    function getSpeed(shuttleId, shuttleLocation) {
+
+    }
+    */
+
+    function formatTimestamp(shuttleId, shuttleLocation) {
+	if (String(shuttleId) in shuttleLocation) {
+	    let timestampList = [];
+	    for (let loc in shuttleLocation[shuttleId]) {
+		console.log(loc);
+		if ("timestamp" in loc) {
+		    let tStamp = loc.timestamp;
+		    let hours = parseInt(tStamp.substring(11, 13));
+		    let minutes = tStamp.substring(14, 16);
+		    let seconds = tStamp.substring(17, 19);
+
+		    let formattedTimestamp =  ":" + minutes + ":" + seconds;
+		    if (hours > 12) {
+			hours -= 12;
+			formattedTimestamp = formattedTimestamp + "PM";
+		    }
+		    else {
+			formattedTimestamp = formattedTimestamp + "AM";
+		    }
+		    formattedTimestamp = hours + formattedTimestamp;
+		    timestampList.append(formattedTimestamp);
+		}
+		timestampList.append("No timestamp given");
+	    }
+	    return timestampList[0];
+	}
+	console.log('Invalid shuttle ID selected: "' + shuttleId + '" not in shuttleLocation: ' + shuttleLocation);
+	return 'Invalid shuttle ID selected: "' + shuttleId + '"';
+    }
+
+    const [selectedShuttleID, setSelectedShuttleID] = useState(null);
 
     const handleShuttleChange = (event) => {
-	setShuttleID(event.target.value === '' ? null : event.target.value);
+	setSelectedShuttleID(event.target.value === '' ? null : event.target.value);
     }
 
     return (
@@ -79,17 +103,17 @@ export default function Data() {
 		{location ? (
 		<div>
 		    <p className = "dropdown-p-style">
-			Shuttle: <select value={shuttleID || ''} onChange={handleShuttleChange} className = "dropdown-style">
+			Shuttle: <select value={selectedShuttleID || ''} onChange={handleShuttleChange} className = "dropdown-style">
 				     <option value="">Select a shuttle</option>
-			    {Object.keys(location).map(shuttleID => (
-				<option key={shuttleID} value={shuttleID}>
-				    {shuttleID}
+			    {Object.keys(location).map(selectedShuttleID => (
+				<option key={selectedShuttleID} value={selectedShuttleID}>
+				    {selectedShuttleID}
 				</option>
 			    ))}
 			</select>
 		    </p>
 
-		    {shuttleID ? (
+		    {selectedShuttleID ? (
 
 		    <table className = "data-table">
 			<thead>
@@ -107,9 +131,9 @@ export default function Data() {
 			</thead>
 			<tbody>
 			    <tr>
-				<td>{formatTimestamp(location[shuttleID])}</td>
-				<td>{location[shuttleID].latitude}, {location[shuttleID].longitude}</td>
-				<td>{location[shuttleID].speed_mph} mph</td>
+				<td>{formatTimestamp(selectedShuttleID, location)}</td>
+				<td>{location[selectedShuttleID].latitude}, {location[selectedShuttleID].longitude}</td>
+				<td>{location[selectedShuttleID].speed_mph} mph</td>
 			    </tr>
 			</tbody>
 		    </table>
