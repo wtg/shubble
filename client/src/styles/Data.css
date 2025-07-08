@@ -64,7 +64,7 @@ th:last-child, td:last-child {
     overflow: scroll;
     border-style: solid;
     border-width: thin;
-    height: calc(50vh - 150px);
+    height: calc(70vh - 150px);
 }
 
 .location-table-overflow-scroll::-webkit-scrollbar-track {
