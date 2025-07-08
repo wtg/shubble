@@ -14,9 +14,27 @@
     align-items: center;
 }
 
-.data-table {
+table {
     width: 100%;
-    text-align: left;
+    text-align: center;
+    border-collapse: collapse;
+    margin: 0;
+    padding: 0;
+    border-spacing: 0;
+}
+
+th {
+  border-right: 1px solid;
+  padding: 10px 15px;;
+}
+
+td {
+  border-right: 1px solid;
+  padding: 5px 5px;
+}
+
+th:last-child, td:last-child {
+  border-right: none;
 }
 
 .dropdown-style {
@@ -39,6 +57,23 @@
     flex-direction: row;
     gap: 50px;
     width: 90%;
+}
+
+.location-table-overflow-scroll {
+    padding: 10px 15px;
+    overflow: scroll;
+    border-style: solid;
+    border-width: thin;
+    height: calc(50vh - 150px);
+}
+
+.location-table-overflow-scroll::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+.location-table-overflow-scroll::-webkit-scrollbar-thumb:hover {
+    background: #555;
 }
 
 @media (max-width: 768px){

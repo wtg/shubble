@@ -94,30 +94,39 @@ export default function Data() {
 
 		    {selectedShuttleID ? (
 
-		    <table className = "data-table">
-			<thead>
-			    <tr>
-				<th>
-				    Timestamp
-				</th>
-				<th>
-				    Latitude, Longitude
-				</th>
-				<th>
-				    Speed
-				</th>
-			    </tr>
-			</thead>
-			<tbody>
-			    {location[selectedShuttleID].map((shuttleLocation, index) => (
-				<tr key={index}>
-				    <td>{formatTimestamp(shuttleLocation.timestamp)}</td>
-				    <td>{shuttleLocation.latitude + ", " + shuttleLocation.longitude}</td>
-				    <td>{shuttleLocation.speed_mph + " mph"}</td>
-				</tr>
-			    ))}
-			</tbody>
-		    </table>
+			<div className = "location-table-overflow-scroll">
+			    <table>
+				<thead>
+				    <tr>
+					<th>
+					    Timestamp
+					</th>
+					<th>
+					    Latitude, Longitude
+					</th>
+					<th>
+					    Speed
+					</th>
+				    </tr>
+				</thead>
+				<tbody>
+				    {location[selectedShuttleID].map((shuttleLocation, index) => (
+					<tr key={index}>
+					    <td>
+						{formatTimestamp(shuttleLocation.timestamp)}
+					    </td>
+					    <td>
+						{shuttleLocation.latitude + ", " + shuttleLocation.longitude}
+					    </td>
+					    <td>
+						{shuttleLocation.speed_mph + " mph"}
+					    </td>
+					</tr>
+				    ))}
+				    
+				</tbody>
+			    </table>
+			</div>
 		    ) : (
 			<p>No shuttle selected</p>
 		    )}
