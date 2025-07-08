@@ -3,7 +3,7 @@ from . import db
 from .models import Vehicle, GeofenceEvent, VehicleLocation
 from pathlib import Path
 import os
-from sqlalchemy import func
+from sqlalchemy import func, and_
 from datetime import datetime, timezone
 
 bp = Blueprint('routes', __name__)
@@ -126,12 +126,12 @@ def data_today():
     # Get start of today (00:00 UTC)
     start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
     # Query for ShuttleLocation events from today
-    locations_today = ShuttleLocation.query.filter(
+    locations_today = VehicleLocation.query.filter(
         and_(
-            ShuttleLocation.timestamp >= start_of_day,
-            ShuttleLocation.timestamp <= now
+            VehicleLocation.timestamp >= start_of_day,
+            VehicleLocation.timestamp <= now
         )
-    ).order_by(ShuttleLocation.timestamp.asc()).all()
+    ).order_by(VehicleLocation.timestamp.asc()).all()
 
     locations_today_dict = {}
     for location in locations_today:
