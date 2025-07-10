@@ -31,19 +31,9 @@ export default function Data() {
 	if (tStamp === null) {
 	    return "timestamp was set to null";
 	}
-	let hours = parseInt(tStamp.substring(11, 13));
-	let minutes = tStamp.substring(14, 16);
-	let seconds = tStamp.substring(17, 19);
-	let formattedTimestamp =  ":" + minutes + ":" + seconds;
-	if (hours > 12) {
-	    hours -= 12;
-	    formattedTimestamp = formattedTimestamp + "PM";
-	}
-	else {
-	    formattedTimestamp = formattedTimestamp + "AM";
-	}
-	formattedTimestamp = hours + formattedTimestamp;
-	    return formattedTimestamp;
+	var timeStampDate = new Date(tStamp);
+	return timeStampDate.toLocaleString();
+	
     }
 
     const [selectedShuttleID, setSelectedShuttleID] = useState(null);
