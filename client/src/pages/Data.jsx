@@ -14,7 +14,7 @@ export default function Data() {
     const fetchLocation = async () => {
 	setIsLoading(true);
 	try {
-            const response = await fetch('/api/locations');
+            const response = await fetch('/api/today');
             if (!response.ok) {
                 throw new Error('Network response was not ok');
             }
@@ -61,7 +61,7 @@ export default function Data() {
     const handleShuttleChange = (event) => {
 	setShuttleID(event.target.value === '' ? null : event.target.value);
     }
-    
+
     return (
 	<>
 	    <div className = "header">
@@ -108,8 +108,8 @@ export default function Data() {
 			<tbody>
 			    <tr>
 				<td>{formatTimestamp(location[shuttleID])}</td>
-				<td>{location[shuttleID].lat}, {location[shuttleID].lng}</td>
-				<td>{location[shuttleID].speed} mph</td>
+				<td>{location[shuttleID].latitude}, {location[shuttleID].longitude}</td>
+				<td>{location[shuttleID].speed_mph} mph</td>
 			    </tr>
 			</tbody>
 		    </table>

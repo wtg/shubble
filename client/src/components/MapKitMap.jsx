@@ -5,7 +5,7 @@ export default function MapKitMap({ vehicles }) {
 
     const mapRef = useRef(null);
     const [mapLoaded, setMapLoaded] = useState(false);
-    const [token, setToken] = useState(null);
+    const token = import.meta.env.VITE_MAPKIT_KEY;
     const [map, setMap] = useState(null);
     const vehicleOverlays = useRef({});
 
@@ -17,39 +17,18 @@ export default function MapKitMap({ vehicles }) {
         }
     };
 
-
-    // fetch the MapKit token from the server
-    useEffect(() => {
-        fetch('/api/mapkit')
-            .then((response) => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-                return response.json();
-            })
-            .then((data) => {
-                setToken(data);
-            })
-            .catch((error) => {
-                console.error('Error fetching MapKit token:', error);
-            });
-    }, []);
-
     // initialize mapkit
-    useEffect(() => {
-        if (!token) return;
-        const mapkitScript = async () => {
-            // load the MapKit JS library
-            await setupMapKitJs();
-            window.mapkit.init({
-                authorizationCallback: (done) => {
-                    done(token);
-                },
-            });
-            setMapLoaded(true);
-        }
-        mapkitScript();
-    }, [token]);
+    const mapkitScript = async () => {
+        // load the MapKit JS library
+        await setupMapKitJs();
+        window.mapkit.init({
+            authorizationCallback: (done) => {
+                done(token);
+            },
+        });
+        setMapLoaded(true);
+    };
+    mapkitScript();
 
     // create the map
     useEffect(() => {
@@ -407,17 +386,17 @@ export default function MapKitMap({ vehicles }) {
 
         Object.keys(vehicles).map((key) => {
             const vehicle = vehicles[key];
-            const coordinate = new window.mapkit.Coordinate(vehicle.lat, vehicle.lng);
+            const coordinate = new window.mapkit.Coordinate(vehicle.latitude, vehicle.longitude);
             if (key in vehicleOverlays) {
                 // old vehicle: update coordinate
-                console.log(`Updating vehicle ${key} to ${vehicle.lat}, ${vehicle.lng}`);
+                console.log(`Updating vehicle ${key} to ${vehicle.latitude}, ${vehicle.longitude}`);
                 vehicleOverlays[key].coordinate = coordinate;
             } else {
                 // new vehicle: add to map
-                console.log(`Adding vehicle ${key} to ${vehicle.lat}, ${vehicle.lng}`);
+                console.log(`Adding vehicle ${key} to ${vehicle.latitude}, ${vehicle.longitude}`);
                 const annotation = new window.mapkit.MarkerAnnotation(coordinate, {
                     title: `Vehicle ID: ${key}`,
-                    subtitle: `Speed: ${vehicle.speed} mph`,
+                    subtitle: `Speed: ${vehicle.speed_mph} mph`,
                     color: '#444444',
                     glyphImage: { 1: 'shubble20.png' },
                     selectedGlyphImage: { 1: 'shubble20.png', 2: 'shubble40.png' },
