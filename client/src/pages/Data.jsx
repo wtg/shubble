@@ -24,12 +24,9 @@ export default function Data() {
     }
     
     useEffect(() => {
-        const pollLocation = async () => {
-            fetchLocation();
-            pollLocation();
-	}
+        fetchLocation();
     }, []);
-
+    
     const handleReload = async () => {
 	fetchLocation();
     }
