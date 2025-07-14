@@ -21,16 +21,21 @@ export default function Data() {
         } catch (error) {
             console.error('Error fetching location:', error);
         }
-	if (location != null) {
-	    if (!(selectedShuttleID in location)) {
-		setSelectedShuttleID(Object.keys(location)[0]);
-	    }
-	}
     }
 
     useEffect(() => {
         fetchLocation();
     }, []);
+
+    useEffect(() => {
+	if (location != null) {
+	    if (!(selectedShuttleID in location)) {
+		console.log("Prev selectedShuttleID: " + selectedShuttleID);
+		setSelectedShuttleID(Object.keys(location)[0]);
+		console.log("New selectedShuttleID: " + selectedShuttleID);
+	    }
+	}
+    }, [location]);
 
     const [selectedShuttleID, setSelectedShuttleID] = useState(null);
 
