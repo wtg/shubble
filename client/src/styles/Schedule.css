@@ -11,6 +11,16 @@
     text-decoration: underline;
 }
 
+.schedule-table {
+    text-align: left;
+    border-spacing: 0;
+    padding: 2px;
+}
+
+.time-rows {
+    padding: 2px;
+}
+
 .schedule-scroll {
     padding: 10px 15px;
     overflow: scroll;

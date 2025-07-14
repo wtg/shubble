@@ -145,8 +145,8 @@ export default function Schedule() {
             </p>
 
 	    {fullSchedule ?
-	     <div className = "schedule-scroll">
-		<table>
+	     <div className="schedule-scroll">
+		<table className="schedule-table">
                     <thead>
 			<tr>
 			    <th className="">Time</th>
@@ -156,7 +156,7 @@ export default function Schedule() {
 			{
 			    flatSchedule.map((time, index) => (
 				<tr key={index} className="">
-				    <td className="">{time}</td>
+				    <td className="time-rows">{time}</td>
 				</tr>
 			    ))
 			}
@@ -164,7 +164,7 @@ export default function Schedule() {
 		</table>
 	    </div>
 
-	     : <table>
+	     : <table className="schedule-table">
 		<thead>
                 <tr>
                     <th className="">Time</th>
@@ -173,7 +173,7 @@ export default function Schedule() {
 		   <tbody>
 		       {shortSchedule.map((time, index) => (
 			   <tr key={index}>
-			       <td>{time}</td>
+			       <td className="time-rows">{time}</td>
 			   </tr>
 		       ))}
 		 </tbody>
