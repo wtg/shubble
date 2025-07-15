@@ -1,0 +1,40 @@
+# .github/workflows/deploy-to-dokku.yml
+name: Deploy to Dokku
+
+on:
+  workflow_call:
+    inputs:
+      branch:
+        required: true
+        type: string
+      dokku_host:
+        required: true
+        type: string
+      dokku_app:
+        required: true
+        type: string
+    secrets:
+      ssh_key:
+        required: true
+
+jobs:
+  deploy:
+    runs-on: [self-hosted]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.ssh_key }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ inputs.dokku_host }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to Dokku
+        run: |
+          git remote add dokku dokku@${{ inputs.dokku_host }}:${{ inputs.dokku_app }}
+          git push dokku HEAD:main -f

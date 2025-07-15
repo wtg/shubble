@@ -1,3 +1,4 @@
+# .github/workflows/staging.yml
 name: Deploy to Staging
 
 on:
@@ -10,24 +11,10 @@ on:
 
 jobs:
   deploy:
-    # Prevents this from being triggered from a fork (extra safety)
-    if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name != 'pull_request'
-    runs-on: [self-hosted, staging-runner]  # <-- customize this label to match your runner
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-        with:
-          ref: ${{ github.event.inputs.branch }}
-
-      - name: Set up SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.DOKKU_SSH_KEY_STAGING }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.DOKKU_HOST_STAGING }} >> ~/.ssh/known_hosts
-
-      - name: Deploy to Dokku Staging
-        run: |
-          git remote add dokku dokku@${{ secrets.DOKKU_HOST_STAGING }}:${{ secrets.DOKKU_APP_STAGING }}
-          git push dokku HEAD:main -f
+    uses: ./.github/workflows/deploy-to-dokku.yml
+    with:
+      branch: ${{ github.event.inputs.branch }}
+      dokku_host: ${{ secrets.DOKKU_HOST_STAGING }}
+      dokku_app: ${{ secrets.DOKKU_APP_STAGING }}
+    secrets:
+      ssh_key: ${{ secrets.DOKKU_SSH_KEY_STAGING }}

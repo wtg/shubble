@@ -1,3 +1,4 @@
+# .github/workflows/production.yml
 name: Deploy to Production
 
 on:
@@ -5,35 +6,12 @@ on:
 
 jobs:
   deploy:
-    if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name != 'pull_request'
-    runs-on: [self-hosted]
+    uses: ./.github/workflows/deploy-to-dokku.yml
+    with:
+      branch: main
+      dokku_host: ${{ secrets.DOKKU_HOST_PRODUCTION }}
+      dokku_app: ${{ secrets.DOKKU_APP_PRODUCTION }}
+    secrets:
+      ssh_key: ${{ secrets.DOKKU_SSH_KEY_PRODUCTION }}
     environment:
       name: production
-      # GitHub will require manual approval before starting this job
-
-    steps:
-      - name: Checkout main
-        uses: actions/checkout@v3
-        with:
-          ref: main
-          fetch-depth: 0
-
-      - name: Set up SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.DOKKU_SSH_KEY_PRODUCTION }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.DOKKU_HOST_PRODUCTION }} >> ~/.ssh/known_hosts
-
-      - name: Deploy to Dokku
-        run: |
-          git remote add dokku dokku@${{ secrets.DOKKU_HOST_PRODUCTION }}:${{ secrets.DOKKU_APP_PRODUCTION }}
-          git push dokku HEAD:main -f
-
-      - name: Push to production branch
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git push origin HEAD:production -f
