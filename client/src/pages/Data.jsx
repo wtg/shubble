@@ -30,9 +30,7 @@ export default function Data() {
     useEffect(() => {
 	if (location != null) {
 	    if (!(selectedShuttleID in location)) {
-		console.log("Prev selectedShuttleID: " + selectedShuttleID);
 		setSelectedShuttleID(Object.keys(location)[0]);
-		console.log("New selectedShuttleID: " + selectedShuttleID);
 	    }
 	}
     }, [location]);
