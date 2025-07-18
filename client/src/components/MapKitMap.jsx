@@ -344,8 +344,8 @@ export default function MapKitMap({ vehicles }) {
                 }
                 const route = data.routes[0];
                 const routeOverlay = route.polyline;
-                routeOverlay.points.map((point) => {
-                    console.log(point.latitude, point.longitude);
+                routeOverlay.points.map((point, index) => {
+                    console.log('north', index, point.latitude, point.longitude);
                 });
                 routeOverlay.style = new window.mapkit.Style({
                     strokeColor: '#FF0000',
@@ -364,8 +364,8 @@ export default function MapKitMap({ vehicles }) {
                 }
                 const route = data.routes[0];
                 const routeOverlay = route.polyline;
-                routeOverlay.points.map((point) => {
-                    console.log(point.latitude, point.longitude);
+                routeOverlay.points.map((point, index) => {
+                    console.log('west', index, point.latitude, point.longitude);
                 });
                 routeOverlay.style = new window.mapkit.Style({
                     strokeColor: '#0000FF',
