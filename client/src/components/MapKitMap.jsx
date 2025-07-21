@@ -336,7 +336,7 @@ export default function MapKitMap({ vehicles }) {
         // add directions to map
 
         console.log('Calculating directions for north loop');
-        northDirectionRequests.forEach((request) => {
+        northDirectionRequests.forEach((request, reqIndex) => {
             directions.route(request, (error, data) => {
                 if (error) {
                     console.error('Error calculating directions:', error);
@@ -345,7 +345,7 @@ export default function MapKitMap({ vehicles }) {
                 const route = data.routes[0];
                 const routeOverlay = route.polyline;
                 routeOverlay.points.map((point, index) => {
-                    console.log('north', index, point.latitude, point.longitude);
+                    console.log('north', reqIndex, index, point.latitude, point.longitude);
                 });
                 routeOverlay.style = new window.mapkit.Style({
                     strokeColor: '#FF0000',
@@ -356,7 +356,7 @@ export default function MapKitMap({ vehicles }) {
         });
 
         console.log('Calculating directions for west loop');
-        westDirectionRequests.forEach((request) => {
+        westDirectionRequests.forEach((request, reqIndex) => {
             directions.route(request, (error, data) => {
                 if (error) {
                     console.error('Error calculating directions:', error);
@@ -365,7 +365,7 @@ export default function MapKitMap({ vehicles }) {
                 const route = data.routes[0];
                 const routeOverlay = route.polyline;
                 routeOverlay.points.map((point, index) => {
-                    console.log('west', index, point.latitude, point.longitude);
+                    console.log('west', reqIndex, index, point.latitude, point.longitude);
                 });
                 routeOverlay.style = new window.mapkit.Style({
                     strokeColor: '#0000FF',
