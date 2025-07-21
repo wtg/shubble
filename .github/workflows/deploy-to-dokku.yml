@@ -7,15 +7,16 @@ on:
       branch:
         required: true
         type: string
+    secrets:
       dokku_host:
         required: true
         type: string
       dokku_app:
         required: true
         type: string
-    secrets:
       ssh_key:
         required: true
+        type: string
 
 jobs:
   deploy:
@@ -32,9 +33,9 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.ssh_key }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ inputs.dokku_host }} >> ~/.ssh/known_hosts
+          ssh-keyscan -H ${{ secrets.dokku_host }} >> ~/.ssh/known_hosts
 
       - name: Deploy to Dokku
         run: |
-          git remote add dokku dokku@${{ inputs.dokku_host }}:${{ inputs.dokku_app }}
+          git remote add dokku dokku@${{ secrets.dokku_host }}:${{ secrets.dokku_app }}
           git push dokku HEAD:main -f
