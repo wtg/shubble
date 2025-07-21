@@ -23,8 +23,12 @@ export default function Data() {
         }
     }
 
+    const getActiveInactive = async () => {
+    }
+
     useEffect(() => {
         fetchLocation();
+	getActiveInactive();
     }, []);
 
     useEffect(() => {
@@ -91,7 +95,7 @@ export default function Data() {
 				</tr>
 			    </thead>
 			    <tbody>
-				{[...location[selectedShuttleID]].reverse().map((shuttleLocation, index) => (
+				{[...location[selectedShuttleID].data].reverse().map((shuttleLocation, index) => (
 				    <tr key={index}>
 					<td>
 					    {formatTimestamp(shuttleLocation.timestamp)}

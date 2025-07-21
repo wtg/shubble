@@ -133,6 +133,13 @@ def data_today():
         )
     ).order_by(VehicleLocation.timestamp.asc()).all()
 
+    events_today = db.session.query(GeofenceEvent).filter(
+        and_(
+            GeofenceEvent.event_time >= start_of_day,
+            GeofenceEvent.event_time <= now
+        )
+    ).order_by(GeofenceEvent.event_time.asc()).all()
+    
     locations_today_dict = {}
     for location in locations_today:
         vehicle_location = {
@@ -144,8 +151,12 @@ def data_today():
             "address_id": location.address_id
         }
         if location.vehicle_id in locations_today_dict:
-            locations_today_dict[location.vehicle_id].append(vehicle_location)
+            locations_today_dict[location.vehicle_id]["data"].append(vehicle_location)
         else:
-            locations_today_dict[location.vehicle_id] = [vehicle_location]
+            locations_today_dict[location.vehicle_id] = {
+                "entry": None,
+                "exit": None,
+                "data": [vehicle_location]
+            }
     return jsonify(locations_today_dict)
             
