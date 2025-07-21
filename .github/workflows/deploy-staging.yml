@@ -16,5 +16,5 @@ jobs:
       branch: ${{ github.event.inputs.branch }}
       dokku_host: ${{ secrets.DOKKU_HOST_STAGING }}
       dokku_app: ${{ secrets.DOKKU_APP_STAGING }}
-    secrets:
-      ssh_key: ${{ secrets.DOKKU_SSH_KEY_STAGING }}
+    environment:
+      name: staging

@@ -11,7 +11,5 @@ jobs:
       branch: main
       dokku_host: ${{ secrets.DOKKU_HOST_PRODUCTION }}
       dokku_app: ${{ secrets.DOKKU_APP_PRODUCTION }}
-    secrets:
-      ssh_key: ${{ secrets.DOKKU_SSH_KEY_PRODUCTION }}
     environment:
       name: production
