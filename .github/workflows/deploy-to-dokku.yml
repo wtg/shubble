@@ -7,20 +7,22 @@ on:
       branch:
         required: true
         type: string
+      environment:
+        required: true
+        type: string
     secrets:
       dokku_host:
         required: true
-        type: string
       dokku_app:
         required: true
-        type: string
       ssh_key:
         required: true
-        type: string
 
 jobs:
   deploy:
     runs-on: [self-hosted]
+
+    environment: ${{ inputs.environment }}
 
     steps:
       - name: Checkout code

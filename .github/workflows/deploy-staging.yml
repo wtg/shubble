@@ -14,9 +14,8 @@ jobs:
     uses: ./.github/workflows/deploy-to-dokku.yml
     with:
       branch: ${{ github.event.inputs.branch }}
+      environment: staging
     secrets:
       dokku_host: ${{ secrets.DOKKU_HOST_STAGING }}
       dokku_app: ${{ secrets.DOKKU_APP_STAGING }}
       ssh_key: ${{ secrets.DOKKU_SSH_KEY_STAGING }}
-    environment:
-      name: staging
