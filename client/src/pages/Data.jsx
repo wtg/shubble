@@ -7,9 +7,9 @@ import MapKitMap from '../components/MapKitMap';
 
 export default function Data() {
 
-    const [location, setLocation] = useState(null);
+    const [shuttleData, setShuttleData] = useState(null);
 
-    const fetchLocation = async () => {
+    const fetchShuttleData = async () => {
 	try {
             const response = await fetch('/api/today');
             if (!response.ok) {
@@ -17,27 +17,23 @@ export default function Data() {
             }
             const data = await response.json();
             console.log(data);
-            setLocation(data);
+            setShuttleData(data);
         } catch (error) {
-            console.error('Error fetching location:', error);
+            console.error('Error fetching shuttleData:', error);
         }
     }
 
-    const getActiveInactive = async () => {
-    }
-
     useEffect(() => {
-        fetchLocation();
-	getActiveInactive();
+        fetchShuttleData();
     }, []);
 
     useEffect(() => {
-	if (location != null) {
-	    if (!(selectedShuttleID in location)) {
-		setSelectedShuttleID(Object.keys(location)[0]);
+	if (shuttleData != null) {
+	    if (!(selectedShuttleID in shuttleData)) {
+		setSelectedShuttleID(Object.keys(shuttleData)[0]);
 	    }
 	}
-    }, [location]);
+    }, [shuttleData]);
 
     const [selectedShuttleID, setSelectedShuttleID] = useState(null);
 
@@ -74,7 +70,7 @@ export default function Data() {
 	    <div className = "header">
 		<div className = "flex-header-reload">
 		    <h1>Shubble Data</h1>
-		    <button onClick={fetchLocation} className = "reload-button">
+		    <button onClick={fetchShuttleData} className = "reload-button">
 			<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M2 12a9 9 0 0 0 9 9c2.39 0 4.68-.94 6.4-2.6l-1.5-1.5A6.7 6.7 0 0 1 11 19c-6.24 0-9.36-7.54-4.95-11.95S18 5.77 18 12h-3l4 4h.1l3.9-4h-3a9 9 0 0 0-18 0"/></svg>
 		    </button>
 		</div>
@@ -83,11 +79,11 @@ export default function Data() {
 
 	    <div className = "table-map-sidebyside">
 		<div className = "left-screen">
-		{location ? (
+		{shuttleData ? (
 		<div>
 		    <p className = "dropdown-p-style">
 			Shuttle: <select value={selectedShuttleID} onChange={handleShuttleChange} className = "dropdown-style">
-			    {Object.keys(location).map(selectedShuttleID => (
+			    {Object.keys(shuttleData).map(selectedShuttleID => (
 				<option key={selectedShuttleID} value={selectedShuttleID}>
 				    {selectedShuttleID}
 				</option>
@@ -96,7 +92,7 @@ export default function Data() {
 		    </p>
 		    {selectedShuttleID ? (
 			<div>
-			    <p>{formatEntryExit(location[selectedShuttleID].entry, location[selectedShuttleID].exit)}</p>
+			    <p>{formatEntryExit(shuttleData[selectedShuttleID].entry, shuttleData[selectedShuttleID].exit)}</p>
 			    <div className = "location-table-overflow-scroll">
 				<table>
 				    <thead>
@@ -113,7 +109,7 @@ export default function Data() {
 					</tr>
 				    </thead>
 				    <tbody>
-					{[...location[selectedShuttleID].data].reverse().map((shuttleLocation, index) => (
+					{[...shuttleData[selectedShuttleID].data].reverse().map((shuttleLocation, index) => (
 					    <tr key={index}>
 						<td>
 						    {formatTimestamp(shuttleLocation.timestamp)}
@@ -139,7 +135,7 @@ export default function Data() {
 		    <p>No locations found</p>
 		)}
 		</div>
-		<MapKitMap vehicles={ location } />
+		<MapKitMap vehicles={ shuttleData } />
 	    </div>
 	</>
     );
