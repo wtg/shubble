@@ -121,11 +121,8 @@ def get_mapkit():
 
 @bp.route('/api/today', methods=['GET'])
 def data_today():
-    # Get current UTC time
     now = datetime.now(timezone.utc)
-    # Get start of today (00:00 UTC)
     start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    # Query for ShuttleLocation events from today
     locations_today = VehicleLocation.query.filter(
         and_(
             VehicleLocation.timestamp >= start_of_day,
@@ -139,6 +136,22 @@ def data_today():
             GeofenceEvent.event_time <= now
         )
     ).order_by(GeofenceEvent.event_time.asc()).all()
+
+    first_entry = None
+    last_entry_index = 0
+    last_exit = None
+    
+    for e in range(len(events_today)):
+        if events_today[e].event_type == "GeofenceEntry":
+            if first_entry == None:
+                first_entry = events_today[e].event_time
+            last_entry_index = e
+
+    i = last_entry_index
+    while i < len(events_today):
+        if events_today[i].event_type == "GeofenceExit":
+            last_exit = events_today[i].event_time
+        i = i+1
     
     locations_today_dict = {}
     for location in locations_today:
@@ -154,9 +167,10 @@ def data_today():
             locations_today_dict[location.vehicle_id]["data"].append(vehicle_location)
         else:
             locations_today_dict[location.vehicle_id] = {
-                "entry": None,
-                "exit": None,
+                "entry": first_entry,
+                "exit": last_exit,
                 "data": [vehicle_location]
             }
     return jsonify(locations_today_dict)
+    #return {"debug": str(sample_events)}
             

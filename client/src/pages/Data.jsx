@@ -79,39 +79,42 @@ export default function Data() {
 			</select>
 		    </p>
 		    {selectedShuttleID ? (
-		    <div className = "location-table-overflow-scroll">
-			<table>
-			    <thead>
-				<tr>
-				    <th>
-					Timestamp
-				    </th>
-				    <th>
-					Latitude, Longitude
-				    </th>
-				    <th>
-					Speed
-				    </th>
-				</tr>
-			    </thead>
-			    <tbody>
-				{[...location[selectedShuttleID].data].reverse().map((shuttleLocation, index) => (
-				    <tr key={index}>
-					<td>
-					    {formatTimestamp(shuttleLocation.timestamp)}
-					</td>
-					<td>
-					    {shuttleLocation.latitude.toFixed(3) + ", " + shuttleLocation.longitude.toFixed(3)}
-					</td>
-					<td>
-					    {shuttleLocation.speed_mph + " mph"}
-					</td>
-				    </tr>
-				))}
-				
-			    </tbody>
-			</table>
-		    </div>
+			<div>
+			    <p>Entry-Exit</p>
+			    <div className = "location-table-overflow-scroll">
+				<table>
+				    <thead>
+					<tr>
+					    <th>
+						Timestamp
+					    </th>
+					    <th>
+						Latitude, Longitude
+					    </th>
+					    <th>
+						Speed
+					    </th>
+					</tr>
+				    </thead>
+				    <tbody>
+					{[...location[selectedShuttleID].data].reverse().map((shuttleLocation, index) => (
+					    <tr key={index}>
+						<td>
+						    {formatTimestamp(shuttleLocation.timestamp)}
+						</td>
+						<td>
+						    {shuttleLocation.latitude.toFixed(3) + ", " + shuttleLocation.longitude.toFixed(3)}
+						</td>
+						<td>
+						    {shuttleLocation.speed_mph + " mph"}
+						</td>
+					    </tr>
+					))}
+					
+				    </tbody>
+				</table>
+			    </div>
+			</div>
 		    ) : (
 			<p>No shuttle selected</p>
 		    )}
