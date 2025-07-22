@@ -9,6 +9,8 @@ export default function Data() {
 
     const [location, setLocation] = useState(null);
 
+    const [selectedShuttleID, setSelectedShuttleID] = useState(null);
+
     const fetchLocation = async () => {
 	try {
             const response = await fetch('/api/today');
@@ -34,8 +36,6 @@ export default function Data() {
 	    }
 	}
     }, [location]);
-
-    const [selectedShuttleID, setSelectedShuttleID] = useState(null);
 
     const handleShuttleChange = (event) => {
 	setSelectedShuttleID(event.target.value);
