@@ -38,5 +38,6 @@ jobs:
 
       - name: Deploy to Dokku
         run: |
+          git remote remove dokku
           git remote add dokku dokku@${{ secrets.dokku_host }}:${{ secrets.dokku_app }}
           git push dokku HEAD:main -f
