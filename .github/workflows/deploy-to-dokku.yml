@@ -32,10 +32,9 @@ jobs:
 
       - name: Set up SSH
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.ssh_key }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.dokku_host }} >> ~/.ssh/known_hosts
+          echo "${{ secrets.ssh_key }}" > temp_key
+          chmod 600 temp_key
+          export GIT_SSH_COMMAND="ssh -i temp_key -o StrictHostKeyChecking=no"
 
       - name: Deploy to Dokku
         run: |
