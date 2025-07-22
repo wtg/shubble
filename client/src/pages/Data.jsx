@@ -50,19 +50,14 @@ export default function Data() {
     }
 
     function formatEntryExit(entry, exit) {
-	var entryDate = new Date(entry);
-	var exitDate = new Date(exit);
 	if (entry === null) {
 	    return "Shuttle never entered GeoFence";
 	}
-	var entryExit = entryDate.toLocaleTimeString()
-	if (exit === null) {
-	    entryExit = entryExit + "-NOW";
+	var exitStr = "NOW";
+	if (exit != null) {
+	    exitStr = new Date(exit).toLocaleString();
 	}
-	else {
-	    entryExit = entryExit + exitDate.toLocaleString()
-	}
-	return entryExit;
+	return new Date(entry).toLocaleTimeString() + "-" + exitStr;
     }
     
     return (
