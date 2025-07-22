@@ -50,7 +50,23 @@ export default function Data() {
 	    return "timestamp was set to null";
 	}
 	var timeStampDate = new Date(tStamp);
-	return timeStampDate.toLocaleString();
+	return timeStampDate.toLocaleTimeString();
+    }
+
+    function formatEntryExit(entry, exit) {
+	var entryDate = new Date(entry);
+	var exitDate = new Date(exit);
+	if (entry === null) {
+	    return "Shuttle never entered GeoFence";
+	}
+	var entryExit = entryDate.toLocaleTimeString()
+	if (exit === null) {
+	    entryExit = entryExit + "-NOW";
+	}
+	else {
+	    entryExit = entryExit + exitDate.toLocaleString()
+	}
+	return entryExit;
     }
     
     return (
@@ -80,7 +96,7 @@ export default function Data() {
 		    </p>
 		    {selectedShuttleID ? (
 			<div>
-			    <p>Entry-Exit</p>
+			    <p>{formatEntryExit(location[selectedShuttleID].entry, location[selectedShuttleID].exit)}</p>
 			    <div className = "location-table-overflow-scroll">
 				<table>
 				    <thead>
