@@ -7,19 +7,22 @@ on:
       branch:
         required: true
         type: string
-      dokku_host:
-        required: true
-        type: string
-      dokku_app:
+      environment:
         required: true
         type: string
     secrets:
+      dokku_host:
+        required: true
+      dokku_app:
+        required: true
       ssh_key:
         required: true
 
 jobs:
   deploy:
     runs-on: [self-hosted]
+
+    environment: ${{ inputs.environment }}
 
     steps:
       - name: Checkout code
@@ -29,12 +32,12 @@ jobs:
 
       - name: Set up SSH
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.ssh_key }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ inputs.dokku_host }} >> ~/.ssh/known_hosts
+          echo "${{ secrets.ssh_key }}" > temp_key
+          chmod 600 temp_key
+          export GIT_SSH_COMMAND="ssh -i temp_key -o StrictHostKeyChecking=no"
 
       - name: Deploy to Dokku
         run: |
-          git remote add dokku dokku@${{ inputs.dokku_host }}:${{ inputs.dokku_app }}
+          git remote remove dokku
+          git remote add dokku dokku@${{ secrets.dokku_host }}:${{ secrets.dokku_app }}
           git push dokku HEAD:main -f
