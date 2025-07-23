@@ -141,10 +141,10 @@ def data_today():
     last_entry_index = 0
     last_exit = None
     
-    for e in range(len(events_today)):
-        if events_today[e].event_type == "GeofenceEntry":
+    for e, geofence_event in enumerate(events_today):
+        if geofence_event.event_type == "GeofenceEntry":
             if first_entry == None:
-                first_entry = events_today[e].event_time
+                first_entry = geofence_event.event_time
             last_entry_index = e
 
     i = last_entry_index
