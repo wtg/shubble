@@ -7,10 +7,12 @@ import MapKitMap from '../components/MapKitMap';
 
 export default function Data() {
 
-    const [shuttleData, setShuttleData] = useState(null);
+  const [shuttleData, setShuttleData] = useState(null);
 
-    const fetchShuttleData = async () => {
-	try {
+  const [selectedShuttleID, setSelectedShuttleID] = useState(null);
+    
+  const fetchShuttleData = async () => {
+	  try {
             const response = await fetch('/api/today');
             if (!response.ok) {
                 throw new Error('Network response was not ok');
@@ -34,8 +36,6 @@ export default function Data() {
 	    }
 	}
     }, [shuttleData]);
-
-    const [selectedShuttleID, setSelectedShuttleID] = useState(null);
 
     const handleShuttleChange = (event) => {
 	setSelectedShuttleID(event.target.value);
