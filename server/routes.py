@@ -172,5 +172,4 @@ def data_today():
                 "data": [vehicle_location]
             }
     return jsonify(locations_today_dict)
-    #return {"debug": str(sample_events)}
             
