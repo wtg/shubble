@@ -147,11 +147,9 @@ def data_today():
                 first_entry = geofence_event.event_time
             last_entry_index = e
 
-    i = last_entry_index
-    while i < len(events_today):
-        if events_today[i].event_type == "GeofenceExit":
-            last_exit = events_today[i].event_time
-        i = i+1
+    for geofence_event in events_today[last_entry_index:]:
+        if geofence_event.event_type == "GeofenceExit":
+            last_exit = geofence_event.event_time
     
     locations_today_dict = {}
     for location in locations_today:
