@@ -74,13 +74,16 @@ def webhook():
 
         for condition in conditions:
             details = condition.get('details', {})
-            geofence_entry = details.get('geofenceEntry', {})
+            if 'geofenceEntry' in details:
+                geofence_event = details.get('geofenceEntry', {})
+            else:
+                geofence_event = details.get('geofenceExit', {})
 
-            vehicle_data = geofence_entry.get('vehicle')
+            vehicle_data = geofence_event.get('vehicle')
             if not vehicle_data:
                 continue  # skip conditions with no vehicle
 
-            address = geofence_entry.get('address', {})
+            address = geofence_event.get('address', {})
             geofence = address.get('geofence', {})
             polygon = geofence.get('polygon', {})
             vertices = polygon.get('vertices', [])
@@ -114,7 +117,7 @@ def webhook():
             event = GeofenceEvent(
                 id=event_id,
                 vehicle_id=vehicle_id,
-                event_type=event_type,
+                event_type='geofenceEntry' if 'geofenceEntry' in details else 'geofenceExit',
                 event_time=event_time,
                 address_name=address.get("name"),
                 address_formatted=address.get("formattedAddress"),
