@@ -4,6 +4,9 @@ from .models import Vehicle, GeofenceEvent, VehicleLocation
 from pathlib import Path
 from sqlalchemy import func
 from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 bp = Blueprint('routes', __name__)
 
@@ -17,6 +20,7 @@ def serve_react():
 
 @bp.route('/api/locations', methods=['GET'])
 def get_locations():
+    logger.error('log working?')
     # Subquery: get the max timestamp per vehicle_id
     subquery = db.session.query(
         VehicleLocation.vehicle_id,
@@ -51,6 +55,7 @@ def get_locations():
 @bp.route('/api/webhook', methods=['POST'])
 def webhook():
     data = request.get_json(force=True)
+    logger.error(data)
     if not data:
         return jsonify({'status': 'error', 'message': 'Invalid JSON'}), 400
 
