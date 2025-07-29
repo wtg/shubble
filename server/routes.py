@@ -74,9 +74,9 @@ def webhook():
 
         for condition in conditions:
             details = condition.get('details', {})
-            vehicle_data = details.get('vehicle')
             geofence_entry = details.get('geofenceEntry', {})
 
+            vehicle_data = geofence_entry.get('vehicle')
             if not vehicle_data:
                 continue  # skip conditions with no vehicle
 
