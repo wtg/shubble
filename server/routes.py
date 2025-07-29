@@ -2,7 +2,6 @@ from flask import Blueprint, request, jsonify, send_from_directory
 from . import db
 from .models import Vehicle, GeofenceEvent, VehicleLocation
 from pathlib import Path
-import os
 from sqlalchemy import func
 from datetime import datetime
 
@@ -51,7 +50,7 @@ def get_locations():
 
 @bp.route('/api/webhook', methods=['POST'])
 def webhook():
-    data = request.get_json()
+    data = request.get_json(force=True)
     if not data:
         return jsonify({'status': 'error', 'message': 'Invalid JSON'}), 400
 
