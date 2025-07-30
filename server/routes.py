@@ -55,7 +55,6 @@ def get_locations():
 @bp.route('/api/webhook', methods=['POST'])
 def webhook():
     data = request.get_json(force=True)
-    logger.error(data)
 
     if not data:
         return jsonify({'status': 'error', 'message': 'Invalid JSON'}), 400
@@ -110,7 +109,6 @@ def webhook():
                     gateway_model=vehicle_data.get('gateway', {}).get('model'),
                     gateway_serial=vehicle_data.get('gateway', {}).get('serial'),
                 )
-                logger.error(f'{vehicle.id} {vehicle.name} {vehicle.asset_type}, {vehicle.license_plate}, {vehicle.vin} {vehicle.maintenance_id} {vehicle.gateway_model} {vehicle.gateway_serial}')
                 db.session.add(vehicle)
 
             # Create GeofenceEvent
@@ -124,7 +122,6 @@ def webhook():
                 latitude=latitude,
                 longitude=longitude,
             )
-            logger.error(f'{event.id} {event.vehicle_id} {event.event_type} {event.event_time} {event.address_name} {event.address_formatted} {event.latitude} {event.longitude}')
             db.session.add(event)
 
         db.session.commit()
