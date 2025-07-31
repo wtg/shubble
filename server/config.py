@@ -4,8 +4,6 @@ class Config:
     # hosting settings
     DEBUG = os.environ.get('FLASK_DEBUG', 'true').lower() == 'true'
     ENV = os.environ.get('FLASK_ENV', 'development').lower()
-    PORT = int(os.environ.get('PORT', '3000'))
-    HOST = os.environ.get('FLASK_HOST', '0.0.0.0')
 
     # database settings
     SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL")
