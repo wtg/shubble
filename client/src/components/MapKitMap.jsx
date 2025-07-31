@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import '../styles/MapKitMap.css';
+import northRouteData from '../data/north_route.json';
+import westRouteData from '../data/west_route.json';
 
 export default function MapKitMap({ vehicles }) {
 
@@ -71,29 +73,9 @@ export default function MapKitMap({ vehicles }) {
     useEffect(() => {
         if (!map) return;
 
-        // coordinates of stops
-
-        // north
-        // 42.730676958536144, -73.67674616623393
-        // 42.737043669212134, -73.67036818086305
-        // 42.735455332919045, -73.6636579612421
-        // 42.73453830902714, -73.6634349282215
-        // 42.7327033365768, -73.66522556880754
-        // 42.731383488711145, -73.66654627298861
-        // 42.73175755884203, -73.66967270972104
-
-        // west
-        // 42.730318398121575, -73.67656636425313
-        // 42.72799822908236, -73.67809671921837
-        // 42.72293385583282, -73.67960937432454
-        // 42.72766469852938, -73.68716188006067
-        // 42.73160170173599, -73.68627833913843
-        // 42.731468785216094, -73.68128223685743
-        // 42.731023124913804, -73.67909065365457
-
-        // circle overlays for the stops
-        const unionCircle = new window.mapkit.CircleOverlay(
-            new window.mapkit.Coordinate(42.730676958536144, -73.67674616623393),
+        const unionCoordinate = new window.mapkit.Coordinate(...northRouteData.STUDENT_UNION);
+        const unionOverlay = new window.mapkit.CircleOverlay(
+            unionCoordinate,
             15,
             {
                 style: new window.mapkit.Style(
@@ -105,9 +87,9 @@ export default function MapKitMap({ vehicles }) {
             }
         );
 
-        const northCircles = [
-            new window.mapkit.CircleOverlay(
-                new window.mapkit.Coordinate(42.737043669212134, -73.67036818086305),
+        const northRouteOverlays = northRouteData.STOPS.slice(1).map(
+            (stopName) => new window.mapkit.CircleOverlay(
+                new window.mapkit.Coordinate(...northRouteData[stopName]),
                 15,
                 {
                     style: new window.mapkit.Style(
@@ -117,72 +99,12 @@ export default function MapKitMap({ vehicles }) {
                         }
                     )
                 }
-            ),
-            new window.mapkit.CircleOverlay(
-                new window.mapkit.Coordinate(42.735455332919045, -73.6636579612421),
-                15,
-                {
-                    style: new window.mapkit.Style(
-                        {
-                            strokeColor: '#000000',
-                            lineWidth: 2,
-                        }
-                    )
-                }
-            ),
-            new window.mapkit.CircleOverlay(
-                new window.mapkit.Coordinate(42.73453830902714, -73.6634349282215),
-                15,
-                {
-                    style: new window.mapkit.Style(
-                        {
-                            strokeColor: '#000000',
-                            lineWidth: 2,
-                        }
-                    )
-                }
-            ),
-            new window.mapkit.CircleOverlay(
-                new window.mapkit.Coordinate(42.7327033365768, -73.66522556880754),
-                15,
-                {
-                    style: new window.mapkit.Style(
-                        {
-                            strokeColor: '#000000',
-                            lineWidth: 2,
-                        }
-                    )
-                }
-            ),
-            new window.mapkit.CircleOverlay(
-                new window.mapkit.Coordinate(42.731383488711145, -73.66654627298861),
-                15,
-                {
-                    style: new window.mapkit.Style(
-                        {
-                            strokeColor: '#000000',
-                            lineWidth: 2,
-                        }
-                    )
-                }
-            ),
-            new window.mapkit.CircleOverlay(
-                new window.mapkit.Coordinate(42.73175755884203, -73.66967270972104),
-                15,
-                {
-                    style: new window.mapkit.Style(
-                        {
-                            strokeColor: '#000000',
-                            lineWidth: 2,
-                        }
-                    )
-                }
-            ),
-        ];
+            )
+        );
 
-        const westCircles = [
-            new window.mapkit.CircleOverlay(
-                new window.mapkit.Coordinate(42.72799822908236, -73.67809671921837),
+        const westRouteOverlays = westRouteData.STOPS.slice(1).map(
+            (stopName) => new window.mapkit.CircleOverlay(
+                new window.mapkit.Coordinate(...westRouteData[stopName]),
                 15,
                 {
                     style: new window.mapkit.Style(
@@ -192,192 +114,30 @@ export default function MapKitMap({ vehicles }) {
                         }
                     )
                 }
-            ),
-            new window.mapkit.CircleOverlay(
-                new window.mapkit.Coordinate(42.72293385583282, -73.67960937432454),
-                15,
-                {
-                    style: new window.mapkit.Style(
-                        {
-                            strokeColor: '#000000',
-                            lineWidth: 2,
-                        }
-                    )
-                }
-            ),
-            new window.mapkit.CircleOverlay(
-                new window.mapkit.Coordinate(42.72766469852938, -73.68716188006067),
-                15,
-                {
-                    style: new window.mapkit.Style(
-                        {
-                            strokeColor: '#000000',
-                            lineWidth: 2,
-                        }
-                    )
-                }
-            ),
-            new window.mapkit.CircleOverlay(
-                new window.mapkit.Coordinate(42.73160170173599, -73.68627833913843),
-                15,
-                {
-                    style: new window.mapkit.Style(
-                        {
-                            strokeColor: '#000000',
-                            lineWidth: 2,
-                        }
-                    )
-                }
-            ),
-            new window.mapkit.CircleOverlay(
-                new window.mapkit.Coordinate(42.731468785216094, -73.68128223685743),
-                15,
-                {
-                    style: new window.mapkit.Style(
-                        {
-                            strokeColor: '#000000',
-                            lineWidth: 2,
-                        }
-                    )
-                }
-            ),
-            new window.mapkit.CircleOverlay(
-                new window.mapkit.Coordinate(42.731023124913804, -73.67909065365457),
-                15,
-                {
-                    style: new window.mapkit.Style(
-                        {
-                            strokeColor: '#000000',
-                            lineWidth: 2,
-                        }
-                    )
-                }
-            ),
-        ];
+            )
+        );
 
-
-        // directions for the loops
-        const directions = new window.mapkit.Directions();
-
-        const northDirectionRequests = [
-            {
-                origin: new window.mapkit.Coordinate(42.730676958536144, -73.67674616623393),
-                destination: new window.mapkit.Coordinate(42.737043669212134, -73.67036818086305),
-            },
-            {
-                origin: new window.mapkit.Coordinate(42.737043669212134, -73.67036818086305),
-                destination: new window.mapkit.Coordinate(42.737902319942435, -73.66773188495978),
-            },
-            {
-                origin: new window.mapkit.Coordinate(42.737902319942435, -73.66773188495978),
-                destination: new window.mapkit.Coordinate(42.735455332919045, -73.6636579612421),
-            },
-            {
-                origin: new window.mapkit.Coordinate(42.735455332919045, -73.6636579612421),
-                destination: new window.mapkit.Coordinate(42.73453830902714, -73.6634349282215),
-            },
-            {
-                origin: new window.mapkit.Coordinate(42.73453830902714, -73.6634349282215),
-                destination: new window.mapkit.Coordinate(42.7327033365768, -73.66522556880754),
-            },
-            {
-                origin: new window.mapkit.Coordinate(42.7327033365768, -73.66522556880754),
-                destination: new window.mapkit.Coordinate(42.73080472933945, -73.6673502020617),
-            },
-            {
-                origin: new window.mapkit.Coordinate(42.73080472933945, -73.6673502020617),
-                destination: new window.mapkit.Coordinate(42.73175755884203, -73.66967270972104),
-            },
-            {
-                origin: new window.mapkit.Coordinate(42.73175755884203, -73.66967270972104),
-                destination: new window.mapkit.Coordinate(42.73305698515937, -73.67655203737692),
-            },
-            {
-                origin: new window.mapkit.Coordinate(42.73305698515937, -73.67655203737692),
-                destination: new window.mapkit.Coordinate(42.730676958536144, -73.67674616623393),
-            }
-        ];
-
-        const westDirectionRequests = [
-            {
-                origin: new window.mapkit.Coordinate(42.730676958536144, -73.67674616623393),
-                destination: new window.mapkit.Coordinate(42.72799822908236, -73.67809671921837),
-            },
-            {
-                origin: new window.mapkit.Coordinate(42.72799822908236, -73.67809671921837),
-                destination: new window.mapkit.Coordinate(42.72293385583282, -73.67960937432454),
-            },
-            {
-                origin: new window.mapkit.Coordinate(42.72293385583282, -73.67960937432454),
-                destination: new window.mapkit.Coordinate(42.72779537209815, -73.68848176378644),
-            },
-            {
-                origin: new window.mapkit.Coordinate(42.72779537209815, -73.68848176378644),
-                destination: new window.mapkit.Coordinate(42.72766469852938, -73.68716188006067),
-            },
-            {
-                origin: new window.mapkit.Coordinate(42.72766469852938, -73.68716188006067),
-                destination: new window.mapkit.Coordinate(42.73160170173599, -73.68627833913843),
-            },
-            {
-                origin: new window.mapkit.Coordinate(42.73160170173599, -73.68627833913843),
-                destination: new window.mapkit.Coordinate(42.731468785216094, -73.68128223685743),
-            },
-            {
-                origin: new window.mapkit.Coordinate(42.731468785216094, -73.68128223685743),
-                destination: new window.mapkit.Coordinate(42.731023124913804, -73.67909065365457),
-            },
-            {
-                origin: new window.mapkit.Coordinate(42.731023124913804, -73.67909065365457),
-                destination: new window.mapkit.Coordinate(42.730676958536144, -73.67674616623393),
-            }
-        ];
-
-        // add directions to map
-
-        console.log('Calculating directions for north loop');
-        northDirectionRequests.forEach((request, reqIndex) => {
-            directions.route(request, (error, data) => {
-                if (error) {
-                    console.error('Error calculating directions:', error);
-                    return;
-                }
-                const route = data.routes[0];
-                const routeOverlay = route.polyline;
-                routeOverlay.points.map((point, index) => {
-                    console.log('north', reqIndex, index, point.latitude, point.longitude);
-                });
-                routeOverlay.style = new window.mapkit.Style({
-                    strokeColor: '#FF0000',
-                    lineWidth: 2,
-                });
-                map.addOverlay(routeOverlay);
-            });
+        const northRouteCoordinates = northRouteData.ROUTES.map(
+            (route) => route.map(([lat, lon]) => new window.mapkit.Coordinate(lat, lon))
+        ).flat();
+        const northRoutePolyline = new mapkit.PolylineOverlay(northRouteCoordinates, {
+            style: new mapkit.Style({
+              strokeColor: '#FF0000',
+              lineWidth: 2
+            })
         });
 
-        console.log('Calculating directions for west loop');
-        westDirectionRequests.forEach((request, reqIndex) => {
-            directions.route(request, (error, data) => {
-                if (error) {
-                    console.error('Error calculating directions:', error);
-                    return;
-                }
-                const route = data.routes[0];
-                const routeOverlay = route.polyline;
-                routeOverlay.points.map((point, index) => {
-                    console.log('west', reqIndex, index, point.latitude, point.longitude);
-                });
-                routeOverlay.style = new window.mapkit.Style({
-                    strokeColor: '#0000FF',
-                    lineWidth: 2,
-                });
-                map.addOverlay(routeOverlay);
-            });
+        const westRouteCoordinates = westRouteData.ROUTES.map(
+            (route) => route.map(([lat, lon]) => new window.mapkit.Coordinate(lat, lon))
+        ).flat();
+        const westRoutePolyline = new mapkit.PolylineOverlay(westRouteCoordinates, {
+            style: new mapkit.Style({
+              strokeColor: '#0000FF',
+              lineWidth: 2
+            })
         });
 
-        // add stops to map
-
-        const overlays = [unionCircle, ...northCircles, ...westCircles];
+        const overlays = [northRoutePolyline, westRoutePolyline, unionOverlay, ...northRouteOverlays, ...westRouteOverlays];
         map.addOverlays(overlays);
 
     }, [map]);
