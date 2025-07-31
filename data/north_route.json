@@ -1,14 +1,4 @@
 {
-    "STOPS": [
-        "STUDENT_UNION",
-        "COLONIE",
-        "STAC_1",
-        "STAC_2",
-        "STAC_3",
-        "ECAV",
-        "HOUSTON_FIELD_HOUSE"
-    ],
-
     "STUDENT_UNION": [42.730711, -73.676737],
     "COLONIE": [42.737048, -73.670397],
     "STAC_1": [42.735468, -73.663655],

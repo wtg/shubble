@@ -1,14 +1,4 @@
 {
-    "STOPS": [
-        "STUDENT_UNION",
-        "ACADEMY_HALL",
-        "POLYTECHNIC",
-        "CITY_STATION",
-        "BLITMAN",
-        "WEST_HALL",
-        "_86_FIELD"
-    ],
-
     "STUDENT_UNION": [42.730711, -73.676737],
     "ACADEMY_HALL": [42.727985, -73.678],
     "POLYTECHNIC": [42.722903, -73.679567],
