@@ -39,7 +39,6 @@ def get_vehicles_in_geofence():
             today_events.c.event_time == subquery.c.latest_time
         )
     ).filter(today_events.c.event_type == 'geofenceEntry').all()
-    logger.error(f'Reloading {{row.vehicle_id for row in latest_entries}}')
 
     return {row.vehicle_id for row in latest_entries}
 
@@ -87,7 +86,6 @@ def update_locations(after_token, previous_vehicle_ids, app):
                 return after_token, current_vehicle_ids
 
             data = response.json()
-            logger.error(f'response data: {data}')
             pagination = data.get('pagination', {})
             if pagination.get('hasNextPage'):
                 has_next_page = True
