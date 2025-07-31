@@ -2,9 +2,11 @@ from flask import Blueprint, request, jsonify, send_from_directory
 from . import db
 from .models import Vehicle, GeofenceEvent, VehicleLocation
 from pathlib import Path
-import os
 from sqlalchemy import func
 from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 bp = Blueprint('routes', __name__)
 
@@ -18,6 +20,7 @@ def serve_react():
 
 @bp.route('/api/locations', methods=['GET'])
 def get_locations():
+    logger.error('log working?')
     # Subquery: get the max timestamp per vehicle_id
     subquery = db.session.query(
         VehicleLocation.vehicle_id,
@@ -51,63 +54,80 @@ def get_locations():
 
 @bp.route('/api/webhook', methods=['POST'])
 def webhook():
-    data = request.get_json()
+    data = request.get_json(force=True)
+
     if not data:
         return jsonify({'status': 'error', 'message': 'Invalid JSON'}), 400
 
     try:
-        # parse event details
+        # parse top-level event details
         event_id = data.get('eventId')
         event_time = datetime.fromisoformat(data.get('eventTime').replace("Z", "+00:00"))
         event_type = data.get('eventType')
         event_data = data.get('data', {})
 
-        # parse vehicle details
-        vehicle_data = event_data.get('vehicle', {})
-        vehicle_id = vehicle_data.get('id')
-        vehicle_name = vehicle_data.get('name')
+        # parse condition details
+        conditions = event_data.get('conditions', [])
+        if not conditions:
+            return jsonify({'status': 'error', 'message': 'Missing conditions'}), 400
 
-        # parse event location details
-        address = event_data.get("address", {})
-        geofence = address.get("geofence", {})
-        circle = geofence.get("circle", {})
-        latitude = circle.get("latitude")
-        longitude = circle.get("longitude")
+        for condition in conditions:
+            details = condition.get('details', {})
+            if 'geofenceEntry' in details:
+                geofence_event = details.get('geofenceEntry', {})
+            else:
+                geofence_event = details.get('geofenceExit', {})
 
-        if not (vehicle_id and vehicle_name and event_type):
-            return jsonify({'status': 'error', 'message': 'Missing fields'}), 400
+            vehicle_data = geofence_event.get('vehicle')
+            if not vehicle_data:
+                continue  # skip conditions with no vehicle
 
-        vehicle = Vehicle.query.get(vehicle_id)
-        if not vehicle:
-            vehicle = Vehicle(
-                id=vehicle_id,
-                name=vehicle_name,
-                asset_type=vehicle_data.get('assetType', 'vehicle'),
-                license_plate=vehicle_data.get('licensePlate'),
-                vin=vehicle_data.get('vin'),
-                maintenance_id=vehicle_data.get('externalIds', {}).get('maintenanceId'),
-                gateway_model=vehicle_data.get('gateway', {}).get('model'),
-                gateway_serial=vehicle_data.get('gateway', {}).get('serial'),
+            address = geofence_event.get('address', {})
+            geofence = address.get('geofence', {})
+            polygon = geofence.get('polygon', {})
+            vertices = polygon.get('vertices', [])
+            latitude = vertices[0].get('latitude') if vertices else None
+            longitude = vertices[0].get('longitude') if vertices else None
+
+            # extract vehicle info
+            vehicle_id = vehicle_data.get('id')
+            vehicle_name = vehicle_data.get('name')
+
+            if not (vehicle_id and vehicle_name):
+                continue  # skip invalid entries
+
+            # find or create vehicle
+            vehicle = Vehicle.query.get(vehicle_id)
+            if not vehicle:
+                vehicle = Vehicle(
+                    id=vehicle_id,
+                    name=vehicle_name,
+                    asset_type=vehicle_data.get('assetType', 'vehicle'),
+                    license_plate=vehicle_data.get('licensePlate'),
+                    vin=vehicle_data.get('vin'),
+                    maintenance_id=vehicle_data.get('externalIds', {}).get('maintenanceId'),
+                    gateway_model=vehicle_data.get('gateway', {}).get('model'),
+                    gateway_serial=vehicle_data.get('gateway', {}).get('serial'),
+                )
+                db.session.add(vehicle)
+
+            # Create GeofenceEvent
+            event = GeofenceEvent(
+                id=event_id,
+                vehicle_id=vehicle_id,
+                event_type='geofenceEntry' if 'geofenceEntry' in details else 'geofenceExit',
+                event_time=event_time,
+                address_name=address.get("name"),
+                address_formatted=address.get("formattedAddress"),
+                latitude=latitude,
+                longitude=longitude,
             )
-            db.session.add(vehicle)
-            db.session.commit()
+            db.session.add(event)
 
-        # Create GeofenceEvent
-        event = GeofenceEvent(
-            id=event_id,
-            vehicle_id=vehicle_id,
-            event_type=event_type,
-            event_time=event_time,
-            address_name=address.get("name"),
-            address_formatted=address.get("formattedAddress"),
-            latitude=latitude,
-            longitude=longitude,
-        )
-        db.session.add(event)
         db.session.commit()
-
         return jsonify({'status': 'success'}), 200
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({'status': 'error', 'message': 'Internal error'}), 500
+        logger.exception("Webhook processing failed")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
