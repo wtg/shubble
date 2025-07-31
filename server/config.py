@@ -4,7 +4,7 @@ class Config:
     # hosting settings
     DEBUG = os.environ.get('FLASK_DEBUG', 'true').lower() == 'true'
     ENV = os.environ.get('FLASK_ENV', 'development').lower()
-    PORT = int(os.environ.get('PORT', 3000))
+    PORT = int(os.environ.get('PORT', '3000'))
     HOST = os.environ.get('FLASK_HOST', '0.0.0.0')
 
     # database settings
