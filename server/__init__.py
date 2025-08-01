@@ -1,7 +1,12 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
+import logging
 from .config import Config
+
+logging.basicConfig(
+    level=logging.INFO,
+)
 
 db = SQLAlchemy()
 migrate = Migrate()

@@ -4,8 +4,8 @@ import React, {
 } from 'react';
 
 import MapKitMap from '../components/MapKitMap';
-import Schedule from './Schedule';
-import "./LiveLocation.css";
+import Schedule from '../components/Schedule';
+import "../styles/LiveLocation.css";
 
 export default function LiveLocation() {
 
