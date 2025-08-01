@@ -20,7 +20,6 @@ def serve_react():
 
 @bp.route('/api/locations', methods=['GET'])
 def get_locations():
-    logger.error('log working?')
     # Subquery: get the max timestamp per vehicle_id
     subquery = db.session.query(
         VehicleLocation.vehicle_id,
@@ -55,7 +54,6 @@ def get_locations():
 @bp.route('/api/webhook', methods=['POST'])
 def webhook():
     data = request.get_json(force=True)
-    logger.error(data)
 
     if not data:
         return jsonify({'status': 'error', 'message': 'Invalid JSON'}), 400
@@ -74,13 +72,16 @@ def webhook():
 
         for condition in conditions:
             details = condition.get('details', {})
-            geofence_entry = details.get('geofenceEntry', {})
+            if 'geofenceEntry' in details:
+                geofence_event = details.get('geofenceEntry', {})
+            else:
+                geofence_event = details.get('geofenceExit', {})
 
-            vehicle_data = geofence_entry.get('vehicle')
+            vehicle_data = geofence_event.get('vehicle')
             if not vehicle_data:
                 continue  # skip conditions with no vehicle
 
-            address = geofence_entry.get('address', {})
+            address = geofence_event.get('address', {})
             geofence = address.get('geofence', {})
             polygon = geofence.get('polygon', {})
             vertices = polygon.get('vertices', [])
@@ -107,21 +108,19 @@ def webhook():
                     gateway_model=vehicle_data.get('gateway', {}).get('model'),
                     gateway_serial=vehicle_data.get('gateway', {}).get('serial'),
                 )
-                logger.error(f'{vehicle.id} {vehicle.name} {vehicle.asset_type}, {vehicle.license_plate}, {vehicle.vin} {vehicle.maintenance_id} {vehicle.gateway_model} {vehicle.gateway_serial}')
                 db.session.add(vehicle)
 
             # Create GeofenceEvent
             event = GeofenceEvent(
                 id=event_id,
                 vehicle_id=vehicle_id,
-                event_type=event_type,
+                event_type='geofenceEntry' if 'geofenceEntry' in details else 'geofenceExit',
                 event_time=event_time,
                 address_name=address.get("name"),
                 address_formatted=address.get("formattedAddress"),
                 latitude=latitude,
                 longitude=longitude,
             )
-            logger.error(f'{event.id} {event.vehicle_id} {event.event_type} {event.event_time} {event.address_name} {event.address_formatted} {event.latitude} {event.longitude}')
             db.session.add(event)
 
         db.session.commit()
