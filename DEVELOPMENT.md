@@ -64,9 +64,9 @@ To run the backend, you need to run the _server_ and the _worker_. They must be 
 
 #### Option 1. `cd` to the project root and run:
 ```bash
-flask run --port 3000
+flask run --port 8000
 ```
-This will start the Flask development server on port 3000. The backend will serve the built frontend files from the `/client/dist` directory.
+This will start the Flask development server on port 8000. The backend will serve the built frontend files from the `/client/dist` directory.
 
 #### Option 2. Run the backend using `gunicorn`, which is what Shubble's production server runs:
 ```bash
@@ -86,7 +86,7 @@ To run the test, `cd` into the `/test` directory and run:
 python test.py
 ```
 This will start a server at `localhost://4000`, which simulates what the Samsara API server would be doing for Shubble in production. It sends simulated webhook requests for vehicles entering/exiting the RPI geofence and sends simulated shuttle location data.
-It expects the Shubble server to be running on `localhost://3000`, so make sure to start the backend server first.
+It expects the Shubble server to be running on `localhost://8000`, so make sure to start the backend server first.
 
 # Database Migrations
 
