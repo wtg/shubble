@@ -20,7 +20,6 @@ def serve_react():
 
 @bp.route('/api/locations', methods=['GET'])
 def get_locations():
-    logger.error('log working?')
     # Subquery: get the max timestamp per vehicle_id
     subquery = db.session.query(
         VehicleLocation.vehicle_id,
