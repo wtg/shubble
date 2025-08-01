@@ -65,6 +65,7 @@ def mock_feed():
 def send_webhook(vehicle_id, entry=True):
     url = 'http://localhost:8000/api/webhook'
     headers = {'Content-Type': 'application/json'}
+
     vehicle = {
         'id': vehicle_id,
         'name': fake_data[vehicle_id]['name'],
@@ -79,6 +80,7 @@ def send_webhook(vehicle_id, entry=True):
             'serial': 'GFRV-43N-VGX'
         }
     }
+
     address = {
         'id': '123456',
         'name': 'Test Location',
@@ -86,7 +88,22 @@ def send_webhook(vehicle_id, entry=True):
         'externalIds': {
             'siteId': '54'
         },
+        'geofence': {
+            'id': 'geofence123',
+            'name': 'Test Geofence',
+            'polygon': {
+                'vertices': [
+                    {
+                        'latitude': fake_data[vehicle_id]['gps']['latitude'],
+                        'longitude': fake_data[vehicle_id]['gps']['longitude']
+                    }
+                ]
+            }
+        }
     }
+
+    geofence_key = 'geofenceEntry' if entry else 'geofenceExit'
+
     payload = {
         'eventId': str(uuid.uuid4()),
         'eventTime': datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z'),
@@ -94,10 +111,19 @@ def send_webhook(vehicle_id, entry=True):
         'orgId': 20936,
         'webhookId': '1411751028848270',
         'data': {
-            'vehicle': vehicle,
-            'address': address
+            'conditions': [
+                {
+                    'details': {
+                        geofence_key: {
+                            'vehicle': vehicle,
+                            'address': address
+                        }
+                    }
+                }
+            ]
         }
     }
+
     try:
         response = requests.post(url, headers=headers, json=payload)
         print(f'[WEBHOOK] Sent {payload["eventType"]} for {vehicle_id}: {response.status_code}')
