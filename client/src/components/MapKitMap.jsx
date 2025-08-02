@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import '../styles/MapKitMap.css';
-import northRouteData from '../data/north_route.json';
-import westRouteData from '../data/west_route.json';
+import routeData from '../data/routes.json';
 
 export default function MapKitMap({ vehicles }) {
+
+    const northRouteData = routeData['NORTH'];
+    const westRouteData = routeData['WEST'];
 
     const mapRef = useRef(null);
     const [mapLoaded, setMapLoaded] = useState(false);
@@ -73,7 +75,7 @@ export default function MapKitMap({ vehicles }) {
     useEffect(() => {
         if (!map) return;
 
-        const unionCoordinate = new window.mapkit.Coordinate(...northRouteData.STUDENT_UNION);
+        const unionCoordinate = new window.mapkit.Coordinate(...northRouteData.STUDENT_UNION.COORDINATES);
         const unionOverlay = new window.mapkit.CircleOverlay(
             unionCoordinate,
             15,
@@ -89,7 +91,7 @@ export default function MapKitMap({ vehicles }) {
 
         const northRouteOverlays = northRouteData.STOPS.slice(1).map(
             (stopName) => new window.mapkit.CircleOverlay(
-                new window.mapkit.Coordinate(...northRouteData[stopName]),
+                new window.mapkit.Coordinate(...northRouteData[stopName].COORDINATES),
                 15,
                 {
                     style: new window.mapkit.Style(
@@ -104,7 +106,7 @@ export default function MapKitMap({ vehicles }) {
 
         const westRouteOverlays = westRouteData.STOPS.slice(1).map(
             (stopName) => new window.mapkit.CircleOverlay(
-                new window.mapkit.Coordinate(...westRouteData[stopName]),
+                new window.mapkit.Coordinate(...westRouteData[stopName].COORDINATES),
                 15,
                 {
                     style: new window.mapkit.Style(
