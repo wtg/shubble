@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import '../styles/MapKitMap.css';
-import northRouteData from '../data/north_route.json';
-import westRouteData from '../data/west_route.json';
+import routeData from '../data/routes.json';
 
 export default function MapKitMap({ vehicles }) {
+
+    const northRouteData = routeData['NORTH'];
+    const westRouteData = routeData['WEST'];
 
     const mapRef = useRef(null);
     const [mapLoaded, setMapLoaded] = useState(false);
