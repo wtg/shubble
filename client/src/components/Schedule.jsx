@@ -34,9 +34,10 @@ export default function Schedule() {
     }
 
     const routeNames = Object.keys(routeData);
-    const [selectedRoute, setSelectedRoute] = useState(routeNames[0]);
-    const [stopNames, setStopNames] = useState(routeData[selectedRoute]["STOPS"] || []);
     const [selectedDay, setSelectedDay] = useState(now.getDay());
+    const [selectedRoute, setSelectedRoute] = useState(routeNames[0]);
+    const [selectedStop, setSelectedStop] = useState("all");
+    const [stopNames, setStopNames] = useState(routeData[selectedRoute]["STOPS"] || []);
     const [schedule, setSchedule] = useState([]);
 
     useEffect(() => {
@@ -72,14 +73,13 @@ export default function Schedule() {
         setSelectedDay(parseInt(e.target.value));
     }
 
-    const daysOfTheWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const offsetTime = (time, offset) => {
+        const date = new Date(time);
+        date.setMinutes(date.getMinutes() + offset);
+        return date;
+    }
 
-    // Converting Date object into String comparable with format 'HH:MM'
-    const currentHours = now.getHours();
-    const currentMinutes = now.getMinutes();
-    const formattedHours = currentHours < 10 ? '0' + currentHours : String(currentHours);
-    const formattedMinutes = currentMinutes < 10 ? '0' + currentMinutes : String(currentMinutes);
-    const currentTimeString = formattedHours + ":" + formattedMinutes;
+    const daysOfTheWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
     return (
         <div className="p-4">
@@ -105,7 +105,8 @@ export default function Schedule() {
                 }
             </select>
             Stop:
-            <select>
+            <select value={selectedStop} onChange={(e) => setSelectedStop(e.target.value)}>
+                <option value="all">All Stops</option>
                 {
                     stopNames.map((stop, index) =>
                         <option key={index} value={stop}>
@@ -123,10 +124,18 @@ export default function Schedule() {
                     </thead>
                     <tbody>
                         {
+                            selectedStop === "all" ?
                             schedule[selectedRoute]?.map((time, index) => (
-                            <tr key={index} className="">
-                                <td className="">{time.toLocaleTimeString(undefined, { timeStyle: 'short' })}</td>
-                            </tr>
+                                routeData[selectedRoute]["STOPS"].map((stop, index) => (
+                                    <tr key={index} className="">
+                                        <td className={ index === 0 ? "" : "indented-time" }>{offsetTime(time, routeData[selectedRoute]["OFFSETS"][stop]).toLocaleTimeString(undefined, { timeStyle: 'short' })} {stop}</td>
+                                    </tr>
+                                ))
+                            )) :
+                            schedule[selectedRoute]?.map((time, index) => (
+                                <tr key={index} className="">
+                                    <td className="">{offsetTime(time, routeData[selectedRoute]["OFFSETS"][selectedStop]).toLocaleTimeString(undefined, { timeStyle: 'short' })}</td>
+                                </tr>
                             ))
                         }
                     </tbody>

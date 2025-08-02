@@ -10,6 +10,16 @@
             "HOUSTON_FIELD_HOUSE"
         ],
 
+        "OFFSETS": {
+            "STUDENT_UNION": 0,
+            "COLONIE": 3,
+            "STAC_1": 6,
+            "STAC_2": 7,
+            "STAC_3": 8,
+            "ECAV": 11,
+            "HOUSTON_FIELD_HOUSE": 13
+        },
+
         "STUDENT_UNION": [42.730711, -73.676737],
         "COLONIE": [42.737048, -73.670397],
         "STAC_1": [42.735468, -73.663655],
@@ -162,6 +172,16 @@
             "WEST_HALL",
             "_86_FIELD"
         ],
+
+        "OFFSETS": {
+            "STUDENT_UNION": 0,
+            "ACADEMY_HALL": 3,
+            "POLYTECHNIC": 5,
+            "CITY_STATION": 9,
+            "BLITMAN": 10,
+            "WEST_HALL": 12,
+            "_86_FIELD": 13
+        },
 
         "STUDENT_UNION": [42.730711, -73.676737],
         "ACADEMY_HALL": [42.727985, -73.678],
