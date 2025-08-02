@@ -1,190 +1,137 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import '../styles/Schedule.css';
-
+import scheduleData from '../data/schedule.json';
+import routeData from '../data/routes.json';
 
 export default function Schedule() {
+    const weeklySchedule = [
+        'SUNDAY',
+        'MONDAY',
+        'TUESDAY',
+        'WEDNESDAY',
+        'THURSDAY',
+        'FRIDAY',
+        'SATURDAY',
+    ].map((day) => scheduleData[scheduleData[day]] || []);
+    const now = new Date();
 
-    // schedules store the times for each shuttle
-    // weekdaySchedule is Monday-Saturday and sundaySchedule is Sunday
-    const weekdaySchedule = [
-        [
-            '11:00',
-            '11:20',
-            '11:40',
-            '12:00',
-            '12:20',
-            '12:40',
-            '13:00',
-            '13:20',
-            '13:40',
-            '14:30',
-            '14:50',
-            '15:10',
-            '15:30',
-            '15:50',
-            '16:10',
-            '16:30',
-            '16:50',
-            '17:10',
-            '17:30',
-            '17:50',
-        ],
-        [
-            '11:10',
-            '11:30',
-            '11:50',
-            '12:10',
-            '12:30',
-            '12:50',
-            '13:10',
-            '13:30',
-            '13:50',
-            '14:10',
-            '15:00',
-            '15:20',
-            '15:40',
-            '16:00',
-            '16:20',
-            '16:40',
-            '17:00',
-            '17:20',
-            '17:40',
-            '18:00',
-        ]
-    ];
+    const parseTimeString = (timeStr) => {
+        const [time, modifier] = timeStr.trim().split(" ");
+        let [hours, minutes] = time.split(":").map(Number);
 
-    const sundaySchedule = [
-        '11:00',
-        '11:20',
-        '11:40',
-        '12:00',
-        '12:20',
-        '12:40',
-        '13:00',
-        '13:40',
-        '14:00',
-        '14:20',
-        '14:40',
-        '15:00',
-        '15:20',
-        '15:40',
-        '16:00',
-    ]
+        if (modifier.toUpperCase() === "PM" && hours !== 12) {
+            hours += 12;
+        } else if (modifier.toUpperCase() === "AM" && hours === 12) {
+            hours = 0;
+        }
 
-    const today = new Date();
-    const [day, setDay] = useState(today.getDay());
-
-    const [fullSchedule, setFullSchedule] = useState(false);
-    const handleViewToggle = () => {
-	setFullSchedule(prevView => !prevView)
+        const dateObj = new Date();
+        dateObj.setHours(hours);
+        dateObj.setMinutes(minutes);
+        dateObj.setSeconds(0);
+        dateObj.setMilliseconds(0);
+        return dateObj;
     }
 
+    const routeNames = Object.keys(routeData);
+    const [selectedRoute, setSelectedRoute] = useState(routeNames[0]);
+    const [stopNames, setStopNames] = useState(routeData[selectedRoute]["STOPS"] || []);
+    const [selectedDay, setSelectedDay] = useState(now.getDay());
+    const [schedule, setSchedule] = useState([]);
+
+    useEffect(() => {
+        const scheduleByLoop = {};
+        Object.values(weeklySchedule[selectedDay]).forEach((busSchedule) => {
+            busSchedule.forEach(([time, loop]) => {
+                const timeObj = parseTimeString(time);
+                if (loop in scheduleByLoop) {
+                    scheduleByLoop[loop].push(timeObj);
+                } else {
+                    scheduleByLoop[loop] = [timeObj];
+                }
+            });
+        });
+        Object.values(scheduleByLoop).forEach((times) => {
+            times.sort((a, b) => {
+                const isA12AM = a.getHours() === 0 && a.getMinutes() === 0;
+                const isB12AM = b.getHours() === 0 && b.getMinutes() === 0;
+
+                if (isA12AM && !isB12AM) return 1;   // a goes after b
+                if (!isA12AM && isB12AM) return -1;  // a goes before b
+                return a - b;                        // otherwise, normal sort
+            });
+            });
+        setSchedule(scheduleByLoop);
+    }, [selectedDay]);
+
+    useEffect(() => {
+        setStopNames(routeData[selectedRoute]["STOPS"]);
+    }, [selectedRoute]);
+
     const handleDayChange = (e) => {
-        setDay(parseInt(e.target.value));
+        setSelectedDay(parseInt(e.target.value));
     }
 
     const daysOfTheWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-    const schedule = day === 0 ? sundaySchedule : weekdaySchedule;
-
-    // Flatten the schedule for display
-    const flatSchedule = schedule.flat().sort();
-
     // Converting Date object into String comparable with format 'HH:MM'
-    const now = new Date();
     const currentHours = now.getHours();
     const currentMinutes = now.getMinutes();
     const formattedHours = currentHours < 10 ? '0' + currentHours : String(currentHours);
     const formattedMinutes = currentMinutes < 10 ? '0' + currentMinutes : String(currentMinutes);
     const currentTimeString = formattedHours + ":" + formattedMinutes;
 
-    // Binary searching for last departure
-
-    let lastDeparture = flatSchedule.length - 1;
-    if (currentTimeString <= flatSchedule[lastDeparture]) {
-	let low = 0;
-	let high = lastDeparture;
-	while (low <= high) {
-	    let mid = Math.floor((low+high)/2);
-	    if (currentTimeString <= flatSchedule[mid + 1]) {
-		lastDeparture = mid;
-		high = mid - 1;
-	    }
-	    else {
-		low = mid + 1;
-	    }
-	}
-    }
-    
-
-    let shortSchedule = [];
-    for (let i = 0; i < 3; i++) {
-	if (lastDeparture + i > -1 && lastDeparture + i < flatSchedule.length) {
-	    shortSchedule[i] = flatSchedule[lastDeparture + i];
-	}
-    }
-
     return (
-        <>
         <div className="p-4">
             <h2>Schedule</h2>
-            <p>
-                Expected departure times from the student union.
-            </p>
-            <p>
-                Show the times for
-                <select value={day} onChange={handleDayChange}>
-                    {
-                        daysOfTheWeek.map((day, index) =>
-                            <option key={index} value={index}>
-                                {day}
-                            </option>
-                        )
-                    }
-                </select>
-            </p>
-
-	    {fullSchedule ?
-	     <div className = "schedule-scroll">
-		<table>
+            Weekday:
+            <select value={selectedDay} onChange={handleDayChange}>
+                {
+                    daysOfTheWeek.map((day, index) =>
+                        <option key={index} value={index}>
+                            {day}
+                        </option>
+                    )
+                }
+            </select>
+            Loop:
+            <select value={selectedRoute} onChange={(e) => setSelectedRoute(e.target.value)}>
+                {
+                    routeNames.map((route, index) =>
+                        <option key={index} value={route}>
+                            {route}
+                        </option>
+                    )
+                }
+            </select>
+            Stop:
+            <select>
+                {
+                    stopNames.map((stop, index) =>
+                        <option key={index} value={stop}>
+                            {stop}
+                        </option>
+                    )
+                }
+            </select>
+            <div className = "schedule-scroll">
+                <table>
                     <thead>
-			<tr>
-			    <th className="">Time</th>
-			</tr>
+                        <tr>
+                            <th className="">Time</th>
+                        </tr>
                     </thead>
                     <tbody>
-			{
-			    flatSchedule.map((time, index) => (
-				<tr key={index} className="">
-				    <td className="">{time}</td>
-				</tr>
-			    ))
-			}
+                        {
+                            schedule[selectedRoute]?.map((time, index) => (
+                            <tr key={index} className="">
+                                <td className="">{time.toLocaleTimeString(undefined, { timeStyle: 'short' })}</td>
+                            </tr>
+                            ))
+                        }
                     </tbody>
-		</table>
-	    </div>
-
-	     : <table>
-		<thead>
-                <tr>
-                    <th className="">Time</th>
-                </tr>
-                </thead>
-		   <tbody>
-		       {shortSchedule.map((time, index) => (
-			   <tr key={index}>
-			       <td>{time}</td>
-			   </tr>
-		       ))}
-		 </tbody>
-		 </table>
-		   }	
-	    <button
-		className = "button-style"
-		onClick={handleViewToggle}>
-		{fullSchedule ? '...hide full schedule' : '...see full schedule'}
-	    </button>
+                </table>
             </div>
-        </>
+        </div>
     );
 }
