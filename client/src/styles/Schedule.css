@@ -5,6 +5,7 @@
     border-width: thin;
     margin-bottom: 0;
     height: calc(50vh - 150px);
+    min-width: 250px;
 }
 
 .schedule-scroll::-webkit-scrollbar-track {
@@ -18,4 +19,16 @@
 
 .indented-time {
     padding-left: 20px;
+}
+
+.schedule-dropdown-style {
+    padding: 5px;
+    font-size: 16px;
+    border: 1px solid;
+    border-radius: 5px;
+    margin: 5px 0 5px 5px;
+}
+
+th.schedule-header {
+    text-align: left;
 }

@@ -10,23 +10,41 @@
             "HOUSTON_FIELD_HOUSE"
         ],
 
-        "OFFSETS": {
-            "STUDENT_UNION": 0,
-            "COLONIE": 3,
-            "STAC_1": 6,
-            "STAC_2": 7,
-            "STAC_3": 8,
-            "ECAV": 11,
-            "HOUSTON_FIELD_HOUSE": 13
+        "STUDENT_UNION": {
+            "COORDINATES": [42.730711, -73.676737],
+            "OFFSET": 0,
+            "NAME": "Student Union"
         },
-
-        "STUDENT_UNION": [42.730711, -73.676737],
-        "COLONIE": [42.737048, -73.670397],
-        "STAC_1": [42.735468, -73.663655],
-        "STAC_2": [42.734526, -73.663352],
-        "STAC_3": [42.732657, -73.665156],
-        "ECAV": [42.730887, -73.667313],
-        "HOUSTON_FIELD_HOUSE": [42.731718, -73.669684],
+        "COLONIE": {
+            "COORDINATES": [42.737048, -73.670397],
+            "OFFSET": 3,
+            "NAME": "Colonie"
+        },
+        "STAC_1": {
+            "COORDINATES": [42.735468, -73.663655],
+            "OFFSET": 6,
+            "NAME": "Bryckwyck"
+        },
+        "STAC_2": {
+            "COORDINATES": [42.734526, -73.663352],
+            "OFFSET": 7,
+            "NAME": "Stacwyck"
+        },
+        "STAC_3": {
+            "COORDINATES": [42.732657, -73.665156],
+            "OFFSET": 8,
+            "NAME": "E-Lot"
+        },
+        "ECAV": {
+            "COORDINATES": [42.730887, -73.667313],
+            "OFFSET": 11,
+            "NAME": "ECAV"
+        },
+        "HOUSTON_FIELD_HOUSE": {
+            "COORDINATES": [42.731718, -73.669684],
+            "OFFSET": 13,
+            "NAME": "Houston Field House"
+        },
 
         "ROUTES": [
             [
@@ -173,23 +191,41 @@
             "_86_FIELD"
         ],
 
-        "OFFSETS": {
-            "STUDENT_UNION": 0,
-            "ACADEMY_HALL": 3,
-            "POLYTECHNIC": 5,
-            "CITY_STATION": 9,
-            "BLITMAN": 10,
-            "WEST_HALL": 12,
-            "_86_FIELD": 13
+        "STUDENT_UNION": {
+            "COORDINATES": [42.730711, -73.676737],
+            "OFFSET": 0,
+            "NAME": "Student Union"
         },
-
-        "STUDENT_UNION": [42.730711, -73.676737],
-        "ACADEMY_HALL": [42.727985, -73.678],
-        "POLYTECHNIC": [42.722903, -73.679567],
-        "CITY_STATION": [42.727673, -73.687228],
-        "BLITMAN": [42.73161, -73.68635],
-        "WEST_HALL": [42.731503, -73.681261],
-        "_86_FIELD": [42.731061, -73.67908],
+        "ACADEMY_HALL": {
+            "COORDINATES": [42.727985, -73.678],
+            "OFFSET": 3,
+            "NAME": "Academy Hall"
+        },
+        "POLYTECHNIC": {
+            "COORDINATES": [42.722903, -73.679567],
+            "OFFSET": 5,
+            "NAME": "Polytechnic"
+        },
+        "CITY_STATION": {
+            "COORDINATES": [42.727673, -73.687228],
+            "OFFSET": 9,
+            "NAME": "City Station"
+        },
+        "BLITMAN": {
+            "COORDINATES": [42.73161, -73.68635],
+            "OFFSET": 10,
+            "NAME": "Blitman"
+        },
+        "WEST_HALL": {
+            "COORDINATES": [42.731503, -73.681261],
+            "OFFSET": 12,
+            "NAME": "West Hall"
+        },
+        "_86_FIELD": {
+            "COORDINATES": [42.731061, -73.67908],
+            "OFFSET": 13,
+            "NAME": "86 Field"
+        },
 
         "ROUTES": [
             [

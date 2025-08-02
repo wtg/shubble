@@ -75,7 +75,7 @@ export default function MapKitMap({ vehicles }) {
     useEffect(() => {
         if (!map) return;
 
-        const unionCoordinate = new window.mapkit.Coordinate(...northRouteData.STUDENT_UNION);
+        const unionCoordinate = new window.mapkit.Coordinate(...northRouteData.STUDENT_UNION.COORDINATES);
         const unionOverlay = new window.mapkit.CircleOverlay(
             unionCoordinate,
             15,
@@ -91,7 +91,7 @@ export default function MapKitMap({ vehicles }) {
 
         const northRouteOverlays = northRouteData.STOPS.slice(1).map(
             (stopName) => new window.mapkit.CircleOverlay(
-                new window.mapkit.Coordinate(...northRouteData[stopName]),
+                new window.mapkit.Coordinate(...northRouteData[stopName].COORDINATES),
                 15,
                 {
                     style: new window.mapkit.Style(
@@ -106,7 +106,7 @@ export default function MapKitMap({ vehicles }) {
 
         const westRouteOverlays = westRouteData.STOPS.slice(1).map(
             (stopName) => new window.mapkit.CircleOverlay(
-                new window.mapkit.Coordinate(...westRouteData[stopName]),
+                new window.mapkit.Coordinate(...westRouteData[stopName].COORDINATES),
                 15,
                 {
                     style: new window.mapkit.Style(
