@@ -160,7 +160,7 @@ export default function MapKitMap({ vehicles }) {
                 console.log(`Adding vehicle ${key} to ${vehicle.latitude}, ${vehicle.longitude}`);
                 const annotation = new window.mapkit.MarkerAnnotation(coordinate, {
                     title: vehicle.vehicle_name,
-                    subtitle: `Speed: ${vehicle.speed_mph} mph`,
+                    subtitle: `${vehicle.speed_mph} mph`,
                     color: '#444444',
                     glyphImage: { 1: 'shubble20.png' },
                     selectedGlyphImage: { 1: 'shubble20.png', 2: 'shubble40.png' },
