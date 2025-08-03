@@ -27,16 +27,20 @@ def get_locations():
     ).group_by(VehicleLocation.vehicle_id).subquery()
 
     # Join VehicleLocation on vehicle_id and timestamp to get latest rows
-    latest_locations = db.session.query(VehicleLocation).join(
+    # Then join with Vehicle table
+    latest_locations = db.session.query(VehicleLocation, Vehicle).join(
         subquery,
         (VehicleLocation.vehicle_id == subquery.c.vehicle_id) &
         (VehicleLocation.timestamp == subquery.c.latest_time)
+    ).join(
+        Vehicle, VehicleLocation.vehicle_id == Vehicle.id
     ).all()
 
     # Prepare JSON response
     result = {}
-    for loc in latest_locations:
+    for loc, vehicle in latest_locations:
         result[loc.vehicle_id] = {
+            # VehicleLocation fields
             'name': loc.name,
             'latitude': loc.latitude,
             'longitude': loc.longitude,
@@ -47,6 +51,14 @@ def get_locations():
             'formatted_location': loc.formatted_location,
             'address_id': loc.address_id,
             'address_name': loc.address_name,
+
+            # Vehicle fields
+            'vehicle_name': vehicle.name,
+            'license_plate': vehicle.license_plate,
+            'vin': vehicle.vin,
+            'asset_type': vehicle.asset_type,
+            'gateway_model': vehicle.gateway_model,
+            'gateway_serial': vehicle.gateway_serial,
         }
 
     return jsonify(result)
