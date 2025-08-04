@@ -151,10 +151,10 @@ export default function MapKitMap({ vehicles }) {
         Object.keys(vehicles).map((key) => {
             const vehicle = vehicles[key];
             const coordinate = new window.mapkit.Coordinate(vehicle.latitude, vehicle.longitude);
-            if (key in vehicleOverlays) {
+            if (key in vehicleOverlays.current) {
                 // old vehicle: update coordinate
                 console.log(`Updating vehicle ${key} to ${vehicle.latitude}, ${vehicle.longitude}`);
-                vehicleOverlays[key].coordinate = coordinate;
+                vehicleOverlays.current[key].coordinate = coordinate;
             } else {
                 // new vehicle: add to map
                 console.log(`Adding vehicle ${key} to ${vehicle.latitude}, ${vehicle.longitude}`);
@@ -166,7 +166,18 @@ export default function MapKitMap({ vehicles }) {
                     selectedGlyphImage: { 1: 'shubble20.png', 2: 'shubble40.png' },
                 });
                 map.addAnnotation(annotation);
-                vehicleOverlays[key] = annotation;
+                vehicleOverlays.current[key] = annotation;
+            }
+        });
+
+        const currentVehicleKeys = new Set(Object.keys(vehicles));
+
+        // Remove vehicles no longer in response
+        Object.keys(vehicleOverlays.current).forEach((key) => {
+            if (!currentVehicleKeys.has(key)) {
+                console.log(`Removing vehicle ${key}`);
+                map.removeAnnotation(vehicleOverlays.current[key]);
+                delete vehicleOverlays.current[key];
             }
         });
 
