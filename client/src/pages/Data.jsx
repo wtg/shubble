@@ -9,18 +9,17 @@ import ShuttleRow from '../components/ShuttleRow';
 
 export default function Data() {
 
-  const [shuttleData, setShuttleData] = useState(null);
+    const [shuttleData, setShuttleData] = useState(null);
 
-  const [selectedShuttleID, setSelectedShuttleID] = useState(null);
+    const [selectedShuttleID, setSelectedShuttleID] = useState(null);
     
-  const fetchShuttleData = async () => {
-	  try {
+    const fetchShuttleData = async () => {
+	try {
             const response = await fetch('/api/today');
             if (!response.ok) {
                 throw new Error('Network response was not ok');
             }
             const data = await response.json();
-            console.log(data);
             setShuttleData(data);
         } catch (error) {
             console.error('Error fetching shuttleData:', error);
@@ -65,56 +64,67 @@ export default function Data() {
     return (
 	<>
 	    <div className="page-container">
-		<div className="sidebar">
-		    <table className="sidebar-table">
-			<thead>
-			    <tr>
-				<th>Today's date</th>
-			    </tr>
-			</thead>
-			<tbody>
-			    <tr>
-				<ShuttleRow
-				    shuttleId="038471299"
-				    isActive={true}
-				    isAm={false}
-				/>
-			    </tr>
-			    <tr>
-				<ShuttleRow
-				    shuttleId="038471300"
-				    isActive={false}
-				    isAm={true}
-				/>
-			    </tr>
-			</tbody>
-		    </table>
-		</div>
-		<div className="main-content">
-		    <DataBoard
-			title="Summary"
-			children="..."
-			numColums={1}
-		    />
-		     <DataBoard
-			title="Loops"
-			 children="..."
-			 numColums={2}
-		     />
-		    <DataBoard
-			title="Breaks"
-			children="..."
-			numColums={2}
-		    />
-		    <DataBoard
-			title="Historical Locations"
-			children="..."
-			numColums={1}
-		    />
-		    <div className="map-container">
-			<MapKitMap vehicles={ shuttleData } />
+
+		{ShuttleData ? (
+		    <div>
+			<div className="sidebar">
+			    <table className="sidebar-table">
+				<thead>
+				    <tr>
+					<th colSpan={3}>{new Date().toLocaleDateString('en-US', {
+					    weekday: 'short',
+					    month: 'long',
+					    day: 'numeric'
+					})}</th>
+				    </tr>
+				</thead>
+				<tbody>
+				    <tr>
+					<ShuttleRow
+					    shuttleId="038471299"
+					    isActive={true}
+					    isAm={false}
+					/>
+				    </tr>
+				    <tr>
+					<ShuttleRow
+					    shuttleId="038471300"
+					    isActive={false}
+					    isAm={true}
+					/>
+				    </tr>
+				</tbody>
+			    </table>
+			</div>
+			<div className="main-content">
+			    <DataBoard
+				title="Summary"
+				children={selectedShuttleID}
+				numColums={1}
+			    />
+			    <DataBoard
+				title="Loops"
+				children="..."
+				numColums={2}
+			    />
+			    <DataBoard
+				title="Breaks"
+				children="..."
+				numColums={2}
+			    />
+			    <DataBoard
+				title="Historical Locations"
+				children="..."
+				numColums={1}
+			    />
+			    <div className="map-container">
+				<MapKitMap vehicles={ shuttleData } />
+			    </div>
+			</div>
 		    </div>
-		</div>
+		) : (
+		    <p> No shuttle data </p>
+		)}
 	    </div>
 	</>
     );

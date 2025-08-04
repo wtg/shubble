@@ -9,13 +9,29 @@
     flex: 0 0 250px;
     height: 100%;
     background: #f5f5f5;
+    border: solid 2px;
+    border-collapse: collapse;
     padding: 20px;
+    margin: 0;
+    padding: 0;
 }
 
-.sidebar-table, .sidebar-table tr {
+.sidebar-table {
     width: 100%;
     border-collapse: collapse;
-    border: 2px solid;
+}
+
+.sidebar-table th {
+    padding: 10px 20px;
+    font-size: 20px;
+}
+
+.sidebar-table tr {
+    border-bottom: 2px solid;
+}
+
+.sidebar-table td {
+    padding: 8px 12px;
 }
 
 .main-content {
