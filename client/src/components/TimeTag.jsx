@@ -1,5 +1,13 @@
-export default function TimeTag({amOrPm}) {
+import '../styles/TimeTag.css';
+
+export default function TimeTag({isAm}) {
     return (
-	<p>TimeTag</p>
+	<>
+	    {isAm ? (
+		<div className="am-tag">AM</div>
+	    ) : (
+		<div className="pm-tag">PM</div>
+	    )}
+	</>
     );
 }

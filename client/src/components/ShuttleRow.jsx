@@ -1,4 +1,5 @@
 import StatusTag from '../components/StatusTag';
+import TimeTag from '../components/TimeTag';
 
 export default function ShuttleRow({shuttleId, isActive, isAm}) {
     return (
@@ -9,7 +10,11 @@ export default function ShuttleRow({shuttleId, isActive, isAm}) {
 		isActive={isActive}
 		/>
 	    </td>
-	    <td>{isAm ? "AM" : "PM"}</td>
+	    <td>
+		<TimeTag
+		    isAm={isAm}
+		/>
+	    </td>
 	</>
     );
 }

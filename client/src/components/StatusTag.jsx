@@ -4,9 +4,9 @@ export default function StatusTag({isActive}) {
     return (
 	<>
 	    {isActive ? (
-		<div className="active-tag">Active</div>
+		<div className="active-tag">active</div>
 	    ) : (
-		<div className="inactive-tag">Inactive</div>
+		<div className="inactive-tag">inactive</div>
 	    )}
 	</>
     );
