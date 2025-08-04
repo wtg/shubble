@@ -12,6 +12,12 @@
     padding: 20px;
 }
 
+.sidebar-table, .sidebar-table tr {
+    width: 100%;
+    border-collapse: collapse;
+    border: 2px solid;
+}
+
 .main-content {
     display: flex;
     flex-direction: row;

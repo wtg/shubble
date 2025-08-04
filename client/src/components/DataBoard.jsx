@@ -12,7 +12,7 @@ export default function DataBoard({title, children, numColumns}) {
 			    </th>
 			</tr>
 		    </thead>
-		    <tbody className={numColumns == 1 ? "single-column-tbody" : "multi-column-tbody"}>
+		    <tbody>
 			<tr className="data-board-table-row">
 			    <td>
 				{children}

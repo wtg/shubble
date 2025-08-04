@@ -1,5 +1,11 @@
-export default function ShuttleRow({shuttleId, activeOrInactive, amOrPm}) {
+import "../styles/ShuttleRow.css"
+
+export default function ShuttleRow({shuttleId, isActive, isAm}) {
     return (
-	<p>ShuttleRow<p>
+	<>
+	    <td>{shuttleId}</td>
+	    <td>{isActive ? "Active" : "Inactive"}</td>
+	    <td>{isAm ? "AM" : "PM"}</td>
+	</>
     );
 }

@@ -21,14 +21,6 @@
     padding: 0px 10px;
 }
 
-.single-column-tbody {
-    border-top: 10px solid black;
-}
-
-.multi-column-tbody {
-    border-top: 10px solid blue;
-}
-
 .data-board-table-row {
     margin: 0;
 }

@@ -5,6 +5,7 @@ import React, {
 import "../styles/Data.css"
 import MapKitMap from '../components/MapKitMap';
 import DataBoard from '../components/DataBoard';
+import ShuttleRow from '../components/ShuttleRow';
 
 export default function Data() {
 
@@ -65,7 +66,29 @@ export default function Data() {
 	<>
 	    <div className="page-container">
 		<div className="sidebar">
-			This is the sidebar
+		    <table className="sidebar-table">
+			<thead>
+			    <tr>
+				<th>Today's date</th>
+			    </tr>
+			</thead>
+			<tbody>
+			    <tr>
+				<ShuttleRow
+				    shuttleId="038471299"
+				    isActive={true}
+				    isAm={false}
+				/>
+			    </tr>
+			    <tr>
+				<ShuttleRow
+				    shuttleId="038471300"
+				    isActive={false}
+				    isAm={true}
+				/>
+			    </tr>
+			</tbody>
+		    </table>
 		</div>
 		<div className="main-content">
 		    <DataBoard
