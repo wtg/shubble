@@ -138,6 +138,11 @@ def main():
     send_webhook('281474979957434', True)
     time.sleep(2)
     send_webhook('281474993785467', True)
+    time.sleep(20)  # wait for main app to start
+    send_webhook('281474979957434', False)
+    time.sleep(10)
+    send_webhook('281474993785467', False)
+
 
 if __name__ == '__main__':
     threading.Thread(target=main, daemon=True).start()
