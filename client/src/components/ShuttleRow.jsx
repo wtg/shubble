@@ -1,10 +1,14 @@
-import "../styles/ShuttleRow.css"
+import StatusTag from '../components/StatusTag';
 
 export default function ShuttleRow({shuttleId, isActive, isAm}) {
     return (
 	<>
 	    <td>{shuttleId}</td>
-	    <td>{isActive ? "Active" : "Inactive"}</td>
+	    <td>
+		<StatusTag
+		isActive={isActive}
+		/>
+	    </td>
 	    <td>{isAm ? "AM" : "PM"}</td>
 	</>
     );
