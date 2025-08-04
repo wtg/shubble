@@ -2,8 +2,8 @@ from flask import Blueprint, request, jsonify, send_from_directory
 from . import db
 from .models import Vehicle, GeofenceEvent, VehicleLocation
 from pathlib import Path
-from sqlalchemy import func
-from datetime import datetime
+from sqlalchemy import func, and_
+from datetime import datetime, date
 import logging
 
 logger = logging.getLogger(__name__)
@@ -20,27 +20,49 @@ def serve_react():
 
 @bp.route('/api/locations', methods=['GET'])
 def get_locations():
-    # Subquery: get the max timestamp per vehicle_id
-    subquery = db.session.query(
+    # Start of today for filtering today's geofence events
+    start_of_today = datetime.combine(date.today(), datetime.min.time())
+
+    # Subquery: latest geofence event today per vehicle
+    latest_geofence_events = db.session.query(
+        GeofenceEvent.vehicle_id,
+        func.max(GeofenceEvent.event_time).label('latest_time')
+    ).filter(
+        GeofenceEvent.event_time >= start_of_today
+    ).group_by(GeofenceEvent.vehicle_id).subquery()
+
+    # Join to get full geofence event rows where event is geofenceEntry
+    geofence_entries = db.session.query(GeofenceEvent.vehicle_id).join(
+        latest_geofence_events,
+        and_(
+            GeofenceEvent.vehicle_id == latest_geofence_events.c.vehicle_id,
+            GeofenceEvent.event_time == latest_geofence_events.c.latest_time
+        )
+    ).filter(GeofenceEvent.event_type == 'geofenceEntry').subquery()
+
+    # Subquery: latest vehicle location per vehicle
+    latest_locations = db.session.query(
         VehicleLocation.vehicle_id,
         func.max(VehicleLocation.timestamp).label('latest_time')
+    ).filter(
+        VehicleLocation.vehicle_id.in_(db.session.query(geofence_entries.c.vehicle_id))
     ).group_by(VehicleLocation.vehicle_id).subquery()
 
-    # Join VehicleLocation on vehicle_id and timestamp to get latest rows
-    # Then join with Vehicle table
-    latest_locations = db.session.query(VehicleLocation, Vehicle).join(
-        subquery,
-        (VehicleLocation.vehicle_id == subquery.c.vehicle_id) &
-        (VehicleLocation.timestamp == subquery.c.latest_time)
+    # Join to get full location and vehicle info for vehicles in geofence
+    results = db.session.query(VehicleLocation, Vehicle).join(
+        latest_locations,
+        and_(
+            VehicleLocation.vehicle_id == latest_locations.c.vehicle_id,
+            VehicleLocation.timestamp == latest_locations.c.latest_time
+        )
     ).join(
         Vehicle, VehicleLocation.vehicle_id == Vehicle.id
     ).all()
 
-    # Prepare JSON response
-    result = {}
-    for loc, vehicle in latest_locations:
-        result[loc.vehicle_id] = {
-            # VehicleLocation fields
+    # Format response
+    response = {}
+    for loc, vehicle in results:
+        response[loc.vehicle_id] = {
             'name': loc.name,
             'latitude': loc.latitude,
             'longitude': loc.longitude,
@@ -51,8 +73,6 @@ def get_locations():
             'formatted_location': loc.formatted_location,
             'address_id': loc.address_id,
             'address_name': loc.address_name,
-
-            # Vehicle fields
             'vehicle_name': vehicle.name,
             'license_plate': vehicle.license_plate,
             'vin': vehicle.vin,
@@ -61,7 +81,7 @@ def get_locations():
             'gateway_serial': vehicle.gateway_serial,
         }
 
-    return jsonify(result)
+    return jsonify(response)
 
 @bp.route('/api/webhook', methods=['POST'])
 def webhook():
