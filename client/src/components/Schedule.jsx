@@ -128,7 +128,7 @@ export default function Schedule() {
                 <table>
                     <thead>
                         <tr>
-                            <th className="schedule-header">Time</th>
+                            <th className="schedule-header"><span className="bold">Time</span> (estimated)</th>
                         </tr>
                     </thead>
                     <tbody>
