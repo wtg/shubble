@@ -55,7 +55,7 @@ export default function Data() {
 	}
 	var exitStr = "NOW";
 	if (exit != null) {
-	    exitStr = new Date(exit).toLocaleString();
+	    exitStr = new Date(exit).toLocaleTimeString();
 	}
 	return new Date(entry).toLocaleTimeString() + "-" + exitStr;
     }

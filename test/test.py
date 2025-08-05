@@ -110,8 +110,12 @@ def run_mock_api():
 def main():
     time.sleep(2)  # wait for main app to start
     send_webhook('281474979957434', True)
-    time.sleep(2)
+    time.sleep(60) # to test separate shuttle entrances
     send_webhook('281474993785467', True)
+    time.sleep(60) # to test exit
+    send_webhook('281474979957434', False)
+    time.sleep(60) # to test separate shuttle exits
+    send_webhook('281474993785467', False)
 
 if __name__ == '__main__':
     threading.Thread(target=main, daemon=True).start()
