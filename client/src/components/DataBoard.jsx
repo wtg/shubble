@@ -1,6 +1,6 @@
 import "../styles/DataBoard.css"
 
-export default function DataBoard({title, children, numColumns}) {
+export default function DataBoard({title, dataToDisplay}) {
     return (
 	<>
 	    <div className="data-board-container">
@@ -15,7 +15,13 @@ export default function DataBoard({title, children, numColumns}) {
 		    <tbody>
 			<tr className="data-board-table-row">
 			    <td>
-				{children}
+				{dataToDisplay.map(data => (
+				    <tr>
+					<td>
+					    {data}
+					</td>
+				    </tr>
+				))}
 			    </td>
 			</tr>
 		    </tbody>
