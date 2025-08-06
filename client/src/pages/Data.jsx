@@ -64,67 +64,64 @@ export default function Data() {
     return (
 	<>
 	    <div className="page-container">
-
-		{ShuttleData ? (
-		    <div>
-			<div className="sidebar">
-			    <table className="sidebar-table">
-				<thead>
-				    <tr>
-					<th colSpan={3}>{new Date().toLocaleDateString('en-US', {
-					    weekday: 'short',
-					    month: 'long',
-					    day: 'numeric'
-					})}</th>
-				    </tr>
-				</thead>
-				<tbody>
-				    <tr>
-					<ShuttleRow
-					    shuttleId="038471299"
-					    isActive={true}
-					    isAm={false}
-					/>
-				    </tr>
-				    <tr>
-					<ShuttleRow
-					    shuttleId="038471300"
-					    isActive={false}
-					    isAm={true}
-					/>
-				    </tr>
-				</tbody>
-			    </table>
-			</div>
-			<div className="main-content">
-			    <DataBoard
-				title="Summary"
-				children={selectedShuttleID}
-				numColums={1}
-			    />
-			    <DataBoard
-				title="Loops"
-				children="..."
-				numColums={2}
-			    />
-			    <DataBoard
-				title="Breaks"
-				children="..."
-				numColums={2}
-			    />
-			    <DataBoard
-				title="Historical Locations"
-				children="..."
-				numColums={1}
-			    />
-			    <div className="map-container">
-				<MapKitMap vehicles={ shuttleData } />
-			    </div>
-			</div>
+		<div className="sidebar">
+		    <table className="sidebar-table">
+			<thead>
+			    <tr>
+				<th colSpan={3}>{new Date().toLocaleDateString('en-US', {
+				    weekday: 'short',
+				    month: 'long',
+				    day: 'numeric'
+				})}</th>
+			    </tr>
+			</thead>
+			{shuttleData ? (
+			<tbody>
+			    <tr>
+				<ShuttleRow
+				    shuttleId="038471299"
+				    isActive={true}
+				    isAm={false}
+				/>
+			    </tr>
+			    <tr>
+				<ShuttleRow
+				    shuttleId="038471300"
+				    isActive={false}
+				    isAm={true}
+				/>
+			    </tr>
+			</tbody>
+			) : (
+			    <p>No shuttle data given</p>
+			)}
+		    </table>
+		</div>
+		<div className="main-content">
+		    <DataBoard
+			title="Summary"
+			children={selectedShuttleID}
+			numColums={1}
+		    />
+		    <DataBoard
+			title="Loops"
+			children="..."
+			numColums={2}
+		    />
+		    <DataBoard
+			title="Breaks"
+			children="..."
+			numColums={2}
+		    />
+		    <DataBoard
+			title="Historical Locations"
+			children="..."
+			numColums={1}
+		    />
+		    <div className="map-container">
+			<MapKitMap vehicles={ shuttleData } />
 		    </div>
-		) : (
-		    <p> No shuttle data </p>
-		)}
+		</div>
 	    </div>
 	</>
     );
