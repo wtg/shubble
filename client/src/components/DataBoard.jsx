@@ -1,14 +1,5 @@
 import "../styles/DataBoard.css"
 
-function maxRows(dataGrid) {
-    var maxRowCount = 0;
-    for (col in dataGrid) {
-	if (col.length > maxRowCount) {
-	    maxRowCount = col.length;
-	}
-    }
-}
-
 export default function DataBoard({title, dataToDisplay}) {
     return (
 	<>
