@@ -76,52 +76,57 @@ export default function Data() {
 			    </tr>
 			</thead>
 			{shuttleData ? (
-			<tbody>
-			    <tr>
-				<ShuttleRow
-				    shuttleId="038471299"
-				    isActive={true}
-				    isAm={false}
-				/>
-			    </tr>
-			    <tr>
-				<ShuttleRow
-				    shuttleId="038471300"
-				    isActive={false}
-				    isAm={true}
-				/>
-			    </tr>
-			</tbody>
+			    <tbody>
+				<tr>
+				    <ShuttleRow
+					shuttleId="038471299"
+					isActive={true}
+					isAm={false}
+				    />
+				</tr>
+				<tr>
+				    <ShuttleRow
+					shuttleId="038471300"
+					isActive={false}
+					isAm={true}
+				    />
+				</tr>
+			    </tbody>
 			) : (
 			    <p>No shuttle data given</p>
 			)}
 		    </table>
 		</div>
-		<div className="main-content">
-		    <DataBoard
-			title="Summary"
-			children={selectedShuttleID}
-			numColums={1}
-		    />
-		    <DataBoard
-			title="Loops"
-			children="..."
-			numColums={2}
-		    />
-		    <DataBoard
-			title="Breaks"
-			children="..."
-			numColums={2}
-		    />
-		    <DataBoard
-			title="Historical Locations"
-			children="..."
-			numColums={1}
-		    />
-		    <div className="map-container">
-			<MapKitMap vehicles={ shuttleData } />
+
+		{shuttleData ? (
+		    <div className="main-content">
+			<DataBoard
+			    title="Summary"
+			    children={selectedShuttleID}
+			    numColums={1}
+			/>
+			<DataBoard
+			    title="Loops"
+			    children="..."
+			    numColums={2}
+			/>
+			<DataBoard
+			    title="Breaks"
+			    children="..."
+			    numColums={2}
+			/>
+			<DataBoard
+			    title="Historical Locations"
+			    children="..."
+			    numColums={1}
+			/>
+			<div className="map-container">
+			    <MapKitMap vehicles={ shuttleData } />
+			</div>
 		    </div>
-		</div>
+		) : (
+		    <p>No shuttle data given</p>
+		)}
 	    </div>
 	</>
     );
