@@ -6,18 +6,24 @@ export default function DataBoard({title, dataToDisplay}) {
 	    <div className="data-board-container">
 		<table className="data-board-table">
 		    <thead>
-			<tr className="data-board-table-row">
+			<tr>
 			    <th className="data-board-table-header">
 				{title}
 			    </th>
 			</tr>
 		    </thead>
 		    {!Array.isArray(dataToDisplay) || dataToDisplay.length == 0 || !Array.isArray(dataToDisplay[0]) ? (
-			<p>No data given</p>
+			<tbody>
+			    <tr>
+				<td>
+				    No data given
+				</td>
+			    </tr>
+			</tbody>
 		    ) : (
 			<tbody>
 			    {dataToDisplay[0].map((row, rowIndex) => (
-				<tr key={rowIndex} className="data-board-table-row">
+				<tr key={rowIndex}>
 				    {dataToDisplay.map((col, colIndex) => (
 					<td key={colIndex}>{col[rowIndex]}</td>
 				    ))}

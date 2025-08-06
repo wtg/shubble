@@ -15,13 +15,25 @@
     font-weight: bold;
     font-size: 30px;
     overflow: hidden;
+    padding: 10px 20px;
 }
 
 .data-board-table {
     width: 90%;
     padding: 0px 10px;
+    border-collapse: collapse;
 }
 
-.data-board-table-row {
-    margin: 0;
+.data-board-table tbody tr:first-child {
+    border-top: 1px solid black;
+    margin-top: 20px;
+}
+
+.data-board-table td {
+    padding: 5px 10px;
+    border-right: 1px solid black;
+}
+
+.data-board-table tbody tr td:last-child {
+    border-right: none;
 }
