@@ -133,11 +133,8 @@ def webhook():
 
 @bp.route('/api/today', methods=['GET'])
 def data_today():
-    # Get current UTC time
     now = datetime.now(timezone.utc)
-    # Get start of today (00:00 UTC)
     start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    # Query for ShuttleLocation events from today
     locations_today = VehicleLocation.query.filter(
         and_(
             VehicleLocation.timestamp >= start_of_day,
@@ -145,6 +142,13 @@ def data_today():
         )
     ).order_by(VehicleLocation.timestamp.asc()).all()
 
+    events_today = db.session.query(GeofenceEvent).filter(
+        and_(
+            GeofenceEvent.event_time >= start_of_day,
+            GeofenceEvent.event_time <= now
+        )
+    ).order_by(GeofenceEvent.event_time.asc()).all()
+    
     locations_today_dict = {}
     for location in locations_today:
         vehicle_location = {
@@ -156,8 +160,32 @@ def data_today():
             "address_id": location.address_id
         }
         if location.vehicle_id in locations_today_dict:
-            locations_today_dict[location.vehicle_id].append(vehicle_location)
+            locations_today_dict[location.vehicle_id]["data"].append(vehicle_location)
         else:
-            locations_today_dict[location.vehicle_id] = [vehicle_location]
+            locations_today_dict[location.vehicle_id] = {
+                "entry": None,
+                "exit": None,
+                "data": [vehicle_location]
+            }
+
+    for vehicle_id in locations_today_dict:
+        first_entry = None
+        last_entry_index = 0
+        last_exit = None
+
+        for e, geofence_event in enumerate(events_today):
+            if geofence_event.event_type == "GeofenceEntry" and geofence_event.vehicle_id == vehicle_id:
+                if first_entry == None:
+                    first_entry = geofence_event.event_time
+                    last_entry_index = e
+
+        for geofence_event in events_today[last_entry_index:]:
+            if geofence_event.event_type == "GeofenceExit" and geofence_event.vehicle_id == vehicle_id:
+                last_exit = geofence_event.event_time
+
+        locations_today_dict[vehicle_id]["entry"] = first_entry
+        locations_today_dict[vehicle_id]["exit"] = last_exit
+
+   
     return jsonify(locations_today_dict)
 

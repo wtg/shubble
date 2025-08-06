@@ -7,35 +7,35 @@ import MapKitMap from '../components/MapKitMap';
 
 export default function Data() {
 
-    const [location, setLocation] = useState(null);
+  const [shuttleData, setShuttleData] = useState(null);
 
-    const [selectedShuttleID, setSelectedShuttleID] = useState(null);
-
-    const fetchLocation = async () => {
-	try {
+  const [selectedShuttleID, setSelectedShuttleID] = useState(null);
+    
+  const fetchShuttleData = async () => {
+	  try {
             const response = await fetch('/api/today');
             if (!response.ok) {
                 throw new Error('Network response was not ok');
             }
             const data = await response.json();
             console.log(data);
-            setLocation(data);
+            setShuttleData(data);
         } catch (error) {
-            console.error('Error fetching location:', error);
+            console.error('Error fetching shuttleData:', error);
         }
     }
 
     useEffect(() => {
-        fetchLocation();
+        fetchShuttleData();
     }, []);
 
     useEffect(() => {
-	if (location != null) {
-	    if (!(selectedShuttleID in location)) {
-		setSelectedShuttleID(Object.keys(location)[0]);
+	if (shuttleData != null) {
+	    if (!(selectedShuttleID in shuttleData)) {
+		setSelectedShuttleID(Object.keys(shuttleData)[0]);
 	    }
 	}
-    }, [location]);
+    }, [shuttleData]);
 
     const handleShuttleChange = (event) => {
 	setSelectedShuttleID(event.target.value);
@@ -46,7 +46,18 @@ export default function Data() {
 	    return "timestamp was set to null";
 	}
 	var timeStampDate = new Date(tStamp);
-	return timeStampDate.toLocaleString();
+	return timeStampDate.toLocaleTimeString();
+    }
+
+    function formatEntryExit(entry, exit) {
+	if (entry === null) {
+	    return "Shuttle never entered GeoFence";
+	}
+	var exitStr = "NOW";
+	if (exit != null) {
+	    exitStr = new Date(exit).toLocaleTimeString();
+	}
+	return new Date(entry).toLocaleTimeString() + "-" + exitStr;
     }
     
     return (
@@ -54,7 +65,7 @@ export default function Data() {
 	    <div className = "header">
 		<div className = "flex-header-reload">
 		    <h1>Shubble Data</h1>
-		    <button onClick={fetchLocation} className = "reload-button">
+		    <button onClick={fetchShuttleData} className = "reload-button">
 			<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M2 12a9 9 0 0 0 9 9c2.39 0 4.68-.94 6.4-2.6l-1.5-1.5A6.7 6.7 0 0 1 11 19c-6.24 0-9.36-7.54-4.95-11.95S18 5.77 18 12h-3l4 4h.1l3.9-4h-3a9 9 0 0 0-18 0"/></svg>
 		    </button>
 		</div>
@@ -63,11 +74,11 @@ export default function Data() {
 
 	    <div className = "table-map-sidebyside">
 		<div className = "left-screen">
-		{location ? (
+		{shuttleData ? (
 		<div>
 		    <p className = "dropdown-p-style">
 			Shuttle: <select value={selectedShuttleID} onChange={handleShuttleChange} className = "dropdown-style">
-			    {Object.keys(location).map(selectedShuttleID => (
+			    {Object.keys(shuttleData).map(selectedShuttleID => (
 				<option key={selectedShuttleID} value={selectedShuttleID}>
 				    {selectedShuttleID}
 				</option>
@@ -75,39 +86,42 @@ export default function Data() {
 			</select>
 		    </p>
 		    {selectedShuttleID ? (
-		    <div className = "location-table-overflow-scroll">
-			<table>
-			    <thead>
-				<tr>
-				    <th>
-					Timestamp
-				    </th>
-				    <th>
-					Latitude, Longitude
-				    </th>
-				    <th>
-					Speed
-				    </th>
-				</tr>
-			    </thead>
-			    <tbody>
-				{[...location[selectedShuttleID]].reverse().map((shuttleLocation, index) => (
-				    <tr key={index}>
-					<td>
-					    {formatTimestamp(shuttleLocation.timestamp)}
-					</td>
-					<td>
-					    {shuttleLocation.latitude.toFixed(3) + ", " + shuttleLocation.longitude.toFixed(3)}
-					</td>
-					<td>
-					    {shuttleLocation.speed_mph + " mph"}
-					</td>
-				    </tr>
-				))}
-				
-			    </tbody>
-			</table>
-		    </div>
+			<div>
+			    <p>{formatEntryExit(shuttleData[selectedShuttleID].entry, shuttleData[selectedShuttleID].exit)}</p>
+			    <div className = "location-table-overflow-scroll">
+				<table>
+				    <thead>
+					<tr>
+					    <th>
+						Timestamp
+					    </th>
+					    <th>
+						Latitude, Longitude
+					    </th>
+					    <th>
+						Speed
+					    </th>
+					</tr>
+				    </thead>
+				    <tbody>
+					{[...shuttleData[selectedShuttleID].data].reverse().map((shuttleLocation, index) => (
+					    <tr key={index}>
+						<td>
+						    {formatTimestamp(shuttleLocation.timestamp)}
+						</td>
+						<td>
+						    {shuttleLocation.latitude.toFixed(3) + ", " + shuttleLocation.longitude.toFixed(3)}
+						</td>
+						<td>
+						    {shuttleLocation.speed_mph + " mph"}
+						</td>
+					    </tr>
+					))}
+					
+				    </tbody>
+				</table>
+			    </div>
+			</div>
 		    ) : (
 			<p>No shuttle selected</p>
 		    )}
@@ -116,7 +130,7 @@ export default function Data() {
 		    <p>No locations found</p>
 		)}
 		</div>
-		<MapKitMap vehicles={ location } />
+		<MapKitMap vehicles={ shuttleData } />
 	    </div>
 	</>
     );
