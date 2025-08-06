@@ -1,32 +1,41 @@
 import "../styles/DataBoard.css"
 
+function maxRows(dataGrid) {
+    var maxRowCount = 0;
+    for (col in dataGrid) {
+	if (col.length > maxRowCount) {
+	    maxRowCount = col.length;
+	}
+    }
+}
+
 export default function DataBoard({title, dataToDisplay}) {
     return (
 	<>
-	    <div className="data-board-container">
-		<table className="data-board-table">
-		    <thead>
-			<tr className="data-board-table-row">
-			    <th className="data-board-table-header">
-				{title}
-			    </th>
-			</tr>
-		    </thead>
-		    <tbody>
-			<tr className="data-board-table-row">
-			    <td>
-				{dataToDisplay.map(data => (
-				    <tr>
-					<td>
-					    {data}
-					</td>
-				    </tr>
-				))}
-			    </td>
-			</tr>
-		    </tbody>
-		</table>
-	    </div>
+	    {!Array.isArray(dataToDisplay) || dataToDisplay.length == 0 ? (
+		<div>No data given</div>
+	    ) : (
+		<div className="data-board-container">
+		    <table className="data-board-table">
+			<thead>
+			    <tr className="data-board-table-row">
+				<th className="data-board-table-header">
+				    {title}
+				</th>
+			    </tr>
+			</thead>
+			<tbody>
+			    {dataToDisplay[0].map((row, rowIndex) => (
+				<tr key={rowIndex} className="data-board-table-row">
+				    {dataToDisplay.map((col, colIndex) => (
+					<td key={colIndex}>{col[rowIndex]}</td>
+				    ))}
+				</tr>
+			    ))}
+			</tbody>
+		    </table>
+		</div>
+	    )}
 	</>
     );
 }

@@ -102,19 +102,19 @@ export default function Data() {
 		    <div className="main-content">
 			<DataBoard
 			    title="Summary"
-			    dataToDisplay={[formatEntryExit(shuttleData[selectedShuttleID]?.entry, shuttleData[selectedShuttleID]?.exit), "13 loops", "23 minutes of break time"]}
+			    dataToDisplay={[[formatEntryExit(shuttleData[selectedShuttleID]?.entry, shuttleData[selectedShuttleID]?.exit), "13 loops", "23 minutes of break time"]]}
 			/>
 			<DataBoard
 			    title="Loops"
-			    dataToDisplay={["..."]}
+			    dataToDisplay={[["..."]]}
 			/>
 			<DataBoard
 			    title="Breaks"
-			    dataToDisplay={["..."]}
+			    dataToDisplay={[["..."]]}
 			/>
 			<DataBoard
 			    title="Historical Locations"
-			    dataToDisplay={["..."]}
+			    dataToDisplay={[["..."]]}
 			/>
 			<div className="map-container">
 			    <MapKitMap vehicles={ shuttleData } />
