@@ -106,15 +106,15 @@ export default function Data() {
 			/>
 			<DataBoard
 			    title="Loops"
-			    dataToDisplay={[["..."]]}
+			    dataToDisplay={[["12 minutes", "11 minutes"], ["11:07-11:19", "11:23-11:34"]]}
 			/>
 			<DataBoard
 			    title="Breaks"
-			    dataToDisplay={[["..."]]}
+			    dataToDisplay={[["17 minutes"], ["12:32-12:49"]]}
 			/>
 			<DataBoard
 			    title="Historical Locations"
-			    dataToDisplay={[["..."]]}
+			    dataToDisplay={["..."]}
 			/>
 			<div className="map-container">
 			    <MapKitMap vehicles={ shuttleData } />
