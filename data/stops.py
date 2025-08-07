@@ -45,3 +45,19 @@ class Stops:
                     closest_route_name = route_name
                     closest_polyline_index = index
         return closest_point, closest_distance, closest_route_name, closest_polyline_index
+
+    @classmethod
+    def is_at_stop(cls, origin_point, threshold=0.0002):
+        """
+        Check if the given point is close enough to any stop.
+        :param origin_point: A tuple or list with (latitude, longitude) coordinates.
+        :param threshold: Distance threshold to consider as "at stop".
+        :return: the stop name if close enough, otherwise None.
+        """
+        for route_name, route in cls.routes_data.items():
+            for stop in route.get('STOPS', []):
+                stop_point = np.array(route[stop]['COORDINATES'])
+                distance = np.linalg.norm(np.array(origin_point) - stop_point)
+                if distance < threshold:
+                    return route_name, stop
+        return None, None
