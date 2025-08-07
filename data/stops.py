@@ -13,6 +13,12 @@ class Stops:
 
     @classmethod
     def get_closest_point(cls, origin_point):
+        """
+        Find the closest point on any polyline to the given origin point.
+        :param origin_point: A tuple or list with (latitude, longitude) coordinates.
+        :return: A tuple with the closest point (latitude, longitude), distance to that point,
+                 route name, and polyline index.
+        """
         point = np.array(origin_point)
         closest_point = None
         closest_distance = float('inf')
@@ -21,6 +27,9 @@ class Stops:
         for route_name, polylines in cls.polylines.items():
             for index, polyline in enumerate(polylines):
                 # Calculate distances to each segment in the polyline
+                # works by finding the closest point on each segment of the polyline
+                # using vector projection, then calculating the distance to that point
+                # and returning the closest one
                 lines = np.array([polyline[:-1], polyline[1:]])
                 diffs = lines[1, :] - lines[0, :]
                 lengths = np.linalg.norm(diffs, axis=1)
