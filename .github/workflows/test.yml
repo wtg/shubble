@@ -1,7 +1,7 @@
 name: Client Build Check
 
 on:
-  workflow-dispatch:
+  workflow_dispatch:
 
 jobs:
   test:
