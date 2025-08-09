@@ -31,10 +31,11 @@ jobs:
           ref: ${{ inputs.branch }}
 
       - name: Set up SSH
-        uses: webfactory/ssh-agent@v0.9.1
-        with:
-          ssh-private-key: ${{ secrets.ssh_key }}
-          known-hosts: ${{ secrets.dokku_host }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.ssh_key }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.dokku_host }} >> ~/.ssh/known_hosts
 
       - name: Deploy to Dokku
         run: |
