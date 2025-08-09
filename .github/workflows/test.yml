@@ -1,4 +1,4 @@
-name: Client Build Check
+name: Test
 
 on:
   workflow_dispatch:
