@@ -9,7 +9,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    environment: production
+    environment: staging
     steps:
       - name: Save secrets
         run: |
