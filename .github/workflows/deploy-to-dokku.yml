@@ -26,19 +26,17 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
         with:
           ref: ${{ inputs.branch }}
 
       - name: Set up SSH
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.ssh_key }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.dokku_host }} >> ~/.ssh/known_hosts
+          echo "${{ secrets.ssh_key }}" > temp_key
+          chmod 600 temp_key
 
       - name: Deploy to Dokku
         run: |
           git remote remove dokku
           git remote add dokku dokku@${{ secrets.dokku_host }}:${{ secrets.dokku_app }}
-          git push dokku HEAD:main -f
+          GIT_SSH_COMMAND="ssh -i temp_key -o StrictHostKeyChecking=no" git push dokku HEAD:main -f
