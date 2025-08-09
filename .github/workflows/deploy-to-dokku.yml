@@ -34,6 +34,7 @@ jobs:
         uses: webfactory/ssh-agent@v0.9.1
         with:
           ssh-private-key: ${{ secrets.ssh_key }}
+          known-hosts: ${{ secrets.dokku_host }}
 
       - name: Deploy to Dokku
         run: |
