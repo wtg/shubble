@@ -38,6 +38,6 @@ jobs:
 
       - name: Deploy to Dokku
         run: |
-          git remote remove dokku || true
+          git remote remove dokku 2>/dev/null || true
           git remote add dokku dokku@${{ secrets.dokku_host }}:${{ secrets.dokku_app }}
-          GIT_SSH_COMMAND="ssh -i temp_key -o StrictHostKeyChecking=no" git push dokku HEAD:main -f
+          GIT_SSH_COMMAND="ssh -i temp_key -o StrictHostKeyChecking=no" git push dokku HEAD:production -f
