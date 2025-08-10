@@ -1,0 +1,13 @@
+name: 'Yaml Lint'
+
+on:
+  pull_request:
+
+jobs:
+  lint:
+    name: Yaml Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: yaml-lint
+        run: yamllint .github/workflows/**/*.yml
