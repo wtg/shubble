@@ -38,14 +38,43 @@
 .main-content {
     display: flex;
     flex-direction: row;
-    flex-wrap: wrap;
-    flex: 1;
     padding: 20px;
     gap: 20px;
 }
 
 .map-container {
-    width: 60%;
+    flex: 1;
     height: 45%;
     overflow: scroll;
+}
+
+@media screen and (max-width: 768px) {
+    .sidebar-table tbody tr:last-child {
+	border-bottom: none;
+    }
+    
+    .sidebar {
+	width: 100%;
+    }
+    
+    .page-container {
+	flex-direction: column;
+	justify-content: center;
+    }
+
+    .main-content {
+	flex-direction: column;
+	width: 100vw;
+    }
+
+    .map-container {
+	width: 90%;
+	height: 50vh;
+    }
+}
+
+@media screen and (min-width: 768px) {
+    .main-content {
+	flex-wrap: wrap;
+    }
 }
