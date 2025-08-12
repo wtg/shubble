@@ -51,7 +51,7 @@ export default function Data() {
     }
 
     function formatEntryExit(entry, exit) {
-	if (entry === null) {
+	if (entry == null) {
 	    return "Shuttle never entered GeoFence";
 	}
 	var exitStr = "NOW";
@@ -59,6 +59,22 @@ export default function Data() {
 	    exitStr = new Date(exit).toLocaleString();
 	}
 	return new Date(entry).toLocaleTimeString() + "-" + exitStr;
+    }
+
+    function formatLoopsBreaks(loopBreakList) {
+	var formattedList = [[], []];
+	for (loopOrBreak in loopBreakList) {
+	    if (loopOrBreak.end == null) {
+		formattedList[0].append("IN PROGRESS");
+		formattedList[1].append(loopOrBreak.start + " - NOW");
+	    }
+	    else {
+		const dStart = new Date(loopOrBreak.start);
+		const dEnd = new Date(loopOrBreak.end);
+		formattedList[0].append((dStart-dEnd).minutes + " minutes");
+		formattedList[1].append(dStart.toLocaleTimeString() + "-" + dEnd.toLocaleTimeString());
+	    }
+	}
     }
     
     return (
@@ -77,20 +93,15 @@ export default function Data() {
 			</thead>
 			{shuttleData ? (
 			    <tbody>
-				<tr>
-				    <ShuttleRow
-					shuttleId="038471299"
-					isActive={true}
-					isAm={false}
-				    />
-				</tr>
-				<tr>
-				    <ShuttleRow
-					shuttleId="038471300"
-					isActive={false}
-					isAm={true}
-				    />
-				</tr>
+				{Object.keys(shuttleData).map(vehicleId => (
+				    <tr key={vehicleId}>
+					<ShuttleRow
+					    shuttleId={vehicleId}
+					    isActive={false}
+					    isAm={false}
+					/>
+				    </tr>
+				))}
 			    </tbody>
 			) : (
 			    <p>No shuttle data given</p>
