@@ -2,6 +2,90 @@ import { useEffect, useRef, useState } from "react";
 import '../styles/MapKitMap.css';
 import routeData from '../data/routes.json';
 
+
+/**
+ * Populate routeData[routeName].ROUTES with an ordered array of polylines.
+ * Each polyline is an array of [lat, lon] pairs.
+ *
+ * @param {Object} routeData - your routeData object
+ * @returns {Promise<Object>} resolves with the updated routeData
+ */
+async function generateRoutePolylines(routeData) {
+    const directions = new window.mapkit.Directions();
+    const promises = [];
+
+    for (const [routeName, routeInfo] of Object.entries(routeData)) {
+        const stops = routeInfo.STOPS || [];
+        // Make sure ROUTES exists and has the same length as STOPS (number of segments)
+        routeInfo.ROUTES = new Array(stops.length).fill(null);
+
+        for (let i = 0; i < stops.length; i++) {
+            const originStop = stops[i];
+            const destStop = stops[(i + 1) % stops.length]; // wrap to first stop for loop
+
+            const originCoords = routeInfo[originStop]?.COORDINATES;
+            const destCoords = routeInfo[destStop]?.COORDINATES;
+
+            if (!originCoords || !destCoords) {
+                // missing stops: immediately push a resolved "empty" result so indexes stay consistent
+                promises.push(Promise.resolve({ routeName, index: i, coords: [] }));
+                continue;
+            }
+
+            const request = {
+                origin: new window.mapkit.Coordinate(originCoords[0], originCoords[1]),
+                destination: new window.mapkit.Coordinate(destCoords[0], destCoords[1]),
+            };
+
+            // Wrap the callback API in a promise that resolves with routeName + index + coords
+            const p = new Promise((resolve) => {
+                directions.route(request, (error, data) => {
+                    if (error) {
+                        console.error(`Directions error for ${routeName} segment ${i} (${originStop}→${destStop}):`, error);
+                        // Resolve with empty coords array to avoid rejecting Promise.all
+                        resolve({ routeName, index: i, coords: [] });
+                        return;
+                    }
+
+                    try {
+                        const route = data.routes[0];
+                        const coords = route.polyline.points.map(pt => [pt.latitude, pt.longitude]);
+                        resolve({ routeName, index: i, coords });
+                    } catch (e) {
+                        console.error(`Unexpected response parsing for ${routeName} segment ${i}:`, e);
+                        resolve({ routeName, index: i, coords: [] });
+                    }
+                });
+            });
+
+            promises.push(p);
+        }
+    }
+
+    // Wait for every segment promise. Order of results does NOT matter because we use index.
+    const results = await Promise.all(promises);
+
+    // Place the segment coords into the correct route.ROUTES[index]
+    results.forEach((res) => {
+        if (!res) return;
+        const { routeName, index, coords } = res;
+        // If route was removed in the meantime (unlikely), guard
+        if (routeData[routeName]) {
+            routeData[routeName].ROUTES[index] = coords;
+        }
+    });
+
+    // Clean up any nulls (shouldn't be many, but safe)
+    for (const routeInfo of Object.values(routeData)) {
+        if (!Array.isArray(routeInfo.ROUTES)) routeInfo.ROUTES = [];
+        for (let i = 0; i < routeInfo.ROUTES.length; i++) {
+            if (!Array.isArray(routeInfo.ROUTES[i])) routeInfo.ROUTES[i] = [];
+        }
+    }
+
+    return routeData;
+}
+
 export default function MapKitMap({ vehicles, generateRoutes=false }) {
 
     const mapRef = useRef(null);
@@ -113,7 +197,7 @@ export default function MapKitMap({ vehicles, generateRoutes=false }) {
         if (generateRoutes) {
             // generate polylines for routes
             generateRoutePolylines(routeData).then((updatedRouteData) => {
-                console.log("Generated route polylines:", routeData);
+                console.log("Generated route polylines:", updatedRouteData);
                 displayRouteOverlays(updatedRouteData);
             });
         } else {
@@ -172,86 +256,3 @@ return (
     </div>
     );
 };
-
-/**
- * Populate routeData[routeName].ROUTES with an ordered array of polylines.
- * Each polyline is an array of [lat, lon] pairs.
- *
- * @param {Object} routeData - your routeData object
- * @returns {Promise<Object>} resolves with the updated routeData
- */
-async function generateRoutePolylines(routeData) {
-    const directions = new window.mapkit.Directions();
-    const promises = [];
-
-    for (const [routeName, routeInfo] of Object.entries(routeData)) {
-        const stops = routeInfo.STOPS || [];
-        // Make sure ROUTES exists and has the same length as STOPS (number of segments)
-        routeInfo.ROUTES = new Array(stops.length).fill(null);
-
-        for (let i = 0; i < stops.length; i++) {
-            const originStop = stops[i];
-            const destStop = stops[(i + 1) % stops.length]; // wrap to first stop for loop
-
-            const originCoords = routeInfo[originStop]?.COORDINATES;
-            const destCoords = routeInfo[destStop]?.COORDINATES;
-
-            if (!originCoords || !destCoords) {
-                // missing stops: immediately push a resolved "empty" result so indexes stay consistent
-                promises.push(Promise.resolve({ routeName, index: i, coords: [] }));
-                continue;
-            }
-
-            const request = {
-                origin: new window.mapkit.Coordinate(originCoords[0], originCoords[1]),
-                destination: new window.mapkit.Coordinate(destCoords[0], destCoords[1]),
-            };
-
-            // Wrap the callback API in a promise that resolves with routeName + index + coords
-            const p = new Promise((resolve) => {
-                directions.route(request, (error, data) => {
-                    if (error) {
-                        console.error(`Directions error for ${routeName} segment ${i} (${originStop}→${destStop}):`, error);
-                        // Resolve with empty coords array to avoid rejecting Promise.all
-                        resolve({ routeName, index: i, coords: [] });
-                        return;
-                    }
-
-                    try {
-                        const route = data.routes[0];
-                        const coords = route.polyline.points.map(pt => [pt.latitude, pt.longitude]);
-                        resolve({ routeName, index: i, coords });
-                    } catch (e) {
-                        console.error(`Unexpected response parsing for ${routeName} segment ${i}:`, e);
-                        resolve({ routeName, index: i, coords: [] });
-                    }
-                });
-            });
-
-            promises.push(p);
-        }
-    }
-
-    // Wait for every segment promise. Order of results does NOT matter because we use index.
-    const results = await Promise.all(promises);
-
-    // Place the segment coords into the correct route.ROUTES[index]
-    results.forEach((res) => {
-        if (!res) return;
-        const { routeName, index, coords } = res;
-        // If route was removed in the meantime (unlikely), guard
-        if (routeData[routeName]) {
-            routeData[routeName].ROUTES[index] = coords;
-        }
-    });
-
-    // Clean up any nulls (shouldn't be many, but safe)
-    for (const routeInfo of Object.values(routeData)) {
-        if (!Array.isArray(routeInfo.ROUTES)) routeInfo.ROUTES = [];
-        for (let i = 0; i < routeInfo.ROUTES.length; i++) {
-            if (!Array.isArray(routeInfo.ROUTES[i])) routeInfo.ROUTES[i] = [];
-        }
-    }
-
-    return routeData;
-}
