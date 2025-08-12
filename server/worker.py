@@ -5,7 +5,7 @@ import time
 import requests
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, date
 
 # Logging config
 logging.basicConfig(level=logging.INFO)
@@ -15,23 +15,32 @@ app = create_app()
 
 def get_vehicles_in_geofence():
     """
-    Returns a set of vehicle_ids where the latest geofence event is an entry.
+    Returns a set of vehicle_ids where the latest geofence event from today
+    is a geofenceEntry.
     """
-    subquery = db.session.query(
-        GeofenceEvent.vehicle_id,
-        func.max(GeofenceEvent.event_time).label('latest_time')
-    ).group_by(GeofenceEvent.vehicle_id).subquery()
+    start_of_today = datetime.combine(date.today(), datetime.min.time())
 
-    latest_entries = db.session.query(GeofenceEvent.vehicle_id).join(
+    # Filter to today's events first
+    today_events = db.session.query(GeofenceEvent).filter(
+        GeofenceEvent.event_time >= start_of_today
+    ).subquery()
+
+    # Subquery to get latest event per vehicle from today's events
+    subquery = db.session.query(
+        today_events.c.vehicle_id,
+        func.max(today_events.c.event_time).label('latest_time')
+    ).group_by(today_events.c.vehicle_id).subquery()
+
+    # Join back to get the latest event row
+    latest_entries = db.session.query(today_events.c.vehicle_id).join(
         subquery,
         and_(
-            GeofenceEvent.vehicle_id == subquery.c.vehicle_id,
-            GeofenceEvent.event_time == subquery.c.latest_time
+            today_events.c.vehicle_id == subquery.c.vehicle_id,
+            today_events.c.event_time == subquery.c.latest_time
         )
-    ).filter(GeofenceEvent.event_type == 'GeofenceEntry').all()
+    ).filter(today_events.c.event_type == 'geofenceEntry').all()
 
     return {row.vehicle_id for row in latest_entries}
-
 
 def update_locations(after_token, previous_vehicle_ids, app):
 
@@ -63,12 +72,11 @@ def update_locations(after_token, previous_vehicle_ids, app):
         'types': 'gps',
     }
 
-    if after_token:
-        url_params['after'] = after_token
-
     try:
         has_next_page = True
         while has_next_page:
+            if after_token:
+                url_params['after'] = after_token
             has_next_page = False
             response = requests.get(url, headers=headers, params=url_params)
             if response.status_code != 200:

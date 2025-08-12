@@ -11,31 +11,4 @@
     text-decoration: underline;
 }
 
-.schedule-table {
-    text-align: left;
-    border-spacing: 0;
-    padding: 2px;
-}
 
-.time-rows {
-    padding: 2px;
-}
-
-.schedule-scroll {
-    padding: 10px 15px;
-    overflow: scroll;
-    border-style: solid;
-    border-width: thin;
-    margin-bottom: 0;
-    height: calc(50vh - 150px);
-}
-
-
-.schedule-scroll::-webkit-scrollbar-track {
-    background: #f1f1f1;
-    border-radius: 10px;
-}
-
-.schedule-scroll::-webkit-scrollbar-thumb:hover {
-    background: #555;
-}

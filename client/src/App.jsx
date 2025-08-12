@@ -6,7 +6,7 @@ import {
 } from 'react-router';
 import './App.css';
 import LiveLocation from './pages/LiveLocation';
-import Schedule from './pages/Schedule';
+import Schedule from './components/Schedule';
 import About from './pages/About';
 import Feedback from './components/Feedback';
 import Data from './pages/Data';
