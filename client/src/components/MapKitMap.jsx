@@ -100,18 +100,20 @@ export default function MapKitMap({ vehicles, generateRoutes=false }) {
         }
     };
 
-    // initialize mapkit
-    const mapkitScript = async () => {
-        // load the MapKit JS library
-        await setupMapKitJs();
-        window.mapkit.init({
-            authorizationCallback: (done) => {
-                done(token);
-            },
-        });
-        setMapLoaded(true);
-    };
-    mapkitScript();
+    useEffect(() => {
+        // initialize mapkit
+        const mapkitScript = async () => {
+            // load the MapKit JS library
+            await setupMapKitJs();
+            window.mapkit.init({
+                authorizationCallback: (done) => {
+                    done(token);
+                },
+            });
+            setMapLoaded(true);
+        };
+        mapkitScript();
+    }, []);
 
     // create the map
     useEffect(() => {
