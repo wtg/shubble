@@ -3,7 +3,7 @@ from . import db
 from .models import Vehicle, GeofenceEvent, VehicleLocation
 from pathlib import Path
 from sqlalchemy import func, and_
-from datetime import datetime, date, timezone
+from datetime import datetime, date, timezone, timedelta
 import logging
 
 logger = logging.getLogger(__name__)
@@ -190,8 +190,18 @@ def data_today():
     ).order_by(GeofenceEvent.event_time.asc()).all()
     
     locations_today_dict = {}
-    for location in locations_today:
+    is_loop = False
+    time_since_movement = None
+    for l, location in enumerate(locations_today):
+        if l != 0 and locations_today[l - 1].latitude == location.latitude and locations_today[l - 1].longitude == location.longitude:
+            time_since_movement += location.timestamp - locations_today[l-1].timestamp
+        else:
+            time_since_movement = location.timestamp - location.timestamp
         closest_point_data = Stops.get_closest_point((location.latitude, location.longitude))
+        if not is_loop and closest_point_data[2] == "STUDENT_UNION":
+            is_loop = True
+        if is_loop and closest_point_data[1] > 0.0002 or time_since_movement >= timedelta(minutes=5):
+            is_loop = False
         vehicle_location = {
             "latitude": location.latitude,
             "longitude": location.longitude,
@@ -201,13 +211,39 @@ def data_today():
             "closest_polyline": closest_point_data[3],
         }
         if location.vehicle_id in locations_today_dict:
-            locations_today_dict[location.vehicle_id]["locations"][location.timestamp.strftime("%H:%M:%S")] = vehicle_location;
+            locations_today_dict[location.vehicle_id]["locations"][location.timestamp.strftime("%H:%M:%S")] = vehicle_location
+
+            if is_loop:
+                if len(locations_today_dict[location.vehicle_id]["breaks"]) != 0 and locations_today_dict[location.vehicle_id]["breaks"][-1]["end"] == None:
+                    locations_today_dict[location.vehicle_id]["breaks"][-1]["end"] = location.timestamp.strftime("%H:%M:%S")
+                if len(locations_today_dict[location.vehicle_id]["loops"]) == 0 or locations_today_dict[location.vehicle_id]["loops"][-1]["end"] != None:
+                    locations_today_dict[location.vehicle_id]["loops"].append({
+                        "start": location.timestamp.strftime("%H:%M:%S"),
+                        "end": None,
+                        "locations": [location.timestamp.strftime("%H:%M:%S")]
+                    })
+                else:
+                    locations_today_dict[location_vehicle_id]["loops"][-1]["locations"].append(location.timestamp.strftime("%H:%M:%S"))
+            else:
+                if len(locations_today_dict[location.vehicle_id]["loops"]) != 0 and locations_today_dict[location.vehicle_id]["loops"][-1]["end"] == None:
+                    locations_today_dict[location.vehicle_id]["loops"][-1]["end"] = location.timestamp.strftime("%H:%M:%S")
+                if len(locations_today_dict[location.vehicle_id]["breaks"]) == 0 or locations_today_dict[location.vehicle_id]["breaks"][-1]["end"] != None:
+                    locations_today_dict[location.vehicle_id]["breaks"].append({
+                        "start": location.timestamp.strftime("%H:%M:%S"),
+                        "end": None,
+                        "locations": [location.timestamp.strftime("%H:%M:%S")]
+                    })
         else:
             locations_today_dict[location.vehicle_id] = {
-                "entry": None,
-                "exit": None,
+                "loops": [],
+                "breaks": [{
+                    "start": location.timestamp.strftime("%H:%M:%S"),
+                    "end": None,
+                    "locations": [location.timestamp.strftime("%H:%M:%S")]
+                }],
                 "locations": {location.timestamp.strftime("%H:%M:%S"): vehicle_location}
             }
+            
 
     for vehicle_id in locations_today_dict:
         first_entry = None
