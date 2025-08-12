@@ -10,6 +10,7 @@ import Schedule from './components/Schedule';
 import About from './pages/About';
 import Feedback from './components/Feedback';
 import Data from './pages/Data';
+import MapKitMap from './components/MapKitMap';
 
 function App() {
   return (
@@ -41,7 +42,8 @@ function App() {
           <Route path='/' element={ <LiveLocation /> } />
           <Route path='/schedule' element={ <Schedule /> } />
           <Route path='/about' element={ <About /> } />
-	  <Route path='/data' element={ <Data /> } />
+	        <Route path='/data' element={ <Data /> } />
+          <Route path='/static-routes' element={ <MapKitMap vehicles={ null } generateRoutes={ true } /> } />
         </Routes>
         <div class='small feedback-container'>
           <Feedback />
