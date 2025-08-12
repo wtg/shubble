@@ -9,7 +9,8 @@
             "STAC_2",
             "STAC_3",
             "ECAV",
-            "HOUSTON_FIELD_HOUSE"
+            "HOUSTON_FIELD_HOUSE",
+            "STUDENT_UNION"
         ],
 
         "POLYLINE_STOPS": [
@@ -20,7 +21,8 @@
             "STAC_2",
             "STAC_3",
             "ECAV",
-            "HOUSTON_FIELD_HOUSE"
+            "HOUSTON_FIELD_HOUSE",
+            "STUDENT_UNION"
         ],
 
         "STUDENT_UNION": {
@@ -203,7 +205,8 @@
             "CITY_STATION",
             "BLITMAN",
             "WEST_HALL",
-            "_86_FIELD"
+            "_86_FIELD",
+            "STUDENT_UNION"
         ],
 
         "POLYLINE_STOPS": [
@@ -214,7 +217,8 @@
             "CITY_STATION",
             "BLITMAN",
             "WEST_HALL",
-            "_86_FIELD"
+            "_86_FIELD",
+            "STUDENT_UNION"
         ],
 
         "STUDENT_UNION": {
