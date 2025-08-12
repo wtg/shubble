@@ -2,14 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import '../styles/MapKitMap.css';
 import routeData from '../data/routes.json';
 
-
-/**
- * Populate routeData[routeName].ROUTES with an ordered array of polylines.
- * Each polyline is an array of [lat, lon] pairs.
- *
- * @param {Object} routeData - your routeData object
- * @returns {Promise<Object>} resolves with the updated routeData
- */
 async function generateRoutePolylines(updatedRouteData) {
     const directions = new window.mapkit.Directions();
     const promises = [];
@@ -82,6 +74,27 @@ async function generateRoutePolylines(updatedRouteData) {
             if (!Array.isArray(routeInfo.ROUTES[i])) routeInfo.ROUTES[i] = [];
         }
     }
+
+    // Trigger download of updatedRouteData as JSON
+    function downloadJSON(data, filename = 'routeData.json') {
+        const jsonStr = JSON.stringify(data, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+
+        // Clean up
+        setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 100);
+    }
+
+    downloadJSON(updatedRouteData);
 
     return updatedRouteData;
 }
