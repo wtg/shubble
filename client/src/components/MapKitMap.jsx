@@ -4,90 +4,76 @@ import routeData from '../data/routes.json';
 
 async function generateRoutePolylines(updatedRouteData) {
     const directions = new window.mapkit.Directions();
-    const promises = [];
 
     for (const [routeName, routeInfo] of Object.entries(updatedRouteData)) {
-        const stops = routeInfo.STOPS || [];
-        // Make sure ROUTES exists and has the same length as STOPS (number of segments)
-        routeInfo.ROUTES = new Array(stops.length).fill(null);
+        const polyStops = routeInfo.POLYLINE_STOPS || [];
+        const realStops = routeInfo.STOPS || [];
 
-        for (let i = 0; i < stops.length; i++) {
-            const originStop = stops[i];
-            const destStop = stops[(i + 1) % stops.length]; // wrap to first stop for loop
+        // Initialize ROUTES with empty arrays for each real stop segment
+        routeInfo.ROUTES = Array(realStops.length - 1).fill(null).map(() => []);
+
+        let currentRealIndex = 0;
+
+        for (let i = 0; i < polyStops.length - 1; i++) {
+            const originStop = polyStops[i];
+            const destStop = polyStops[i + 1];
 
             const originCoords = routeInfo[originStop]?.COORDINATES;
             const destCoords = routeInfo[destStop]?.COORDINATES;
+            if (!originCoords || !destCoords) continue;
 
-            if (!originCoords || !destCoords) {
-                // missing stops: immediately push a resolved "empty" result so indexes stay consistent
-                promises.push(Promise.resolve({ routeName, index: i, coords: [] }));
-                continue;
-            }
-
-            const request = {
-                origin: new window.mapkit.Coordinate(originCoords[0], originCoords[1]),
-                destination: new window.mapkit.Coordinate(destCoords[0], destCoords[1]),
-            };
-
-            // Wrap the callback API in a promise that resolves with routeName + index + coords
-            const p = new Promise((resolve) => {
-                directions.route(request, (error, data) => {
-                    if (error) {
-                        console.error(`Directions error for ${routeName} segment ${i} (${originStop}→${destStop}):`, error);
-                        // Resolve with empty coords array to avoid rejecting Promise.all
-                        resolve({ routeName, index: i, coords: [] });
-                        return;
+            // Fetch segment polyline
+            const segment = await new Promise((resolve) => {
+                directions.route(
+                    {
+                        origin: new window.mapkit.Coordinate(originCoords[0], originCoords[1]),
+                        destination: new window.mapkit.Coordinate(destCoords[0], destCoords[1]),
+                    },
+                    (error, data) => {
+                        if (error) {
+                            console.error(`Directions error for ${routeName} segment ${originStop}→${destStop}:`, error);
+                            resolve([]);
+                            return;
+                        }
+                        try {
+                            const coords = data.routes[0].polyline.points.map(pt => [pt.latitude, pt.longitude]);
+                            resolve(coords);
+                        } catch (e) {
+                            console.error(`Unexpected response parsing for ${routeName} segment ${originStop}→${destStop}:`, e);
+                            resolve([]);
+                        }
                     }
-
-                    try {
-                        const route = data.routes[0];
-                        const coords = route.polyline.points.map(pt => [pt.latitude, pt.longitude]);
-                        resolve({ routeName, index: i, coords });
-                    } catch (e) {
-                        console.error(`Unexpected response parsing for ${routeName} segment ${i}:`, e);
-                        resolve({ routeName, index: i, coords: [] });
-                    }
-                });
+                );
             });
 
-            promises.push(p);
+            // Add to the current real stop segment
+            if (segment.length > 0) {
+                if (routeInfo.ROUTES[currentRealIndex].length === 0) {
+                    // first segment for this route piece
+                    routeInfo.ROUTES[currentRealIndex].push(...segment);
+                } else {
+                    // append, avoiding duplicate join point
+                    routeInfo.ROUTES[currentRealIndex].push(...segment.slice(1));
+                }
+            }
+
+            // If the destStop is the next real stop, move to the next ROUTES index
+            if (destStop === realStops[currentRealIndex + 1]) {
+                currentRealIndex++;
+            }
         }
     }
 
-    // Wait for every segment promise. Order of results does NOT matter because we use index.
-    const results = await Promise.all(promises);
-
-    // Place the segment coords into the correct route.ROUTES[index]
-    results.forEach((res) => {
-        if (!res) return;
-        const { routeName, index, coords } = res;
-        // If route was removed in the meantime (unlikely), guard
-        if (updatedRouteData[routeName]) {
-            updatedRouteData[routeName].ROUTES[index] = coords;
-        }
-    });
-
-    // Clean up any nulls (shouldn't be many, but safe)
-    for (const routeInfo of Object.values(updatedRouteData)) {
-        if (!Array.isArray(routeInfo.ROUTES)) routeInfo.ROUTES = [];
-        for (let i = 0; i < routeInfo.ROUTES.length; i++) {
-            if (!Array.isArray(routeInfo.ROUTES[i])) routeInfo.ROUTES[i] = [];
-        }
-    }
-
-    // Trigger download of updatedRouteData as JSON
+    // Trigger download
     function downloadJSON(data, filename = 'routeData.json') {
         const jsonStr = JSON.stringify(data, null, 2);
         const blob = new Blob([jsonStr], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
-
         const a = document.createElement('a');
         a.href = url;
         a.download = filename;
         document.body.appendChild(a);
         a.click();
-
-        // Clean up
         setTimeout(() => {
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
@@ -95,7 +81,6 @@ async function generateRoutePolylines(updatedRouteData) {
     }
 
     downloadJSON(updatedRouteData);
-
     return updatedRouteData;
 }
 
