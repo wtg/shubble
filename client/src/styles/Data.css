@@ -45,7 +45,6 @@
 
 .map-container {
     flex: 999;
-    height: 45%;
     overflow: scroll;
 }
 

@@ -1,7 +1,6 @@
 .data-board-container {
     display: flex;
     flex-direction: column;
-    height: 45%;
     flex-grow: 1;
     border-radius: 25px;
     border-style: solid;
