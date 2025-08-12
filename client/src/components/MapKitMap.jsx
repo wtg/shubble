@@ -4,9 +4,6 @@ import routeData from '../data/routes.json';
 
 export default function MapKitMap({ vehicles }) {
 
-    const northRouteData = routeData['NORTH'];
-    const westRouteData = routeData['WEST'];
-
     const mapRef = useRef(null);
     const [mapLoaded, setMapLoaded] = useState(false);
     const token = import.meta.env.VITE_MAPKIT_KEY;
@@ -75,71 +72,42 @@ export default function MapKitMap({ vehicles }) {
     useEffect(() => {
         if (!map) return;
 
-        const unionCoordinate = new window.mapkit.Coordinate(...northRouteData.STUDENT_UNION.COORDINATES);
-        const unionOverlay = new window.mapkit.CircleOverlay(
-            unionCoordinate,
-            15,
-            {
-                style: new window.mapkit.Style(
+        var overlays = [];
+
+        // display stop overlays
+        for (const [route, thisRouteData] of Object.entries(routeData)) {
+            for (const stopName of thisRouteData.STOPS) {
+                const stopCoordinate = new window.mapkit.Coordinate(...thisRouteData[stopName].COORDINATES);
+                const stopOverlay = new window.mapkit.CircleOverlay(
+                    stopCoordinate,
+                    15,
                     {
-                        strokeColor: '#000000',
-                        lineWidth: 2,
+                        style: new window.mapkit.Style(
+                            {
+                                strokeColor: '#000000',
+                                lineWidth: 2,
+                            }
+                        )
                     }
-                )
+                );
+                overlays.push(stopOverlay);
             }
-        );
+        }
 
-        const northRouteOverlays = northRouteData.STOPS.slice(1).map(
-            (stopName) => new window.mapkit.CircleOverlay(
-                new window.mapkit.Coordinate(...northRouteData[stopName].COORDINATES),
-                15,
-                {
-                    style: new window.mapkit.Style(
-                        {
-                            strokeColor: '#000000',
-                            lineWidth: 2,
-                        }
-                    )
-                }
-            )
-        );
+        // display route overlays
+        for (const [route, thisRouteData] of Object.entries(routeData)) {
+            const routeCoordinates = thisRouteData.ROUTES.map(
+                (route) => route.map(([lat, lon]) => new window.mapkit.Coordinate(lat, lon))
+            ).flat();
+            const routePolyline = new mapkit.PolylineOverlay(routeCoordinates, {
+                style: new mapkit.Style({
+                    strokeColor: thisRouteData.COLOR,
+                    lineWidth: 2
+                    })
+            });
+            overlays.push(routePolyline);
+        }
 
-        const westRouteOverlays = westRouteData.STOPS.slice(1).map(
-            (stopName) => new window.mapkit.CircleOverlay(
-                new window.mapkit.Coordinate(...westRouteData[stopName].COORDINATES),
-                15,
-                {
-                    style: new window.mapkit.Style(
-                        {
-                            strokeColor: '#000000',
-                            lineWidth: 2,
-                        }
-                    )
-                }
-            )
-        );
-
-        const northRouteCoordinates = northRouteData.ROUTES.map(
-            (route) => route.map(([lat, lon]) => new window.mapkit.Coordinate(lat, lon))
-        ).flat();
-        const northRoutePolyline = new mapkit.PolylineOverlay(northRouteCoordinates, {
-            style: new mapkit.Style({
-              strokeColor: '#FF0000',
-              lineWidth: 2
-            })
-        });
-
-        const westRouteCoordinates = westRouteData.ROUTES.map(
-            (route) => route.map(([lat, lon]) => new window.mapkit.Coordinate(lat, lon))
-        ).flat();
-        const westRoutePolyline = new mapkit.PolylineOverlay(westRouteCoordinates, {
-            style: new mapkit.Style({
-              strokeColor: '#0000FF',
-              lineWidth: 2
-            })
-        });
-
-        const overlays = [northRoutePolyline, westRoutePolyline, unionOverlay, ...northRouteOverlays, ...westRouteOverlays];
         map.addOverlays(overlays);
 
     }, [map]);
