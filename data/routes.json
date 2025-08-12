@@ -12,6 +12,17 @@
             "HOUSTON_FIELD_HOUSE"
         ],
 
+        "POLYLINE_STOPS": [
+            "STUDENT_UNION",
+            "COLONIE",
+            "GHOST_STOP_1",
+            "STAC_1",
+            "STAC_2",
+            "STAC_3",
+            "ECAV",
+            "HOUSTON_FIELD_HOUSE"
+        ],
+
         "STUDENT_UNION": {
             "COORDINATES": [42.730711, -73.676737],
             "OFFSET": 0,
@@ -21,6 +32,11 @@
             "COORDINATES": [42.737048, -73.670397],
             "OFFSET": 3,
             "NAME": "Colonie"
+        },
+        "GHOST_STOP_1": {
+            "COORDINATES": [42.73864496233213, -73.67284481850872],
+            "OFFSET": 4,
+            "NAME": "Popeyes"
         },
         "STAC_1": {
             "COORDINATES": [42.73562531436627, -73.66477717312188],
@@ -190,6 +206,17 @@
             "_86_FIELD"
         ],
 
+        "POLYLINE_STOPS": [
+            "STUDENT_UNION",
+            "ACADEMY_HALL",
+            "POLYTECHNIC",
+            "GHOST_STOP_1",
+            "CITY_STATION",
+            "BLITMAN",
+            "WEST_HALL",
+            "_86_FIELD"
+        ],
+
         "STUDENT_UNION": {
             "COORDINATES": [42.730711, -73.676737],
             "OFFSET": 0,
@@ -204,6 +231,11 @@
             "COORDINATES": [42.722903, -73.679567],
             "OFFSET": 5,
             "NAME": "Polytechnic"
+        },
+        "GHOST_STOP_1": {
+            "COORDINATES": [42.72778967727594, -73.68846611973184],
+            "OFFSET": 8,
+            "NAME": "5th Ave & Ferry St"
         },
         "CITY_STATION": {
             "COORDINATES": [42.727673, -73.687228],
