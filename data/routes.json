@@ -1,5 +1,7 @@
 {
     "NORTH": {
+        "COLOR": "#FF0000",
+
         "STOPS": [
             "STUDENT_UNION",
             "COLONIE",
@@ -176,6 +178,8 @@
         ]
     },
     "WEST": {
+        "COLOR": "#0000FF",
+
         "STOPS": [
             "STUDENT_UNION",
             "ACADEMY_HALL",
