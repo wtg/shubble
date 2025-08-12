@@ -43,7 +43,7 @@ function App() {
           <Route path='/schedule' element={ <Schedule /> } />
           <Route path='/about' element={ <About /> } />
 	        <Route path='/data' element={ <Data /> } />
-          <Route path='/static-routes' element={ <MapKitMap vehicles={ null } generateRoutes={ true } /> } />
+          <Route path='/generate-static-routes' element={ <MapKitMap vehicles={ null } generateRoutes={ true } /> } />
         </Routes>
         <div class='small feedback-container'>
           <Feedback />
