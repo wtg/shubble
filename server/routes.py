@@ -3,10 +3,11 @@ from . import db
 from .models import Vehicle, GeofenceEvent, VehicleLocation
 from pathlib import Path
 from sqlalchemy import func, and_
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 import logging
 
 logger = logging.getLogger(__name__)
+from data.stops import Stops
 
 bp = Blueprint('routes', __name__)
 
@@ -190,21 +191,22 @@ def data_today():
     
     locations_today_dict = {}
     for location in locations_today:
+        closest_point_data = Stops.get_closest_point((location.latitude, location.longitude))
         vehicle_location = {
             "latitude": location.latitude,
             "longitude": location.longitude,
-            "timestamp": location.timestamp,
-            "speed_mph": location.speed_mph,
-            "heading_degrees": location.heading_degrees,
-            "address_id": location.address_id
+            "closest_route_location": closest_point_data[0].tolist(),
+            "distance": closest_point_data[1],
+            "closest_route": closest_point_data[2],
+            "closest_polyline": closest_point_data[3],
         }
         if location.vehicle_id in locations_today_dict:
-            locations_today_dict[location.vehicle_id]["data"].append(vehicle_location)
+            locations_today_dict[location.vehicle_id]["locations"][location.timestamp.strftime("%H:%M:%S")] = vehicle_location;
         else:
             locations_today_dict[location.vehicle_id] = {
                 "entry": None,
                 "exit": None,
-                "data": [vehicle_location]
+                "locations": {location.timestamp.strftime("%H:%M:%S"): vehicle_location}
             }
 
     for vehicle_id in locations_today_dict:
