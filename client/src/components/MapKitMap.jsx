@@ -213,13 +213,13 @@ export default function MapKitMap({ vehicles, generateRoutes=false }) {
             generateRoutePolylines(routeDataCopy).then((updatedRouteData) => {
                 console.log("Generated route polylines:", updatedRouteData);
                 displayRouteOverlays(updatedRouteData);
+                map.addOverlays(overlays);
             });
         } else {
             // use pre-generated polylines
             displayRouteOverlays(routeData);
+            map.addOverlays(overlays);
         }
-
-        map.addOverlays(overlays);
 
     }, [map]);
 
