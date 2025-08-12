@@ -10,11 +10,11 @@ import routeData from '../data/routes.json';
  * @param {Object} routeData - your routeData object
  * @returns {Promise<Object>} resolves with the updated routeData
  */
-async function generateRoutePolylines(routeData) {
+async function generateRoutePolylines(updatedRouteData) {
     const directions = new window.mapkit.Directions();
     const promises = [];
 
-    for (const [routeName, routeInfo] of Object.entries(routeData)) {
+    for (const [routeName, routeInfo] of Object.entries(updatedRouteData)) {
         const stops = routeInfo.STOPS || [];
         // Make sure ROUTES exists and has the same length as STOPS (number of segments)
         routeInfo.ROUTES = new Array(stops.length).fill(null);
@@ -70,20 +70,20 @@ async function generateRoutePolylines(routeData) {
         if (!res) return;
         const { routeName, index, coords } = res;
         // If route was removed in the meantime (unlikely), guard
-        if (routeData[routeName]) {
-            routeData[routeName].ROUTES[index] = coords;
+        if (updatedRouteData[routeName]) {
+            updatedRouteData[routeName].ROUTES[index] = coords;
         }
     });
 
     // Clean up any nulls (shouldn't be many, but safe)
-    for (const routeInfo of Object.values(routeData)) {
+    for (const routeInfo of Object.values(updatedRouteData)) {
         if (!Array.isArray(routeInfo.ROUTES)) routeInfo.ROUTES = [];
         for (let i = 0; i < routeInfo.ROUTES.length; i++) {
             if (!Array.isArray(routeInfo.ROUTES[i])) routeInfo.ROUTES[i] = [];
         }
     }
 
-    return routeData;
+    return updatedRouteData;
 }
 
 export default function MapKitMap({ vehicles, generateRoutes=false }) {
@@ -196,7 +196,8 @@ export default function MapKitMap({ vehicles, generateRoutes=false }) {
 
         if (generateRoutes) {
             // generate polylines for routes
-            generateRoutePolylines(routeData).then((updatedRouteData) => {
+            const routeDataCopy = JSON.parse(JSON.stringify(routeData)); // deep copy to avoid mutating original
+            generateRoutePolylines(routeDataCopy).then((updatedRouteData) => {
                 console.log("Generated route polylines:", updatedRouteData);
                 displayRouteOverlays(updatedRouteData);
             });
