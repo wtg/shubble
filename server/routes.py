@@ -223,7 +223,7 @@ def data_today():
                         "locations": [location.timestamp.strftime("%H:%M:%S")]
                     })
                 else:
-                    locations_today_dict[location_vehicle_id]["loops"][-1]["locations"].append(location.timestamp.strftime("%H:%M:%S"))
+                    locations_today_dict[location.vehicle_id]["loops"][-1]["locations"].append(location.timestamp.strftime("%H:%M:%S"))
             else:
                 if len(locations_today_dict[location.vehicle_id]["loops"]) != 0 and locations_today_dict[location.vehicle_id]["loops"][-1]["end"] == None:
                     locations_today_dict[location.vehicle_id]["loops"][-1]["end"] = location.timestamp.strftime("%H:%M:%S")
@@ -233,6 +233,8 @@ def data_today():
                         "end": None,
                         "locations": [location.timestamp.strftime("%H:%M:%S")]
                     })
+                else:
+                    locations_today_dict[location.vehicle_id]["breaks"][-1]["locations"].append(location.timestamp.strftime("%H:%M:%S"))
         else:
             locations_today_dict[location.vehicle_id] = {
                 "loops": [],
