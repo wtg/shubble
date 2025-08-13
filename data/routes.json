@@ -9,7 +9,7 @@
       "STAC_3",
       "ECAV",
       "HOUSTON_FIELD_HOUSE",
-      "STUDENT_UNION"
+      "STUDENT_UNION_RETURN"
     ],
     "POLYLINE_STOPS": [
       "STUDENT_UNION",
@@ -94,6 +94,14 @@
       ],
       "OFFSET": 13,
       "NAME": "Houston Field House"
+    },
+    "STUDENT_UNION_RETURN": {
+      "COORDINATES": [
+        42.730711,
+        -73.676737
+      ],
+      "OFFSET": 16,
+      "NAME": "Student Union (Return)"
     },
     "ROUTES": [
       [
@@ -670,7 +678,7 @@
       "BLITMAN",
       "WEST_HALL",
       "_86_FIELD",
-      "STUDENT_UNION"
+      "STUDENT_UNION_RETURN"
     ],
     "POLYLINE_STOPS": [
       "STUDENT_UNION",
@@ -746,6 +754,14 @@
       ],
       "OFFSET": 13,
       "NAME": "86 Field"
+    },
+    "STUDENT_UNION_RETURN": {
+      "COORDINATES": [
+        42.730711,
+        -73.676737
+      ],
+      "OFFSET": 15,
+      "NAME": "Student Union (Return)"
     },
     "ROUTES": [
       [
