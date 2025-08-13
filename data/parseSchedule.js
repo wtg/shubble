@@ -1,5 +1,7 @@
-export function parseSchedule(scheduleData, selectedDay) {
-    const scheduleByLoop = {};
+import scheduleData from './schedule.json';
+
+function aggregateSchedule(scheduleData) {
+    const aggregatedSchedule = [];
     const weeklySchedule = [
         'SUNDAY',
         'MONDAY',
@@ -9,27 +11,31 @@ export function parseSchedule(scheduleData, selectedDay) {
         'FRIDAY',
         'SATURDAY',
     ].map((day) => scheduleData[scheduleData[day]] || []);
-    Object.values(weeklySchedule[selectedDay]).forEach((busSchedule) => {
-        busSchedule.forEach(([time, loop]) => {
-            const timeObj = parseTimeString(time);
-            if (loop in scheduleByLoop) {
-                scheduleByLoop[loop].push(timeObj);
-            } else {
-                scheduleByLoop[loop] = [timeObj];
-            }
-        });
-    });
-    Object.values(scheduleByLoop).forEach((times) => {
-        times.sort((a, b) => {
-            const isA12AM = a.getHours() === 0 && a.getMinutes() === 0;
-            const isB12AM = b.getHours() === 0 && b.getMinutes() === 0;
 
-            if (isA12AM && !isB12AM) return 1;   // a goes after b
-            if (!isA12AM && isB12AM) return -1;  // a goes before b
-            return a - b;                        // otherwise, normal sort
+    for (let i = 0; i < weeklySchedule.length; i++) {
+        aggregatedSchedule.push({});
+        Object.values(weeklySchedule[i]).forEach((busSchedule) => {
+            busSchedule.forEach(([time, loop]) => {
+                const timeObj = parseTimeString(time);
+                if (loop in aggregatedSchedule[i]) {
+                    aggregatedSchedule[i][loop].push(timeObj);
+                } else {
+                    aggregatedSchedule[i][loop] = [timeObj];
+                }
+            });
         });
-    });
-    return scheduleByLoop;
+        Object.values(aggregatedSchedule[i]).forEach((times) => {
+            times.sort((a, b) => {
+                const isA12AM = a.getHours() === 0 && a.getMinutes() === 0;
+                const isB12AM = b.getHours() === 0 && b.getMinutes() === 0;
+
+                if (isA12AM && !isB12AM) return 1;   // a goes after b
+                if (!isA12AM && isB12AM) return -1;  // a goes before b
+                return a - b;                        // otherwise, normal sort
+            });
+        });
+    }
+    return aggregatedSchedule;
 }
 
 export function parseTimeString(timeStr) {
@@ -49,3 +55,5 @@ export function parseTimeString(timeStr) {
     dateObj.setMilliseconds(0);
     return dateObj;
 }
+
+export const aggregatedSchedule = aggregateSchedule(scheduleData);
