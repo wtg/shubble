@@ -40,7 +40,7 @@ class Shuttle:
             case ShuttleState.WAITING:
                 if self.next_state is None:
                     return
-                self.state = self.next_state
+                self.go_to_next_state()
             case _:
                 if not self.follow_path():
                     self.go_to_next_state()
