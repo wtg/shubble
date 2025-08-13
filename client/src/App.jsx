@@ -11,6 +11,7 @@ import About from './pages/About';
 import Feedback from './components/Feedback';
 import Data from './pages/Data';
 import MapKitMap from './components/MapKitMap';
+import routeData from './data/routes.json';
 
 function App() {
   return (
@@ -43,7 +44,7 @@ function App() {
           <Route path='/schedule' element={ <Schedule /> } />
           <Route path='/about' element={ <About /> } />
 	        <Route path='/data' element={ <Data /> } />
-          <Route path='/generate-static-routes' element={ <MapKitMap vehicles={ null } generateRoutes={ true } /> } />
+          <Route path='/generate-static-routes' element={ <MapKitMap routeData={ routeData } vehicles={ null } generateRoutes={ true } /> } />
         </Routes>
         <div class='small feedback-container'>
           <Feedback />
