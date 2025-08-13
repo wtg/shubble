@@ -62,19 +62,25 @@ export default function Data() {
     }
 
     function formatLoopsBreaks(loopBreakList) {
-	var formattedList = [[], []];
-	for (loopOrBreak in loopBreakList) {
+	if (!loopBreakList) {
+	    return "No data given"
+	}
+	var formattedList = [new Array(loopBreakList.length), new Array(loopBreakList.length)];
+	var totalTime = 0;
+	loopBreakList.forEach((l, loopOrBreak) => {
 	    if (loopOrBreak.end == null) {
-		formattedList[0].append("IN PROGRESS");
-		formattedList[1].append(loopOrBreak.start + " - NOW");
+		formattedList[0][l] = "IN PROGRESS";
+		formattedList[1][l] = loopOrBreak.start + " - NOW";
 	    }
 	    else {
 		const dStart = new Date(loopOrBreak.start);
 		const dEnd = new Date(loopOrBreak.end);
-		formattedList[0].append((dStart-dEnd).minutes + " minutes");
-		formattedList[1].append(dStart.toLocaleTimeString() + "-" + dEnd.toLocaleTimeString());
+		totalTime += (dStart-dEnd).minutes;
+		formattedList[0][l] = (dStart-dEnd).minutes;
+		formattedList[1][l] = dStart.toLocaleTimeString() + "-" + dEnd.toLocaleTimeString();
 	    }
-	}
+	})
+	return [formattedList, totalTime];
     }
     
     return (
@@ -110,26 +116,32 @@ export default function Data() {
 		</div>
 
 		{shuttleData ? (
-		    <div className="main-content">
-			<DataBoard
-			    title="Summary"
-			    dataToDisplay={[[formatEntryExit(shuttleData[selectedShuttleID]?.entry, shuttleData[selectedShuttleID]?.exit), "13 loops", "23 minutes of break time"]]}
-			/>
-			<DataBoard
-			    title="Loops"
-			    dataToDisplay={[["12 minutes", "11 minutes"], ["11:07-11:19", "11:23-11:34"]]}
-			/>
-			<DataBoard
-			    title="Breaks"
-			    dataToDisplay={[["17 minutes"], ["12:32-12:49"]]}
-			/>
-			<DataBoard
-			    title="Historical Locations"
-			    dataToDisplay={["..."]}
-			/>
-			<div className="map-container">
-			    <MapKitMap vehicles={ shuttleData } />
-			</div>
+		    <div>
+			{shuttleData[selectedShuttleID] ? (
+			    <div className="main-content">
+				<DataBoard
+				    title="Summary"
+				    dataToDisplay={[[formatEntryExit(shuttleData[selectedShuttleID].entry, shuttleData[selectedShuttleID].exit), shuttleData[selectedShuttleID]["loops"].length + " loops", formatLoopsBreaks(shuttleData[selectedShuttleID]["breaks"])[1] + " minutes of break time"]]}
+				/>
+				<DataBoard
+				    title="Loops"
+				    dataToDisplay={[["12 minutes", "11 minutes"], ["11:07-11:19", "11:23-11:34"]]}
+				/>
+				<DataBoard
+				    title="Breaks"
+				    dataToDisplay={[["17 minutes"], ["12:32-12:49"]]}
+				/>
+				<DataBoard
+				    title="Historical Locations"
+				    dataToDisplay={["..."]}
+				/>
+				<div className="map-container">
+				    <MapKitMap vehicles={ shuttleData } />
+				</div>
+			    </div>
+			) : (
+			    <p>Invalid shuttle selected</p>
+			)}
 		    </div>
 		) : (
 		    <p>No shuttle data given</p>

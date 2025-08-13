@@ -12,6 +12,9 @@ export default function DataBoard({title, dataToDisplay}) {
 			    </th>
 			</tr>
 		    </thead>
+		    {typeof dataToDisplay === 'string' && (
+			<p>{dataToDisplay}</p>
+		    )}
 		    {!Array.isArray(dataToDisplay) || dataToDisplay.length == 0 || !Array.isArray(dataToDisplay[0]) ? (
 			<tbody>
 			    <tr>
