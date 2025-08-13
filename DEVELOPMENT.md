@@ -80,12 +80,19 @@ python -m server.worker
 This will start the worker process that handles background tasks, such as updating vehicle locations. It's important that you run it using `python -m server.worker` (as a python package) so that it can find its local imports.
 
 # Testing the backend
-To test the backend, you can run the test script that simulates shuttles entering RPI and sharing location data. This is done by running a separate Flask app that simulates the Samsara API server. **Note**: even if you're not developing the backend, you may still want to run the test to populate the backend with data.
-To run the test, `cd` into the `/test` directory and run:
+To test the backend, Shubble provides another Flask app that mimics the Samsara API. The test app enables users to trigger shuttle entry, exit, and location updates without needing to set up a real Samsara account or API keys. This is useful for development and testing purposes.
+**Note**: even if you're not developing the backend, you may still want to run the test to populate Shubble with data.
+Like Shubble, the test app is built using Flask and React. Therefore, you must build the frontend before running the test app.
+To build the frontend for the test app, `cd` to the `/test-client` directory and run:
 ```bash
-python test.py
+npm run build
 ```
-This will start a server at `localhost://4000`, which simulates what the Samsara API server would be doing for Shubble in production. It sends simulated webhook requests for vehicles entering/exiting the RPI geofence and sends simulated shuttle location data.
+This will create a static build of the test app in the `/test-client/dist` directory.
+Then, you can run the test app using Flask. From the project root:
+```bash
+python -m test-server.server
+```
+This will start a server at `localhost://8001`, which simulates what the Samsara API server would be doing for Shubble in production. It sends simulated webhook requests for vehicles entering/exiting the RPI geofence and sends simulated shuttle location data.
 It expects the Shubble server to be running on `localhost://8000`, so make sure to start the backend server first.
 
 # Database Migrations
