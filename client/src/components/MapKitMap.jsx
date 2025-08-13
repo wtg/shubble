@@ -179,9 +179,10 @@ export default function MapKitMap({ vehicles, generateRoutes=false }) {
         function displayRouteOverlays(routeData) {
             // display route overlays
             for (const [route, thisRouteData] of Object.entries(routeData)) {
-                const routeCoordinates = thisRouteData.ROUTES.map(
+                const routeCoordinates = thisRouteData.ROUTES?.map(
                     (route) => route.map(([lat, lon]) => new window.mapkit.Coordinate(lat, lon))
                 ).flat();
+                if (!routeCoordinates || routeCoordinates.length === 0) continue;
                 const routePolyline = new mapkit.PolylineOverlay(routeCoordinates, {
                     style: new mapkit.Style({
                         strokeColor: thisRouteData.COLOR,
