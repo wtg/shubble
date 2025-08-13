@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import '../styles/Schedule.css';
 import scheduleData from '../data/schedule.json';
 import routeData from '../data/routes.json';
-import { parseSchedule } from '../data/parseSchedule';
+import { aggregatedSchedule } from '../data/parseSchedule';
 
 export default function Schedule() {
     const now = new Date();
@@ -14,7 +14,7 @@ export default function Schedule() {
     const [schedule, setSchedule] = useState([]);
 
     useEffect(() => {
-        setSchedule(parseSchedule(scheduleData, selectedDay));
+        setSchedule(aggregatedSchedule[selectedDay]);
     }, [selectedDay]);
 
     useEffect(() => {
