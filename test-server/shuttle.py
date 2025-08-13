@@ -88,6 +88,7 @@ class Shuttle:
 
             if self.path_index >= len(self.path):
                 # reached end of path
+                self.location = tuple(self.path[-1][-1])
                 return False
 
             start = self.path[self.path_index][self.subpath_index]
