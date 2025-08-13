@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import '../styles/MapKitMap.css';
-import routeData from '../data/routes.json';
 
 async function generateRoutePolylines(updatedRouteData) {
     const directions = new window.mapkit.Directions();
@@ -84,7 +83,7 @@ async function generateRoutePolylines(updatedRouteData) {
     return updatedRouteData;
 }
 
-export default function MapKitMap({ vehicles, generateRoutes=false }) {
+export default function MapKitMap({ routeData, vehicles, generateRoutes=false }) {
 
     const mapRef = useRef(null);
     const [mapLoaded, setMapLoaded] = useState(false);
@@ -154,7 +153,7 @@ export default function MapKitMap({ vehicles, generateRoutes=false }) {
     // add fixed details to the map
     // includes routes and stops
     useEffect(() => {
-        if (!map) return;
+        if (!map || !routeData) return;
 
         var overlays = [];
 
@@ -181,9 +180,10 @@ export default function MapKitMap({ vehicles, generateRoutes=false }) {
         function displayRouteOverlays(routeData) {
             // display route overlays
             for (const [route, thisRouteData] of Object.entries(routeData)) {
-                const routeCoordinates = thisRouteData.ROUTES.map(
+                const routeCoordinates = thisRouteData.ROUTES?.map(
                     (route) => route.map(([lat, lon]) => new window.mapkit.Coordinate(lat, lon))
                 ).flat();
+                if (!routeCoordinates || routeCoordinates.length === 0) continue;
                 const routePolyline = new mapkit.PolylineOverlay(routeCoordinates, {
                     style: new mapkit.Style({
                         strokeColor: thisRouteData.COLOR,
@@ -208,7 +208,7 @@ export default function MapKitMap({ vehicles, generateRoutes=false }) {
             map.addOverlays(overlays);
         }
 
-    }, [map]);
+    }, [map, routeData]);
 
     // display vehicles on map
     useEffect(() => {
