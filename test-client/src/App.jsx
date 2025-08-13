@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import "./App.css";
 
+const NEXT_STATES = ["waiting", "entering", "looping", "on_break", "exiting"];
+
 function App() {
   const [shuttles, setShuttles] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
@@ -9,23 +11,23 @@ function App() {
     const res = await fetch("/api/shuttles");
     const data = await res.json();
     setShuttles(data);
-    if (data.length && !selectedId) setSelectedId(data[0].id);
+    console.log("Fetched shuttles:", data);
   };
 
   const addShuttle = async () => {
-    const res = await fetch("/api/shuttles", {
+    await fetch("/api/shuttles", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ loop: selectedLoop })
     });
     await fetchShuttles();
   };
 
-  const trigger = async (action) => {
-    await fetch(`/api/shuttles/${selectedId}/action`, {
+  const setNextState = async (nextState) => {
+    if (!selectedId) return;
+    await fetch(`/api/shuttles/${selectedId}/set-next-state`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action })
+      body: JSON.stringify({ state: nextState }),
     });
     await fetchShuttles();
   };
@@ -36,47 +38,64 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
-  const selected = shuttles.find(s => s.id === selectedId);
+  useEffect(() => {
+    if (shuttles.length > 0 && !selectedId) {
+      setSelectedId(shuttles[0].id);
+    }
+  }, [shuttles]);
+
+  const selected = shuttles.find((s) => s.id === selectedId);
 
   return (
     <div className="app">
-      <div className="sidebar">
-        <h2>Shuttles</h2>
-        <select value={selectedLoop} onChange={(e) => setSelectedLoop(e.target.value)}>
-          <option value="north">North Loop</option>
-          <option value="west">West Loop</option>
-        </select>
-        <button onClick={addShuttle}>Add Shuttle</button>
-        <ul>
-          {shuttles.map(shuttle => (
-            <li
-              key={shuttle.id}
-              className={shuttle.id === selectedId ? "selected" : ""}
-              onClick={() => setSelectedId(shuttle.id)}
-            >
-              Shuttle {shuttle.id.slice(-4)} ({shuttle.loop})
-            </li>
-          ))}
-        </ul>
+      <h1>Shuttle Manager</h1>
+      <button onClick={addShuttle}>Add Shuttle</button>
+
+      <div className="tabs">
+        {shuttles.map((shuttle) => (
+          <button
+            key={shuttle.id}
+            className={shuttle.id === selectedId ? "active" : ""}
+            onClick={() => setSelectedId(shuttle.id)}
+          >
+            Shuttle {shuttle.id}
+          </button>
+        ))}
       </div>
-      <div className="details">
-        {selected ? (
-          <>
-            <h2>Shuttle {selected.id}</h2>
-            <p><strong>Loop:</strong> {selected.loop}</p>
-            <p><strong>State:</strong> {selected.state}</p>
-            <p><strong>Speed:</strong> {selected.speed}</p>
-            <p><strong>Location:</strong> {selected.location.toFixed(2)}</p>
-            <div className="buttons">
-              <button onClick={() => trigger("entering")}>Trigger Entry</button>
-              <button onClick={() => trigger("on_break")}>Trigger Break</button>
-              <button onClick={() => trigger("exiting")}>Trigger Exit</button>
-            </div>
-          </>
-        ) : (
-          <p>No shuttle selected</p>
-        )}
-      </div>
+
+      {selected ? (
+        <div className="shuttle-details">
+          <h2>Shuttle {selected.id} Details</h2>
+          <table>
+            <tbody>
+              <tr>
+                <th>ID</th>
+                <td>{selected.id}</td>
+              </tr>
+              <tr>
+                <th>Current State</th>
+                <td>{selected.state}</td>
+              </tr>
+              {/* Add any other shuttle info you want here */}
+            </tbody>
+          </table>
+
+          <h3>Set Next State</h3>
+          <div className="state-buttons">
+            {NEXT_STATES.map((state) => (
+              <button
+                key={state}
+                disabled={selected.next_state === state}
+                onClick={() => setNextState(state)}
+              >
+                {state}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <p>No shuttle selected.</p>
+      )}
     </div>
   );
 }
