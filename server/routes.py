@@ -156,24 +156,13 @@ def data_today():
                 "data": [vehicle_location]
             }
 
-    for vehicle_id in locations_today_dict:
-        first_entry = None
-        last_entry_index = 0
-        last_exit = None
+    for e, geofence_event in enumerate(events_today):
+        if geofence_event.event_type == "geofenceEntry":
+            if "entry" not in locations_today_dict[geofence_event.vehicle_id]: # first entry
+                locations_today_dict[geofence_event.vehicle_id]["entry"] = geofence_event.event_time
+        elif geofence_event.event_type == "geofenceExit":
+            if "entry" in locations_today_dict[geofence_event.vehicle_id]: # makes sure that the vehicle already entered
+                locations_today_dict[geofence_event.vehicle_id]["exit"] = geofence_event.event_time
 
-        for e, geofence_event in enumerate(events_today):
-            if geofence_event.event_type == "GeofenceEntry" and geofence_event.vehicle_id == vehicle_id:
-                if first_entry == None:
-                    first_entry = geofence_event.event_time
-                    last_entry_index = e
-
-        for geofence_event in events_today[last_entry_index:]:
-            if geofence_event.event_type == "GeofenceExit" and geofence_event.vehicle_id == vehicle_id:
-                last_exit = geofence_event.event_time
-
-        locations_today_dict[vehicle_id]["entry"] = first_entry
-        locations_today_dict[vehicle_id]["exit"] = last_exit
-
-   
     return jsonify(locations_today_dict)
 
