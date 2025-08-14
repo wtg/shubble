@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 .button-style {
     background-color: transparent;
     border: none;
@@ -21,6 +22,8 @@
     padding: 2px;
 }
 
+=======
+>>>>>>> ae9fd3b426e5e098672da2a1c45baccf0b77dc5c
 .schedule-scroll {
     padding: 10px 15px;
     overflow: scroll;
@@ -28,8 +31,8 @@
     border-width: thin;
     margin-bottom: 0;
     height: calc(50vh - 150px);
+    min-width: 250px;
 }
-
 
 .schedule-scroll::-webkit-scrollbar-track {
     background: #f1f1f1;
@@ -39,3 +42,22 @@
 .schedule-scroll::-webkit-scrollbar-thumb:hover {
     background: #555;
 }
+<<<<<<< HEAD
+=======
+
+.indented-time {
+    padding-left: 20px;
+}
+
+.schedule-dropdown-style {
+    padding: 5px;
+    font-size: 16px;
+    border: 1px solid;
+    border-radius: 5px;
+    margin: 5px 0 5px 5px;
+}
+
+th.schedule-header {
+    text-align: left;
+}
+>>>>>>> ae9fd3b426e5e098672da2a1c45baccf0b77dc5c
