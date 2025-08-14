@@ -2,17 +2,10 @@ from flask import Blueprint, request, jsonify, send_from_directory
 from . import db
 from .models import Vehicle, GeofenceEvent, VehicleLocation
 from pathlib import Path
-<<<<<<< HEAD
-import os
 from sqlalchemy import func, and_
-from datetime import datetime, timezone
-=======
-from sqlalchemy import func, and_
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 import logging
-
 logger = logging.getLogger(__name__)
->>>>>>> ae9fd3b426e5e098672da2a1c45baccf0b77dc5c
 
 bp = Blueprint('routes', __name__)
 
@@ -167,8 +160,9 @@ def webhook():
 
     except Exception as e:
         db.session.rollback()
-<<<<<<< HEAD
-        return jsonify({'status': 'error', 'message': 'Internal error'}), 500
+
+        logger.exception("Webhook processing failed")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @bp.route('/api/mapkit', methods=['GET'])
 def get_mapkit():
@@ -223,8 +217,3 @@ def data_today():
                 locations_today_dict[geofence_event.vehicle_id]["exit"] = geofence_event.event_time
 
     return jsonify(locations_today_dict)
-
-=======
-        logger.exception("Webhook processing failed")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
->>>>>>> ae9fd3b426e5e098672da2a1c45baccf0b77dc5c
