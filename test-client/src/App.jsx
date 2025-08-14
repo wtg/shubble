@@ -34,7 +34,7 @@ function App() {
 
   useEffect(() => {
     fetchShuttles();
-    const interval = setInterval(fetchShuttles, 5000);
+    const interval = setInterval(fetchShuttles, 100);
     return () => clearInterval(interval);
   }, []);
 

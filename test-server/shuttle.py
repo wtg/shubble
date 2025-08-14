@@ -26,9 +26,8 @@ class Shuttle:
 
         # shuttle properties
         self.last_updated = time.time()
-        self.location = (42.730711, -73.676737)
+        self.location = (0, 0)
         self.speed = 0.0002
-        self.loop = random.choice(list(Stops.routes_data.keys()))
 
         self.path = []
         self.path_index = 0
@@ -48,9 +47,10 @@ class Shuttle:
         self.last_updated = time.time()
 
     def go_to_next_state(self):
-        self.state = self.next_state
-        self.next_state = ShuttleState.WAITING
         match self.state:
+            case ShuttleState.EXITING:
+                self.send_webhook(entry=False)
+        match self.next_state:
             case ShuttleState.ENTERING:
                 self.send_webhook(entry=True)
                 self.path = self.get_entering_path()
@@ -59,48 +59,79 @@ class Shuttle:
             case ShuttleState.ON_BREAK:
                 self.path = self.get_break_path()
             case ShuttleState.EXITING:
-                self.send_webhook(entry=False)
                 self.path = self.get_exiting_path()
+        self.state = self.next_state
+        self.next_state = ShuttleState.WAITING
         self.path_index = 0
+        self.subpath_index = 0
         self.distance_into_segment = 0
 
     def follow_path(self):
+        """
+        Move along the current path based on elapsed time and speed.
+        Returns:
+            True  - if still moving along the path
+            False - if reached the end of the path
+        """
+
+        # If we've completed all path segments, stop
         if self.path_index >= len(self.path):
             return False
 
+        # Distance to travel this update
         travel_distance = self.speed * (time.time() - self.last_updated)
 
+        # Get current segment start/end
         start = self.path[self.path_index][self.subpath_index]
         end = self.path[self.path_index][self.subpath_index + 1]
 
+        # Full length of current segment
         segment_vector = (end[0] - start[0], end[1] - start[1])
-        segment_length = (segment_vector[0]**2 + segment_vector[1]**2) ** 0.5 - self.distance_into_segment
+        segment_length = (segment_vector[0]**2 + segment_vector[1]**2) ** 0.5
 
-        while travel_distance > segment_length:
-            travel_distance -= segment_length
+        # Remaining distance in current segment
+        remaining_distance = segment_length - self.distance_into_segment
+
+        # Consume travel distance, possibly crossing segments
+        while travel_distance > remaining_distance:
+            # Move to the next segment
+            travel_distance -= remaining_distance
             self.subpath_index += 1
-            # move to next path segment if needed
+
+            # If we finished a subpath, move to next path in self.path
             if self.subpath_index >= len(self.path[self.path_index]) - 1:
                 self.path_index += 1
                 self.subpath_index = 0
 
             self.distance_into_segment = 0
 
+            # If we've reached the end of the path entirely
             if self.path_index >= len(self.path):
-                # reached end of path
                 self.location = tuple(self.path[-1][-1])
                 return False
 
+            # Update to the new segment
             start = self.path[self.path_index][self.subpath_index]
             end = self.path[self.path_index][self.subpath_index + 1]
             segment_vector = (end[0] - start[0], end[1] - start[1])
             segment_length = (segment_vector[0]**2 + segment_vector[1]**2) ** 0.5
+            remaining_distance = segment_length  # new segment, starting fresh
 
+        # Advance into the current segment
         self.distance_into_segment += travel_distance
 
+        # Safety check: shouldn't exceed full segment length
+        if self.distance_into_segment > segment_length:
+            logger.error("Distance into segment exceeded segment length, logic error in path following")
+            logger.error(f"Distance: {self.distance_into_segment}, Segment Length: {segment_length}")
+
+        # Compute current location
         segment_unit_vector = (segment_vector[0] / segment_length, segment_vector[1] / segment_length)
-        self.location = (start[0] + segment_unit_vector[0] * self.distance_into_segment,
-                         start[1] + segment_unit_vector[1] * self.distance_into_segment)
+        self.location = (
+            start[0] + segment_unit_vector[0] * self.distance_into_segment,
+            start[1] + segment_unit_vector[1] * self.distance_into_segment
+        )
+
         return True
 
     def send_webhook(self, entry=True):
@@ -178,16 +209,28 @@ class Shuttle:
             return False
 
     def get_entering_path(self):
-        return []
+        return random.choice(
+            [
+                Stops.routes_data['ENTRY1'],
+                # Stops.routes_data['ENTRY2'], entry 2 has a bug
+            ]
+        )['ROUTES']
 
     def get_looping_path(self):
-        return Stops.routes_data[self.loop]['ROUTES']
+        return Stops.routes_data[
+            random.choice(list(Stops.active_routes))
+        ]['ROUTES']
 
     def get_break_path(self):
         return []
 
     def get_exiting_path(self):
-        return []
+        return random.choice(
+            [
+                Stops.routes_data['EXIT1'],
+                Stops.routes_data['EXIT2'],
+            ]
+        )['ROUTES']
 
     def set_next_state(self, next_state: ShuttleState):
         if next_state not in ShuttleState:
@@ -202,7 +245,6 @@ class Shuttle:
             "location": self.location,
             "last_updated": self.last_updated,
             "speed": self.speed,
-            "loop": self.loop,
             "path_index": self.path_index,
             "subpath_index": self.subpath_index,
             "distance_into_segment": self.distance_into_segment

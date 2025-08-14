@@ -17,7 +17,7 @@ shuttle_lock = Lock()
 # --- Background Thread ---
 def update_loop():
     while True:
-        time.sleep(5)
+        time.sleep(0.1)
         with shuttle_lock:
             for shuttle in shuttles.values():
                 shuttle.update_state()
@@ -95,8 +95,6 @@ def mock_feed():
                         }
                     ]
                 })
-
-        logger.info(f'[MOCK API] Returning data: {data}')
 
         return jsonify({
             'data': data,
