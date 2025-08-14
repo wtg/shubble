@@ -1,7 +1,7 @@
 import StatusTag from '../components/StatusTag';
 import TimeTag from '../components/TimeTag';
 
-export default function ShuttleRow({shuttleId, isActive, isAm}) {
+export default function ShuttleRow({ shuttleId, isActive, isAm }) {
     return (
 	<>
 	    <td>{shuttleId}</td>
