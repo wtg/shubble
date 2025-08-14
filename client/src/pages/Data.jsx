@@ -68,18 +68,23 @@ export default function Data() {
 	var formattedList = [new Array(loopBreakList.length), new Array(loopBreakList.length)];
 	var totalTime = 0;
 	loopBreakList.forEach((l, loopOrBreak) => {
+	    const dStart = new Date(loopOrBreak.start);
 	    if (loopOrBreak.end == null) {
 		formattedList[0][l] = "IN PROGRESS";
 		formattedList[1][l] = loopOrBreak.start + " - NOW";
+		const now = new Date();
+		console.log("now: " + now);
+		console.log("Time difference: " + (now - dStart));
+		totalTime += (now - dStart)/(1000 * 60); // convert milliseconds to minutes
 	    }
 	    else {
-		const dStart = new Date(loopOrBreak.start);
 		const dEnd = new Date(loopOrBreak.end);
-		totalTime += (dStart-dEnd).minutes;
-		formattedList[0][l] = (dStart-dEnd).minutes;
+		totalTime += (dStart-dEnd)/(1000 * 60);
+		formattedList[0][l] = (dStart-dEnd)/(1000 * 60); // convert milliseconds to minutes
 		formattedList[1][l] = dStart.toLocaleTimeString() + "-" + dEnd.toLocaleTimeString();
 	    }
 	})
+	console.log("total time: " + totalTime);
 	return [formattedList, totalTime];
     }
     

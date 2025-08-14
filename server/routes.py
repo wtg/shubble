@@ -211,39 +211,39 @@ def data_today():
             "closest_polyline": closest_point_data[3],
         }
         if location.vehicle_id in locations_today_dict:
-            locations_today_dict[location.vehicle_id]["locations"][location.timestamp.strftime("%H:%M:%S")] = vehicle_location
+            locations_today_dict[location.vehicle_id]["locations"][location.timestamp.isoformat()] = vehicle_location
 
             if is_loop:
                 if len(locations_today_dict[location.vehicle_id]["breaks"]) != 0 and locations_today_dict[location.vehicle_id]["breaks"][-1]["end"] == None:
-                    locations_today_dict[location.vehicle_id]["breaks"][-1]["end"] = location.timestamp.strftime("%H:%M:%S")
+                    locations_today_dict[location.vehicle_id]["breaks"][-1]["end"] = location.timestamp.isoformat()
                 if len(locations_today_dict[location.vehicle_id]["loops"]) == 0 or locations_today_dict[location.vehicle_id]["loops"][-1]["end"] != None:
                     locations_today_dict[location.vehicle_id]["loops"].append({
-                        "start": location.timestamp.strftime("%H:%M:%S"),
+                        "start": location.timestamp.isoformat(),
                         "end": None,
-                        "locations": [location.timestamp.strftime("%H:%M:%S")]
+                        "locations": [location.timestamp.isoformat()]
                     })
                 else:
-                    locations_today_dict[location.vehicle_id]["loops"][-1]["locations"].append(location.timestamp.strftime("%H:%M:%S"))
+                    locations_today_dict[location.vehicle_id]["loops"][-1]["locations"].append(location.timestamp.isoformat())
             else:
                 if len(locations_today_dict[location.vehicle_id]["loops"]) != 0 and locations_today_dict[location.vehicle_id]["loops"][-1]["end"] == None:
-                    locations_today_dict[location.vehicle_id]["loops"][-1]["end"] = location.timestamp.strftime("%H:%M:%S")
+                    locations_today_dict[location.vehicle_id]["loops"][-1]["end"] = location.timestamp.isoformat()
                 if len(locations_today_dict[location.vehicle_id]["breaks"]) == 0 or locations_today_dict[location.vehicle_id]["breaks"][-1]["end"] != None:
                     locations_today_dict[location.vehicle_id]["breaks"].append({
-                        "start": location.timestamp.strftime("%H:%M:%S"),
+                        "start": location.timestamp.isoformat(),
                         "end": None,
-                        "locations": [location.timestamp.strftime("%H:%M:%S")]
+                        "locations": [location.timestamp.isoformat()]
                     })
                 else:
-                    locations_today_dict[location.vehicle_id]["breaks"][-1]["locations"].append(location.timestamp.strftime("%H:%M:%S"))
+                    locations_today_dict[location.vehicle_id]["breaks"][-1]["locations"].append(location.timestamp.isoformat())
         else:
             locations_today_dict[location.vehicle_id] = {
                 "loops": [],
                 "breaks": [{
-                    "start": location.timestamp.strftime("%H:%M:%S"),
+                    "start": location.timestamp.isoformat(),
                     "end": None,
-                    "locations": [location.timestamp.strftime("%H:%M:%S")]
+                    "locations": [location.timestamp.isoformat()]
                 }],
-                "locations": {location.timestamp.strftime("%H:%M:%S"): vehicle_location}
+                "locations": {location.timestamp.isoformat(): vehicle_location}
             }
             
 
