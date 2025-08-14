@@ -5,6 +5,18 @@ class Stops:
     with open('data/routes.json', 'r') as f:
         routes_data = json.load(f)
 
+    with open('data/schedule.json', 'r') as f:
+        schedule_data = json.load(f)
+
+    # get active routes from schedule
+    active_routes = set()
+    for day in ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY']:
+        if day in schedule_data:
+            schedule_name = schedule_data[day]
+            for bus_schedule in schedule_data[schedule_name].values():
+                for time, route_name in bus_schedule:
+                    active_routes.add(route_name)
+
     polylines = {}
     for route_name, route in routes_data.items():
         polylines[route_name] = []
