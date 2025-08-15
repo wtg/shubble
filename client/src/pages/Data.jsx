@@ -51,7 +51,7 @@ export default function Data() {
     }
 
     function formatEntryExit(entry, exit) {
-	if (entry === null) {
+	if (entry == null) {
 	    return "Shuttle never entered GeoFence";
 	}
 	var exitStr = "NOW";
@@ -59,6 +59,33 @@ export default function Data() {
 	    exitStr = new Date(exit).toLocaleString();
 	}
 	return new Date(entry).toLocaleTimeString() + "-" + exitStr;
+    }
+
+    function formatLoopsBreaks(loopBreakList) {
+	if (!loopBreakList) {
+	    return "No data given"
+	}
+	var formattedList = [new Array(loopBreakList.length), new Array(loopBreakList.length)];
+	var totalTime = 0;
+	loopBreakList.forEach((l, loopOrBreak) => {
+	    const dStart = new Date(loopOrBreak.start);
+	    if (loopOrBreak.end == null) {
+		formattedList[0][l] = "IN PROGRESS";
+		formattedList[1][l] = loopOrBreak.start + " - NOW";
+		const now = new Date();
+		console.log("now: " + now);
+		console.log("Time difference: " + (now - dStart));
+		totalTime += (now - dStart)/(1000 * 60); // convert milliseconds to minutes
+	    }
+	    else {
+		const dEnd = new Date(loopOrBreak.end);
+		totalTime += (dStart-dEnd)/(1000 * 60);
+		formattedList[0][l] = (dStart-dEnd)/(1000 * 60); // convert milliseconds to minutes
+		formattedList[1][l] = dStart.toLocaleTimeString() + "-" + dEnd.toLocaleTimeString();
+	    }
+	})
+	console.log("total time: " + totalTime);
+	return [formattedList, totalTime];
     }
     
     return (
@@ -77,20 +104,15 @@ export default function Data() {
 			</thead>
 			{shuttleData ? (
 			    <tbody>
-				<tr>
-				    <ShuttleRow
-					shuttleId="038471299"
-					isActive={true}
-					isAm={false}
-				    />
-				</tr>
-				<tr>
-				    <ShuttleRow
-					shuttleId="038471300"
-					isActive={false}
-					isAm={true}
-				    />
-				</tr>
+				{Object.keys(shuttleData).map(vehicleId => (
+				    <tr key={vehicleId}>
+					<ShuttleRow
+					    shuttleId={vehicleId}
+					    isActive={false}
+					    isAm={false}
+					/>
+				    </tr>
+				))}
 			    </tbody>
 			) : (
 			    <p>No shuttle data given</p>
@@ -99,26 +121,32 @@ export default function Data() {
 		</div>
 
 		{shuttleData ? (
-		    <div className="main-content">
-			<DataBoard
-			    title="Summary"
-			    dataToDisplay={[[formatEntryExit(shuttleData[selectedShuttleID]?.entry, shuttleData[selectedShuttleID]?.exit), "13 loops", "23 minutes of break time"]]}
-			/>
-			<DataBoard
-			    title="Loops"
-			    dataToDisplay={[["12 minutes", "11 minutes"], ["11:07-11:19", "11:23-11:34"]]}
-			/>
-			<DataBoard
-			    title="Breaks"
-			    dataToDisplay={[["17 minutes"], ["12:32-12:49"]]}
-			/>
-			<DataBoard
-			    title="Historical Locations"
-			    dataToDisplay={["..."]}
-			/>
-			<div className="map-container">
-			    <MapKitMap vehicles={ shuttleData } />
-			</div>
+		    <div>
+			{shuttleData[selectedShuttleID] ? (
+			    <div className="main-content">
+				<DataBoard
+				    title="Summary"
+				    dataToDisplay={[[formatEntryExit(shuttleData[selectedShuttleID].entry, shuttleData[selectedShuttleID].exit), "13 loops", "23 minutes of break time"]]}
+				/>
+				<DataBoard
+				    title="Loops"
+				    dataToDisplay={[["12 minutes", "11 minutes"], ["11:07-11:19", "11:23-11:34"]]}
+				/>
+				<DataBoard
+				    title="Breaks"
+				    dataToDisplay={[["17 minutes"], ["12:32-12:49"]]}
+				/>
+				<DataBoard
+				    title="Historical Locations"
+				    dataToDisplay={["..."]}
+				/>
+				<div className="map-container">
+				    <MapKitMap vehicles={ shuttleData } />
+				</div>
+			    </div>
+			) : (
+			    <p>Invalid shuttle selected</p>
+			)}
 		    </div>
 		) : (
 		    <p>No shuttle data given</p>
