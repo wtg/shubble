@@ -5,7 +5,6 @@ from pathlib import Path
 from sqlalchemy import func, and_
 from datetime import datetime, date, timezone, timedelta
 import logging
-
 logger = logging.getLogger(__name__)
 from data.stops import Stops
 
@@ -164,13 +163,6 @@ def webhook():
         logger.exception("Webhook processing failed")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-@bp.route('/api/mapkit', methods=['GET'])
-def get_mapkit():
-    api_key = os.environ.get('MAPKIT_API_KEY')
-    if not api_key:
-        return {'status': 'error', 'message': 'MAPKIT_API_KEY not set'}, 400
-    return jsonify(api_key)
-
 @bp.route('/api/today', methods=['GET'])
 def data_today():
     now = datetime.now(timezone.utc)
@@ -245,7 +237,6 @@ def data_today():
                 }],
                 "locations": {location.timestamp.isoformat(): vehicle_location}
             }
-            
 
     for vehicle_id in locations_today_dict:
         first_entry = None
