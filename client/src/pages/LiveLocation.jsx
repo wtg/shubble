@@ -6,10 +6,21 @@ import React, {
 import MapKitMap from '../components/MapKitMap';
 import Schedule from '../components/Schedule';
 import "../styles/LiveLocation.css";
+import routeData from '../data/routes.json';
+import { aggregatedSchedule } from '../data/parseSchedule';
 
 export default function LiveLocation() {
 
     const [location, setLocation] = useState(null);
+    const [filteredRouteData, setFilteredRouteData] = useState({});
+
+    useEffect(() => {
+        setFilteredRouteData(
+            Object.fromEntries(
+                Object.entries(routeData).filter(([routeName]) => aggregatedSchedule.some(daySchedule => routeName in daySchedule))
+            )
+        );
+    }, []);
 
     useEffect(() => {
         const pollLocation = async () => {
@@ -38,7 +49,7 @@ export default function LiveLocation() {
 
     return (
 	<div className = "live-location-div">
-	    <MapKitMap vehicles={ location } />
+	    <MapKitMap routeData={ filteredRouteData } vehicles={ location } />
 	    <div className = "schedule-table">
 		<Schedule />
 	    </div>

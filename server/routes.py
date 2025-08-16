@@ -3,9 +3,8 @@ from . import db
 from .models import Vehicle, GeofenceEvent, VehicleLocation
 from pathlib import Path
 from sqlalchemy import func, and_
-from datetime import datetime, timezone
+from datetime import datetime, date, timezone
 import logging
-
 logger = logging.getLogger(__name__)
 
 bp = Blueprint('routes', __name__)
@@ -14,29 +13,56 @@ bp = Blueprint('routes', __name__)
 @bp.route('/schedule')
 @bp.route('/about')
 @bp.route('/data')
+@bp.route('/generate-static-routes')
 def serve_react():
     root_dir = Path(__file__).parent.parent / 'client' / 'dist'
     return send_from_directory(root_dir, 'index.html')
 
 @bp.route('/api/locations', methods=['GET'])
 def get_locations():
-    # Subquery: get the max timestamp per vehicle_id
-    subquery = db.session.query(
+    # Start of today for filtering today's geofence events
+    start_of_today = datetime.combine(date.today(), datetime.min.time())
+
+    # Subquery: latest geofence event today per vehicle
+    latest_geofence_events = db.session.query(
+        GeofenceEvent.vehicle_id,
+        func.max(GeofenceEvent.event_time).label('latest_time')
+    ).filter(
+        GeofenceEvent.event_time >= start_of_today
+    ).group_by(GeofenceEvent.vehicle_id).subquery()
+
+    # Join to get full geofence event rows where event is geofenceEntry
+    geofence_entries = db.session.query(GeofenceEvent.vehicle_id).join(
+        latest_geofence_events,
+        and_(
+            GeofenceEvent.vehicle_id == latest_geofence_events.c.vehicle_id,
+            GeofenceEvent.event_time == latest_geofence_events.c.latest_time
+        )
+    ).filter(GeofenceEvent.event_type == 'geofenceEntry').subquery()
+
+    # Subquery: latest vehicle location per vehicle
+    latest_locations = db.session.query(
         VehicleLocation.vehicle_id,
         func.max(VehicleLocation.timestamp).label('latest_time')
+    ).filter(
+        VehicleLocation.vehicle_id.in_(db.session.query(geofence_entries.c.vehicle_id))
     ).group_by(VehicleLocation.vehicle_id).subquery()
 
-    # Join VehicleLocation on vehicle_id and timestamp to get latest rows
-    latest_locations = db.session.query(VehicleLocation).join(
-        subquery,
-        (VehicleLocation.vehicle_id == subquery.c.vehicle_id) &
-        (VehicleLocation.timestamp == subquery.c.latest_time)
+    # Join to get full location and vehicle info for vehicles in geofence
+    results = db.session.query(VehicleLocation, Vehicle).join(
+        latest_locations,
+        and_(
+            VehicleLocation.vehicle_id == latest_locations.c.vehicle_id,
+            VehicleLocation.timestamp == latest_locations.c.latest_time
+        )
+    ).join(
+        Vehicle, VehicleLocation.vehicle_id == Vehicle.id
     ).all()
 
-    # Prepare JSON response
-    result = {}
-    for loc in latest_locations:
-        result[loc.vehicle_id] = {
+    # Format response
+    response = {}
+    for loc, vehicle in results:
+        response[loc.vehicle_id] = {
             'name': loc.name,
             'latitude': loc.latitude,
             'longitude': loc.longitude,
@@ -47,9 +73,15 @@ def get_locations():
             'formatted_location': loc.formatted_location,
             'address_id': loc.address_id,
             'address_name': loc.address_name,
+            'vehicle_name': vehicle.name,
+            'license_plate': vehicle.license_plate,
+            'vin': vehicle.vin,
+            'asset_type': vehicle.asset_type,
+            'gateway_model': vehicle.gateway_model,
+            'gateway_serial': vehicle.gateway_serial,
         }
 
-    return jsonify(result)
+    return jsonify(response)
 
 @bp.route('/api/webhook', methods=['POST'])
 def webhook():
@@ -128,6 +160,7 @@ def webhook():
 
     except Exception as e:
         db.session.rollback()
+
         logger.exception("Webhook processing failed")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
@@ -167,25 +200,12 @@ def data_today():
                 "exit": None,
                 "data": [vehicle_location]
             }
+    for e, geofence_event in enumerate(events_today):
+        if geofence_event.event_type == "geofenceEntry":
+            if "entry" not in locations_today_dict[geofence_event.vehicle_id]: # first entry
+                locations_today_dict[geofence_event.vehicle_id]["entry"] = geofence_event.event_time
+        elif geofence_event.event_type == "geofenceExit":
+            if "entry" in locations_today_dict[geofence_event.vehicle_id]: # makes sure that the vehicle already entered
+                locations_today_dict[geofence_event.vehicle_id]["exit"] = geofence_event.event_time
 
-    for vehicle_id in locations_today_dict:
-        first_entry = None
-        last_entry_index = 0
-        last_exit = None
-
-        for e, geofence_event in enumerate(events_today):
-            if geofence_event.event_type == "GeofenceEntry" and geofence_event.vehicle_id == vehicle_id:
-                if first_entry == None:
-                    first_entry = geofence_event.event_time
-                    last_entry_index = e
-
-        for geofence_event in events_today[last_entry_index:]:
-            if geofence_event.event_type == "GeofenceExit" and geofence_event.vehicle_id == vehicle_id:
-                last_exit = geofence_event.event_time
-
-        locations_today_dict[vehicle_id]["entry"] = first_entry
-        locations_today_dict[vehicle_id]["exit"] = last_exit
-
-   
     return jsonify(locations_today_dict)
-

@@ -1,91 +1,84 @@
-.header {
-    width: 90%;
-}
-
-.reload-button {
-    height: 50px;
-    width: 50px;
-}
-
-.flex-header-reload {
+.page-container {
     display: flex;
-    flex-direction: row;
-    gap: 20px;
-    align-items: center;
+    width: 100%;
+    height: auto;
 }
 
-table {
-    width: 100%;
-    text-align: center;
+.sidebar {
+    width: 300px;
+    background: #f5f5f5;
+    border: solid 2px;
     border-collapse: collapse;
+    padding: 20px;
     margin: 0;
     padding: 0;
-    border-spacing: 0;
+    text-align: center;
 }
 
-th {
-  border-right: 1px solid;
-  padding: 5px;
+.sidebar-table {
+    width: 100%;
+    border-collapse: collapse;
 }
 
-td {
-  border-right: 1px solid;
-  padding: 5px;
-}
-
-th:last-child, td:last-child {
-  border-right: none;
-}
-
-.dropdown-style {
-    padding: 5px;
-    font-size: 20px;
-    border: 1px solid;
-    border-radius: 5px;
-}
-
-.left-screen {
-    width: 30vw;
-}
-
-.dropdown-p-style {
+.sidebar-table th {
+    padding: 10px 20px;
     font-size: 20px;
 }
 
-.table-map-sidebyside {
+.sidebar-table tr {
+    border-bottom: 2px solid;
+}
+
+.sidebar-table td {
+    padding: 8px 12px;
+}
+
+.main-content {
     display: flex;
+    flex: 1;
     flex-direction: row;
-    gap: 50px;
-    width: 90%;
+    padding: 20px;
+    gap: 20px;
+    min-width: 0;
+    overflow: hidden;
 }
 
-.location-table-overflow-scroll {
-    padding: 5px;
+.map-container {
+    flex: 999;
     overflow: scroll;
-    border-style: solid;
-    border-width: thin;
-    height: calc(70vh - 150px);
 }
 
-.location-table-overflow-scroll::-webkit-scrollbar-track {
-    background: #f1f1f1;
-    border-radius: 10px;
-}
-
-.location-table-overflow-scroll::-webkit-scrollbar-thumb:hover {
-    background: #555;
-}
-
-@media (max-width: 768px){
-    .table-map-sidebyside {
-	flex-direction: column-reverse;
+@media screen and (max-width: 768px) {
+    .sidebar-table tbody tr:last-child {
+	border-bottom: none;
+    }
+    
+    .sidebar {
+	width: 100%;
+    }
+    
+    .page-container {
+	flex-direction: column;
+	justify-content: center;
     }
 
-    .no-locations-found-style {
-	width: 90vw;
+    .main-content {
+	flex-direction: column;
+	width: 100vw;
     }
 
-    .left-screen {
-	width: 80vw;
+    .map-container {
+	width: 90%;
+	height: 50vh;
+    }
+}
+
+@media screen and (min-width: 768px) {
+    .main-content {
+	flex-wrap: wrap;
+    }
+
+    .map-container {
+	min-width: 60%;
     }
 }

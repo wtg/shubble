@@ -10,6 +10,8 @@ import Schedule from './components/Schedule';
 import About from './pages/About';
 import Feedback from './components/Feedback';
 import Data from './pages/Data';
+import MapKitMap from './components/MapKitMap';
+import routeData from './data/routes.json';
 
 function App() {
   return (
@@ -36,23 +38,24 @@ function App() {
           </ul>
         </nav>
       </header>
-      <div className="App">
-        <Routes>
-          <Route path='/' element={ <LiveLocation /> } />
-          <Route path='/schedule' element={ <Schedule /> } />
-          <Route path='/about' element={ <About /> } />
-	  <Route path='/data' element={ <Data /> } />
-        </Routes>
-        <div class='small feedback-container'>
-          <Feedback />
-        </div>
-      </div>
-      <footer>
-        <nav className='small'>
-          <ul>
-            <li>
-              <Link to='/about'>
-                <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 512 512"><path fill="#444" fill-rule="evenodd" d="M256 42.667C138.18 42.667 42.667 138.179 42.667 256c0 117.82 95.513 213.334 213.333 213.334c117.822 0 213.334-95.513 213.334-213.334S373.822 42.667 256 42.667m26.714 128c0 15.468-11.262 26.667-26.497 26.667c-15.851 0-26.837-11.2-26.837-26.963c0-15.15 11.283-26.37 26.837-26.37c15.235 0 26.497 11.22 26.497 26.666m-48 64h42.666v128h-42.666z"/></svg>
+	<div className="App">
+            <Routes>
+		<Route path='/' element={ <LiveLocation /> } />
+		<Route path='/schedule' element={ <Schedule /> } />
+		<Route path='/about' element={ <About /> } />
+		<Route path='/data' element={ <Data /> } />
+		<Route path='/generate-static-routes' element={ <MapKitMap routeData={ routeData } vehicles={ null } generateRoutes={ true } /> } />
+            </Routes>
+            <div class='small feedback-container'>
+		<Feedback />
+            </div>
+	</div>
+	<footer>
+            <nav className='small'>
+		<ul>
+		    <li>
+			<Link to='/about'>
+			    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 512 512"><path fill="#444" fill-rule="evenodd" d="M256 42.667C138.18 42.667 42.667 138.179 42.667 256c0 117.82 95.513 213.334 213.333 213.334c117.822 0 213.334-95.513 213.334-213.334S373.822 42.667 256 42.667m26.714 128c0 15.468-11.262 26.667-26.497 26.667c-15.851 0-26.837-11.2-26.837-26.963c0-15.15 11.283-26.37 26.837-26.37c15.235 0 26.497 11.22 26.497 26.666m-48 64h42.666v128h-42.666z"/></svg>
               </Link>
             </li>
             <li>
