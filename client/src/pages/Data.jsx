@@ -69,11 +69,12 @@ export default function Data() {
 	var totalTime = 0;
 	loopBreakList.forEach((l, loopOrBreak) => {
 	    const dStart = new Date(loopOrBreak.start);
+	    console.log("loopOrBreak.start: " + loopOrBreak.start);
 	    if (loopOrBreak.end == null) {
 		formattedList[0][l] = "IN PROGRESS";
 		formattedList[1][l] = loopOrBreak.start + " - NOW";
 		const now = new Date();
-		console.log("now: " + now);
+		console.log("dStart: " + dStart);
 		console.log("Time difference: " + (now - dStart));
 		totalTime += (now - dStart)/(1000 * 60); // convert milliseconds to minutes
 	    }
