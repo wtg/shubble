@@ -63,29 +63,26 @@ export default function Data() {
 
     function formatLoopsBreaks(loopBreakList) {
 	if (!loopBreakList) {
+	    console.log("no data given");
 	    return "No data given"
 	}
 	var formattedList = [new Array(loopBreakList.length), new Array(loopBreakList.length)];
 	var totalTime = 0;
-	loopBreakList.forEach((l, loopOrBreak) => {
+	loopBreakList.forEach((loopOrBreak, l) => {
 	    const dStart = new Date(loopOrBreak.start);
-	    console.log("loopOrBreak.start: " + loopOrBreak.start);
 	    if (loopOrBreak.end == null) {
 		formattedList[0][l] = "IN PROGRESS";
 		formattedList[1][l] = loopOrBreak.start + " - NOW";
 		const now = new Date();
-		console.log("dStart: " + dStart);
-		console.log("Time difference: " + (now - dStart));
-		totalTime += (now - dStart)/(1000 * 60); // convert milliseconds to minutes
+		totalTime += Math.round((now - dStart)/(1000 * 60)); // convert milliseconds to minutes
 	    }
 	    else {
 		const dEnd = new Date(loopOrBreak.end);
 		totalTime += (dStart-dEnd)/(1000 * 60);
-		formattedList[0][l] = (dStart-dEnd)/(1000 * 60); // convert milliseconds to minutes
+		formattedList[0][l] = Math.round((dStart-dEnd)/(1000 * 60)); // convert milliseconds to minutes
 		formattedList[1][l] = dStart.toLocaleTimeString() + "-" + dEnd.toLocaleTimeString();
 	    }
 	})
-	console.log("total time: " + totalTime);
 	return [formattedList, totalTime];
     }
     
