@@ -3,11 +3,7 @@ from . import db
 from .models import Vehicle, GeofenceEvent, VehicleLocation
 from pathlib import Path
 from sqlalchemy import func, and_
-<<<<<<< HEAD
 from datetime import datetime, date, timezone
-=======
-from datetime import datetime, timezone
->>>>>>> shubble-data
 import logging
 logger = logging.getLogger(__name__)
 
@@ -164,7 +160,6 @@ def webhook():
 
     except Exception as e:
         db.session.rollback()
-<<<<<<< HEAD
 
         logger.exception("Webhook processing failed")
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -175,10 +170,6 @@ def get_mapkit():
     if not api_key:
         return {'status': 'error', 'message': 'MAPKIT_API_KEY not set'}, 400
     return jsonify(api_key)
-=======
-        logger.exception("Webhook processing failed")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
->>>>>>> shubble-data
 
 @bp.route('/api/today', methods=['GET'])
 def data_today():
@@ -216,8 +207,6 @@ def data_today():
                 "exit": None,
                 "data": [vehicle_location]
             }
-
-<<<<<<< HEAD
     for e, geofence_event in enumerate(events_today):
         if geofence_event.event_type == "geofenceEntry":
             if "entry" not in locations_today_dict[geofence_event.vehicle_id]: # first entry
@@ -227,26 +216,3 @@ def data_today():
                 locations_today_dict[geofence_event.vehicle_id]["exit"] = geofence_event.event_time
 
     return jsonify(locations_today_dict)
-=======
-    for vehicle_id in locations_today_dict:
-        first_entry = None
-        last_entry_index = 0
-        last_exit = None
-
-        for e, geofence_event in enumerate(events_today):
-            if geofence_event.event_type == "GeofenceEntry" and geofence_event.vehicle_id == vehicle_id:
-                if first_entry == None:
-                    first_entry = geofence_event.event_time
-                    last_entry_index = e
-
-        for geofence_event in events_today[last_entry_index:]:
-            if geofence_event.event_type == "GeofenceExit" and geofence_event.vehicle_id == vehicle_id:
-                last_exit = geofence_event.event_time
-
-        locations_today_dict[vehicle_id]["entry"] = first_entry
-        locations_today_dict[vehicle_id]["exit"] = last_exit
-
-   
-    return jsonify(locations_today_dict)
-
->>>>>>> shubble-data
