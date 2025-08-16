@@ -126,7 +126,7 @@ export default function Data() {
 			    <div className="main-content">
 				<DataBoard
 				    title="Summary"
-				    dataToDisplay={[[formatEntryExit(shuttleData[selectedShuttleID].entry, shuttleData[selectedShuttleID].exit), "13 loops", "23 minutes of break time"]]}
+				    dataToDisplay={[["11:05 AM - NOW", "13 loops", "23 minutes of break time"]]}
 				/>
 				<DataBoard
 				    title="Loops"
