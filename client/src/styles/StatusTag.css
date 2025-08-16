@@ -1,11 +1,13 @@
 .active-tag {
     border-radius: 15px;
+    padding: 3px 5px;
     background-color: #54f542;
     text-align: center;
 }
 
 .inactive-tag {
     border-radius: 15px;
+    padding: 3px 5px;
     background-color: red;
     text-align: center;
 }
