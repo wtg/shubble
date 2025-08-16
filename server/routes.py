@@ -244,13 +244,13 @@ def data_today():
         last_exit = None
 
         for e, geofence_event in enumerate(events_today):
-            if geofence_event.event_type == "GeofenceEntry" and geofence_event.vehicle_id == vehicle_id:
+            if geofence_event.event_type == "geofenceEntry" and geofence_event.vehicle_id == vehicle_id:
                 if first_entry == None:
                     first_entry = geofence_event.event_time
                     last_entry_index = e
 
         for geofence_event in events_today[last_entry_index:]:
-            if geofence_event.event_type == "GeofenceExit" and geofence_event.vehicle_id == vehicle_id:
+            if geofence_event.event_type == "geofenceExit" and geofence_event.vehicle_id == vehicle_id:
                 last_exit = geofence_event.event_time
 
         locations_today_dict[vehicle_id]["entry"] = first_entry
