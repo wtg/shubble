@@ -93,7 +93,8 @@ class Stops:
         Check if the given point is close enough to any stop.
         :param origin_point: A tuple or list with (latitude, longitude) coordinates.
         :param threshold: Distance threshold to consider as "at stop".
-        :return: the stop name if close enough, otherwise None.
+        :return: A tuple with (the route name if close enough, otherwise None,
+                the stop name if close enough, otherwise None).
         """
         for route_name, route in cls.routes_data.items():
             for stop in route.get('STOPS', []):
