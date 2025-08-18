@@ -63,7 +63,6 @@ export default function Data() {
 
     function formatLoopsBreaks(loopBreakList) {
 	if (!loopBreakList) {
-	    console.log("no data given");
 	    return "No data given"
 	}
 	var formattedList = [new Array(loopBreakList.length), new Array(loopBreakList.length)];
@@ -128,11 +127,11 @@ export default function Data() {
 				/>
 				<DataBoard
 				    title="Loops"
-				    dataToDisplay={[["12 minutes", "11 minutes"], ["11:07-11:19", "11:23-11:34"]]}
+				    dataToDisplay={[formatLoopsBreaks(shuttleData[selectedShuttleID]["loops"])[0], formatLoopsBreaks(shuttleData[selectedShuttleID]["loops"])[1]]}
 				/>
 				<DataBoard
 				    title="Breaks"
-				    dataToDisplay={[["17 minutes"], ["12:32-12:49"]]}
+				    dataToDisplay={[formatLoopsBreaks(shuttleData[selectedShuttleID]["breaks"])[0], formatLoopsBreaks(shuttleData[selectedShuttleID]["breaks"])[1]]}
 				/>
 				<DataBoard
 				    title="Historical Locations"

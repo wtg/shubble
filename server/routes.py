@@ -197,11 +197,14 @@ def data_today():
         vehicle_location = {
             "latitude": location.latitude,
             "longitude": location.longitude,
-            "closest_route_location": closest_point_data[0].tolist(),
+            "closest_route_location": None,
             "distance": closest_point_data[1],
             "closest_route": closest_point_data[2],
             "closest_polyline": closest_point_data[3],
         }
+
+        if closest_point_data[0] != None:
+            vehicle_locaiton["closest_route_location"] = closest_point_data[0].tolist()
         if location.vehicle_id in locations_today_dict:
             locations_today_dict[location.vehicle_id]["locations"][location.timestamp.isoformat()] = vehicle_location
 
