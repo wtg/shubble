@@ -71,7 +71,7 @@ export default function Data() {
 	    const dStart = new Date(loopOrBreak.start);
 	    if (loopOrBreak.end == null) {
 		formattedList[0][l] = "IN PROGRESS";
-		formattedList[1][l] = dStart.toLocaleTimeString() + " - NOW";
+		formattedList[1][l] = dStart.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true }) + " - NOW";
 		const now = new Date();
 		totalTime += Math.round((now - dStart)/(1000 * 60)); // convert milliseconds to minutes
 	    }
@@ -111,7 +111,7 @@ export default function Data() {
 		}
 		
 		formattedList[0][l] = duration;
-		formattedList[1][l] = dStart.toLocaleTimeString() + "-" + dEnd.toLocaleTimeString();
+		formattedList[1][l] = dStart.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true }) + " - " + dEnd.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true });
 	    }
 	})
 	if (totalTime == 1) {
