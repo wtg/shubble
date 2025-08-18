@@ -82,6 +82,36 @@ export default function Data() {
 		formattedList[1][l] = dStart.toLocaleTimeString() + "-" + dEnd.toLocaleTimeString();
 	    }
 	})
+	if (totalTime == 1) {
+	    totalTime = totalTime + " minute";
+	}
+	else if (typeof totalTime == "number") {
+	    if (totalTime >= 60) {
+		var minutes = totalTime;
+		totalTime = 0;
+		while (minutes >= 60) {
+		    minutes -= 60;
+		    totalTime += 1;
+		}
+		if (totalTime == 1) {
+		    totalTime = totalTime + " hour";
+		}
+		else if (typeof totalTime == "number") {
+		    totalTime = totalTime + " hours";
+		}
+		if (minutes == 1) {
+		    totalTime = totalTime + ", " + minutes + " minute";
+		}
+		else if (typeof minutes == "number") {
+		    totalTime = totalTime + ", " + minutes + " minutes";
+		}
+	   
+	    }
+	    else {
+		totalTime = totalTime + " minutes";
+	    }
+	
+	}
 	return [formattedList, totalTime];
     }
     
@@ -123,7 +153,7 @@ export default function Data() {
 			    <div className="main-content">
 				<DataBoard
 				    title="Summary"
-				    dataToDisplay={[[formatEntryExit(shuttleData[selectedShuttleID].entry, shuttleData[selectedShuttleID].exit), shuttleData[selectedShuttleID]["loops"].length + " loops", formatLoopsBreaks(shuttleData[selectedShuttleID]["breaks"])[1] + " minutes of break time"]]}
+				    dataToDisplay={[[formatEntryExit(shuttleData[selectedShuttleID].entry, shuttleData[selectedShuttleID].exit), shuttleData[selectedShuttleID]["loops"].length + " loops", formatLoopsBreaks(shuttleData[selectedShuttleID]["breaks"])[1] + " of break time"]]}
 				/>
 				<DataBoard
 				    title="Loops"
