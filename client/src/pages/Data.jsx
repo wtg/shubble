@@ -71,7 +71,7 @@ export default function Data() {
 	    const dStart = new Date(loopOrBreak.start);
 	    if (loopOrBreak.end == null) {
 		formattedList[0][l] = "IN PROGRESS";
-		formattedList[1][l] = loopOrBreak.start + " - NOW";
+		formattedList[1][l] = dStart.toLocaleTimeString() + " - NOW";
 		const now = new Date();
 		totalTime += Math.round((now - dStart)/(1000 * 60)); // convert milliseconds to minutes
 	    }

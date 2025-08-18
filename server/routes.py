@@ -189,22 +189,24 @@ def data_today():
             time_since_movement += location.timestamp - locations_today[l-1].timestamp
         else:
             time_since_movement = location.timestamp - location.timestamp
-        closest_point_data = Stops.get_closest_point((location.latitude, location.longitude))
-        if not is_loop and closest_point_data[2] == "STUDENT_UNION":
+        print((location.latitude, location.longitude))
+        point, distance, route_name, polyline_index = Stops.get_closest_point((location.latitude, location.longitude))
+        _, stop = Stops.is_at_stop((location.latitude, location.longitude))
+        if not is_loop and stop == "STUDENT_UNION":
             is_loop = True
-        if is_loop and closest_point_data[1] > 0.0002 or time_since_movement >= timedelta(minutes=5):
+        if is_loop and distance > 0.0002 or time_since_movement >= timedelta(minutes=5):
             is_loop = False
         vehicle_location = {
             "latitude": location.latitude,
             "longitude": location.longitude,
             "closest_route_location": None,
-            "distance": closest_point_data[1],
-            "closest_route": closest_point_data[2],
-            "closest_polyline": closest_point_data[3],
+            "distance": distance,
+            "closest_route": route_name,
+            "closest_polyline": polyline_index,
         }
 
-        if closest_point_data[0] != None:
-            vehicle_locaiton["closest_route_location"] = closest_point_data[0].tolist()
+        if point is not None:
+            vehicle_location["closest_route_location"] = point.tolist()
         if location.vehicle_id in locations_today_dict:
             locations_today_dict[location.vehicle_id]["locations"][location.timestamp.isoformat()] = vehicle_location
 
