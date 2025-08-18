@@ -77,8 +77,8 @@ export default function Data() {
 	    }
 	    else {
 		const dEnd = new Date(loopOrBreak.end);
-		totalTime += Math.round((dStart-dEnd)/(1000 * 60)); // convert milliseconds to minutes
-		formattedList[0][l] = Math.round((dStart-dEnd)/(1000 * 60)); // convert milliseconds to minutes
+		totalTime += Math.round((dEnd-dStart)/(1000 * 60)); // convert milliseconds to minutes
+		formattedList[0][l] = Math.round((dEnd-dStart)/(1000 * 60)); // convert milliseconds to minutes
 		formattedList[1][l] = dStart.toLocaleTimeString() + "-" + dEnd.toLocaleTimeString();
 	    }
 	})
