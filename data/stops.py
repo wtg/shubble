@@ -18,7 +18,8 @@ class Stops:
                     active_routes.add(route_name)
 
     polylines = {}
-    for route_name, route in routes_data.items():
+    for route_name in active_routes:
+        route = routes_data.get(route_name)
         polylines[route_name] = []
         for polyline in route.get('ROUTES', []):
             polylines[route_name].append(np.array(polyline))
