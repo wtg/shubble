@@ -78,7 +78,39 @@ export default function Data() {
 	    else {
 		const dEnd = new Date(loopOrBreak.end);
 		totalTime += Math.round((dEnd-dStart)/(1000 * 60)); // convert milliseconds to minutes
-		formattedList[0][l] = Math.round((dEnd-dStart)/(1000 * 60)); // convert milliseconds to minutes
+		var duration = Math.round((dEnd-dStart)/(1000 * 60)); // convert milliseconds to minutes
+		if (duration == 1) {
+		    duration = duration + " minute";
+		}
+		else if (typeof duration == "number") {
+		    if (duration >= 60) {
+			var minutes = duration;
+			duration = 0;
+			while (minutes >= 60) {
+			    minutes -= 60;
+			    duration += 1;
+			}
+			if (duration == 1) {
+			    duration = duration + " hour";
+			}
+			else if (typeof duration == "number") {
+			    duration = duration + " hours";
+			}
+			if (minutes == 1) {
+			    duration = duration + ", " + minutes + " minute";
+			}
+			else if (typeof minutes == "number") {
+			    duration = duration + ", " + minutes + " minutes";
+			}
+			
+		    }
+		    else {
+			duration = duration + " minutes";
+		    }
+		    
+		}
+		
+		formattedList[0][l] = duration;
 		formattedList[1][l] = dStart.toLocaleTimeString() + "-" + dEnd.toLocaleTimeString();
 	    }
 	})
