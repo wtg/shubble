@@ -46,8 +46,17 @@ export default function Data() {
 	if (tStamp === null) {
 	    return "timestamp was set to null";
 	}
-	var timeStampDate = new Date(tStamp);
-	return timeStampDate.toLocaleTimeString();
+	var hours = tStamp.getHours();
+	var minutes = tStamp.getMinutes();
+	var amOrPm = " AM";
+	if (hours > 12) {
+	    hours -= 12;
+	    amOrPm = " PM";
+	}
+	if (minutes < 10) {
+	    minutes = "0" + minutes;
+	}
+	return hours + ":" + minutes + amOrPm;
     }
 
     function formatEntryExit(entry, exit) {
@@ -71,7 +80,7 @@ export default function Data() {
 	    const dStart = new Date(loopOrBreak.start);
 	    if (loopOrBreak.end == null) {
 		formattedList[0][l] = "IN PROGRESS";
-		formattedList[1][l] = dStart.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true }) + " - NOW";
+		formattedList[1][l] = formatTimestamp(dStart) + " - NOW";
 		const now = new Date();
 		totalTime += Math.round((now - dStart)/(1000 * 60)); // convert milliseconds to minutes
 	    }
@@ -111,7 +120,7 @@ export default function Data() {
 		}
 		
 		formattedList[0][l] = duration;
-		formattedList[1][l] = dStart.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true }) + " - " + dEnd.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true });
+		formattedList[1][l] = formatTimestamp(dStart) + " - " + formatTimestamp(dEnd);
 	    }
 	})
 	if (totalTime == 1) {
