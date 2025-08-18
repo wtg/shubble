@@ -77,7 +77,7 @@ export default function Data() {
 	    }
 	    else {
 		const dEnd = new Date(loopOrBreak.end);
-		totalTime += (dStart-dEnd)/(1000 * 60);
+		totalTime += Math.round((dStart-dEnd)/(1000 * 60)); // convert milliseconds to minutes
 		formattedList[0][l] = Math.round((dStart-dEnd)/(1000 * 60)); // convert milliseconds to minutes
 		formattedList[1][l] = dStart.toLocaleTimeString() + "-" + dEnd.toLocaleTimeString();
 	    }
@@ -127,11 +127,11 @@ export default function Data() {
 				/>
 				<DataBoard
 				    title="Loops"
-				    dataToDisplay={[formatLoopsBreaks(shuttleData[selectedShuttleID]["loops"])[0], formatLoopsBreaks(shuttleData[selectedShuttleID]["loops"])[1]]}
+				    dataToDisplay={formatLoopsBreaks(shuttleData[selectedShuttleID]["loops"])[0]}
 				/>
 				<DataBoard
 				    title="Breaks"
-				    dataToDisplay={[formatLoopsBreaks(shuttleData[selectedShuttleID]["breaks"])[0], formatLoopsBreaks(shuttleData[selectedShuttleID]["breaks"])[1]]}
+				    dataToDisplay={formatLoopsBreaks(shuttleData[selectedShuttleID]["breaks"])[0]}
 				/>
 				<DataBoard
 				    title="Historical Locations"
