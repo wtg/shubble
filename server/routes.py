@@ -194,7 +194,6 @@ def data_today():
         _, stop = Stops.is_at_stop((location.latitude, location.longitude))
         if not is_loop and stop == "STUDENT_UNION":
             is_loop = True
-        print("distance:", distance)
         if is_loop and distance > 0.0002 or time_since_movement >= timedelta(minutes=5):
             is_loop = False
         vehicle_location = {
