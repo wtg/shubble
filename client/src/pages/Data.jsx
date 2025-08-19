@@ -129,6 +129,7 @@ export default function Data() {
 				    <tr
 					key={vehicleId}
 					onClick={() => setSelectedShuttleID(vehicleId)}
+					className={(selectedShuttleID == vehicleId ? "selected-shuttle-row" : "")}
 				    >
 					<ShuttleRow
 					    shuttleId={vehicleId}

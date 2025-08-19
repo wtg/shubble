@@ -49,6 +49,10 @@
     overflow: scroll;
 }
 
+.selected-shuttle-row {
+    background: #d1d1d1;
+}
+
 @media screen and (max-width: 768px) {
     .sidebar-table tbody tr:last-child {
 	border-bottom: none;
