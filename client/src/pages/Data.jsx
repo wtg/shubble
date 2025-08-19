@@ -85,7 +85,7 @@ export default function Data() {
     }
 
     function formatLoopsBreaks(loopBreakList) {
-	if (!loopBreakList) {
+	if (!loopBreakList || loopBreakList.length == 0) {
 	    return "No data given"
 	}
 	var formattedList = [new Array(loopBreakList.length), new Array(loopBreakList.length)];
@@ -126,7 +126,10 @@ export default function Data() {
 			{shuttleData ? (
 			    <tbody>
 				{Object.keys(shuttleData).map(vehicleId => (
-				    <tr key={vehicleId}>
+				    <tr
+					key={vehicleId}
+					onClick={() => setSelectedShuttleID(vehicleId)}
+				    >
 					<ShuttleRow
 					    shuttleId={vehicleId}
 					    isActive={false}
@@ -147,7 +150,7 @@ export default function Data() {
 			    <div className="main-content">
 				<DataBoard
 				    title="Summary"
-				    dataToDisplay={[[formatEntryExit(shuttleData[selectedShuttleID].entry, shuttleData[selectedShuttleID].exit), shuttleData[selectedShuttleID]["loops"].length + " loops", formatLoopsBreaks(shuttleData[selectedShuttleID]["breaks"])[1] + " of break time"]]}
+				    dataToDisplay={[[formatEntryExit(shuttleData[selectedShuttleID].entry, shuttleData[selectedShuttleID].exit), shuttleData[selectedShuttleID]["loops"].length + (shuttleData[selectedShuttleID]["loops"].length == 1 ? " loop" : " loops"), formatLoopsBreaks(shuttleData[selectedShuttleID]["breaks"])[1] + " of break time"]]}
 				/>
 				<DataBoard
 				    title="Loops"
