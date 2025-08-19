@@ -59,6 +59,20 @@ export default function Data() {
 	return hours + ":" + minutes + amOrPm;
     }
 
+    function addTimeUnits(quantity, unit) {
+	if (quantity == 1) {
+	    return quantity + " " + unit;
+	}
+	return quantity + " " + unit + "s";
+    }
+
+    function formatTime(minutes) {
+	var days = addTimeUnits(Math.floor(minutes/(60 * 24)), "day");
+	var hours = addTimeUnits(Math.floor((minutes % (60 * 24))/(60)), "hour");
+	var mins = addTimeUnits((minutes % 60), "minute");
+	return (minutes > 60 * 24 ? days + ", " : "") + (minutes > 60 ? hours + ", " : "") + mins;
+    }
+
     function formatEntryExit(entry, exit) {
 	if (entry == null) {
 	    return "Shuttle never entered GeoFence";
@@ -86,74 +100,13 @@ export default function Data() {
 	    }
 	    else {
 		const dEnd = new Date(loopOrBreak.end);
-		totalTime += Math.round((dEnd-dStart)/(1000 * 60)); // convert milliseconds to minutes
-		var duration = Math.round((dEnd-dStart)/(1000 * 60)); // convert milliseconds to minutes
-		if (duration == 1) {
-		    duration = duration + " minute";
-		}
-		else if (typeof duration == "number") {
-		    if (duration >= 60) {
-			var minutes = duration;
-			duration = 0;
-			while (minutes >= 60) {
-			    minutes -= 60;
-			    duration += 1;
-			}
-			if (duration == 1) {
-			    duration = duration + " hour";
-			}
-			else if (typeof duration == "number") {
-			    duration = duration + " hours";
-			}
-			if (minutes == 1) {
-			    duration = duration + ", " + minutes + " minute";
-			}
-			else if (typeof minutes == "number") {
-			    duration = duration + ", " + minutes + " minutes";
-			}
-			
-		    }
-		    else {
-			duration = duration + " minutes";
-		    }
-		    
-		}
-		
-		formattedList[0][l] = duration;
+		var durationMinutes = Math.round((dEnd-dStart)/(1000 * 60)); // convert milliseconds to minutes
+		totalTime += durationMinutes; 
+		formattedList[0][l] = formatTime(durationMinutes);
 		formattedList[1][l] = formatTimestamp(dStart) + " - " + formatTimestamp(dEnd);
 	    }
 	})
-	if (totalTime == 1) {
-	    totalTime = totalTime + " minute";
-	}
-	else if (typeof totalTime == "number") {
-	    if (totalTime >= 60) {
-		var minutes = totalTime;
-		totalTime = 0;
-		while (minutes >= 60) {
-		    minutes -= 60;
-		    totalTime += 1;
-		}
-		if (totalTime == 1) {
-		    totalTime = totalTime + " hour";
-		}
-		else if (typeof totalTime == "number") {
-		    totalTime = totalTime + " hours";
-		}
-		if (minutes == 1) {
-		    totalTime = totalTime + ", " + minutes + " minute";
-		}
-		else if (typeof minutes == "number") {
-		    totalTime = totalTime + ", " + minutes + " minutes";
-		}
-	   
-	    }
-	    else {
-		totalTime = totalTime + " minutes";
-	    }
-	
-	}
-	return [formattedList, totalTime];
+	return [formattedList, formatTime(totalTime)];
     }
     
     return (
@@ -206,14 +159,14 @@ export default function Data() {
 				/>
 				<DataBoard
 				    title="Historical Locations"
-				    dataToDisplay={["..."]}
+				    dataToDisplay={[["..."]]}
 				/>
 				<div className="map-container">
 				    <MapKitMap vehicles={ shuttleData } />
 				</div>
 			    </div>
 			) : (
-			    <p>Invalid shuttle selected</p>
+			    <p>No shuttle selected</p>
 			)}
 		    </div>
 		) : (
