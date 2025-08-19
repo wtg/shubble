@@ -79,9 +79,9 @@ export default function Data() {
 	}
 	var exitStr = "NOW";
 	if (exit != null) {
-	    exitStr = new Date(exit).toLocaleTimeString();
+	    exitStr = formatTimestamp(new Date(exit));
 	}
-	return new Date(entry).toLocaleTimeString() + "-" + exitStr;
+	return formatTimestamp(new Date(entry)) + " - " + exitStr;
     }
 
     function formatLoopsBreaks(loopBreakList) {
