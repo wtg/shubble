@@ -1,10 +1,7 @@
-# .github/workflows/build-client.yml
 name: Client Build Check
 
 on:
-  push:
-    branches: [main, '**']  # run on all branches
-  pull_request:             # run on PRs
+  pull_request:
 
 jobs:
   build-client:
@@ -18,12 +15,10 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'  # or whatever version you need
+          node-version: '22'
 
       - name: Install dependencies
-        working-directory: ./
         run: npm install
 
       - name: Run build
-        working-directory: ./
         run: npm run build
