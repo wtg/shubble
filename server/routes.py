@@ -14,6 +14,7 @@ bp = Blueprint('routes', __name__)
 @bp.route('/schedule')
 @bp.route('/about')
 @bp.route('/data')
+@bp.route('/generate-static-routes')
 def serve_react():
     root_dir = Path(__file__).parent.parent / 'client' / 'dist'
     return send_from_directory(root_dir, 'index.html')

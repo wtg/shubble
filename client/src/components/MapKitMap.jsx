@@ -1,11 +1,89 @@
 import { useEffect, useRef, useState } from "react";
 import '../styles/MapKitMap.css';
-import routeData from '../data/routes.json';
 
-export default function MapKitMap({ vehicles }) {
+async function generateRoutePolylines(updatedRouteData) {
+    const directions = new window.mapkit.Directions();
 
-    const northRouteData = routeData['NORTH'];
-    const westRouteData = routeData['WEST'];
+    for (const [routeName, routeInfo] of Object.entries(updatedRouteData)) {
+        const polyStops = routeInfo.POLYLINE_STOPS || [];
+        const realStops = routeInfo.STOPS || [];
+
+        // Initialize ROUTES with empty arrays for each real stop segment
+        routeInfo.ROUTES = Array(realStops.length - 1).fill(null).map(() => []);
+
+        let currentRealIndex = 0;
+
+        for (let i = 0; i < polyStops.length - 1; i++) {
+            const originStop = polyStops[i];
+            const destStop = polyStops[i + 1];
+
+            const originCoords = routeInfo[originStop]?.COORDINATES;
+            const destCoords = routeInfo[destStop]?.COORDINATES;
+            if (!originCoords || !destCoords) continue;
+
+            // Fetch segment polyline
+            const segment = await new Promise((resolve) => {
+                directions.route(
+                    {
+                        origin: new window.mapkit.Coordinate(originCoords[0], originCoords[1]),
+                        destination: new window.mapkit.Coordinate(destCoords[0], destCoords[1]),
+                    },
+                    (error, data) => {
+                        if (error) {
+                            console.error(`Directions error for ${routeName} segment ${originStop}→${destStop}:`, error);
+                            resolve([]);
+                            return;
+                        }
+                        try {
+                            const coords = data.routes[0].polyline.points.map(pt => [pt.latitude, pt.longitude]);
+                            resolve(coords);
+                        } catch (e) {
+                            console.error(`Unexpected response parsing for ${routeName} segment ${originStop}→${destStop}:`, e);
+                            resolve([]);
+                        }
+                    }
+                );
+            });
+
+            // Add to the current real stop segment
+            if (segment.length > 0) {
+                if (routeInfo.ROUTES[currentRealIndex].length === 0) {
+                    // first segment for this route piece
+                    routeInfo.ROUTES[currentRealIndex].push(...segment);
+                } else {
+                    // append, avoiding duplicate join point
+                    routeInfo.ROUTES[currentRealIndex].push(...segment.slice(1));
+                }
+            }
+
+            // If the destStop is the next real stop, move to the next ROUTES index
+            if (destStop === realStops[currentRealIndex + 1]) {
+                currentRealIndex++;
+            }
+        }
+    }
+
+    // Trigger download
+    function downloadJSON(data, filename = 'routeData.json') {
+        const jsonStr = JSON.stringify(data, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 100);
+    }
+
+    downloadJSON(updatedRouteData);
+    return updatedRouteData;
+}
+
+export default function MapKitMap({ routeData, vehicles, generateRoutes=false }) {
 
     const mapRef = useRef(null);
     const [mapLoaded, setMapLoaded] = useState(false);
@@ -21,18 +99,20 @@ export default function MapKitMap({ vehicles }) {
         }
     };
 
-    // initialize mapkit
-    const mapkitScript = async () => {
-        // load the MapKit JS library
-        await setupMapKitJs();
-        window.mapkit.init({
-            authorizationCallback: (done) => {
-                done(token);
-            },
-        });
-        setMapLoaded(true);
-    };
-    mapkitScript();
+    useEffect(() => {
+        // initialize mapkit
+        const mapkitScript = async () => {
+            // load the MapKit JS library
+            await setupMapKitJs();
+            window.mapkit.init({
+                authorizationCallback: (done) => {
+                    done(token);
+                },
+            });
+            setMapLoaded(true);
+        };
+        mapkitScript();
+    }, []);
 
     // create the map
     useEffect(() => {
@@ -73,76 +153,62 @@ export default function MapKitMap({ vehicles }) {
     // add fixed details to the map
     // includes routes and stops
     useEffect(() => {
-        if (!map) return;
+        if (!map || !routeData) return;
 
-        const unionCoordinate = new window.mapkit.Coordinate(...northRouteData.STUDENT_UNION.COORDINATES);
-        const unionOverlay = new window.mapkit.CircleOverlay(
-            unionCoordinate,
-            15,
-            {
-                style: new window.mapkit.Style(
+        var overlays = [];
+
+        // display stop overlays
+        for (const [route, thisRouteData] of Object.entries(routeData)) {
+            for (const stopName of thisRouteData.STOPS) {
+                const stopCoordinate = new window.mapkit.Coordinate(...thisRouteData[stopName].COORDINATES);
+                const stopOverlay = new window.mapkit.CircleOverlay(
+                    stopCoordinate,
+                    15,
                     {
-                        strokeColor: '#000000',
-                        lineWidth: 2,
+                        style: new window.mapkit.Style(
+                            {
+                                strokeColor: '#000000',
+                                lineWidth: 2,
+                            }
+                        )
                     }
-                )
+                );
+                overlays.push(stopOverlay);
             }
-        );
+        }
 
-        const northRouteOverlays = northRouteData.STOPS.slice(1).map(
-            (stopName) => new window.mapkit.CircleOverlay(
-                new window.mapkit.Coordinate(...northRouteData[stopName].COORDINATES),
-                15,
-                {
-                    style: new window.mapkit.Style(
-                        {
-                            strokeColor: '#000000',
-                            lineWidth: 2,
-                        }
-                    )
-                }
-            )
-        );
+        function displayRouteOverlays(routeData) {
+            // display route overlays
+            for (const [route, thisRouteData] of Object.entries(routeData)) {
+                const routeCoordinates = thisRouteData.ROUTES?.map(
+                    (route) => route.map(([lat, lon]) => new window.mapkit.Coordinate(lat, lon))
+                ).flat();
+                if (!routeCoordinates || routeCoordinates.length === 0) continue;
+                const routePolyline = new mapkit.PolylineOverlay(routeCoordinates, {
+                    style: new mapkit.Style({
+                        strokeColor: thisRouteData.COLOR,
+                        lineWidth: 2
+                        })
+                });
+                overlays.push(routePolyline);
+            }
+        }
 
-        const westRouteOverlays = westRouteData.STOPS.slice(1).map(
-            (stopName) => new window.mapkit.CircleOverlay(
-                new window.mapkit.Coordinate(...westRouteData[stopName].COORDINATES),
-                15,
-                {
-                    style: new window.mapkit.Style(
-                        {
-                            strokeColor: '#000000',
-                            lineWidth: 2,
-                        }
-                    )
-                }
-            )
-        );
+        if (generateRoutes) {
+            // generate polylines for routes
+            const routeDataCopy = JSON.parse(JSON.stringify(routeData)); // deep copy to avoid mutating original
+            generateRoutePolylines(routeDataCopy).then((updatedRouteData) => {
+                console.log("Generated route polylines:", updatedRouteData);
+                displayRouteOverlays(updatedRouteData);
+                map.addOverlays(overlays);
+            });
+        } else {
+            // use pre-generated polylines
+            displayRouteOverlays(routeData);
+            map.addOverlays(overlays);
+        }
 
-        const northRouteCoordinates = northRouteData.ROUTES.map(
-            (route) => route.map(([lat, lon]) => new window.mapkit.Coordinate(lat, lon))
-        ).flat();
-        const northRoutePolyline = new mapkit.PolylineOverlay(northRouteCoordinates, {
-            style: new mapkit.Style({
-              strokeColor: '#FF0000',
-              lineWidth: 2
-            })
-        });
-
-        const westRouteCoordinates = westRouteData.ROUTES.map(
-            (route) => route.map(([lat, lon]) => new window.mapkit.Coordinate(lat, lon))
-        ).flat();
-        const westRoutePolyline = new mapkit.PolylineOverlay(westRouteCoordinates, {
-            style: new mapkit.Style({
-              strokeColor: '#0000FF',
-              lineWidth: 2
-            })
-        });
-
-        const overlays = [northRoutePolyline, westRoutePolyline, unionOverlay, ...northRouteOverlays, ...westRouteOverlays];
-        map.addOverlays(overlays);
-
-    }, [map]);
+    }, [map, routeData]);
 
     // display vehicles on map
     useEffect(() => {
