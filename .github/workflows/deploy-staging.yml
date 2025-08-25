@@ -1,13 +1,7 @@
-# .github/workflows/staging.yml
 name: Deploy to Staging
 
 on:
   workflow_dispatch:
-    inputs:
-      branch:
-        description: 'Branch to deploy'
-        required: true
-        default: 'main'
 
 jobs:
   deploy:

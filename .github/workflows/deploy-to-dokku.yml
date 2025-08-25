@@ -1,12 +1,8 @@
-# .github/workflows/deploy-to-dokku.yml
 name: Deploy to Dokku
 
 on:
   workflow_call:
     inputs:
-      branch:
-        required: true
-        type: string
       environment:
         required: true
         type: string
@@ -28,7 +24,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.branch }}
+          ref: ${{ github.ref_type == 'tag' && 'main' || github.ref_name }}
           fetch-depth: 0
 
       - name: Set up SSH
@@ -40,4 +36,8 @@ jobs:
         run: |
           git remote remove dokku 2>/dev/null || true
           git remote add dokku dokku@${{ secrets.dokku_host }}:${{ secrets.dokku_app }}
-          GIT_SSH_COMMAND="ssh -i temp_key -o StrictHostKeyChecking=no" git push dokku HEAD:production -f
+          if [ "${{ inputs.environment }}" = "production" ]; then
+            GIT_SSH_COMMAND="ssh -i temp_key -o StrictHostKeyChecking=no" git push dokku HEAD:production
+          else
+            GIT_SSH_COMMAND="ssh -i temp_key -o StrictHostKeyChecking=no" git push dokku HEAD:production -f
+          fi

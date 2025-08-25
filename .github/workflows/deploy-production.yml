@@ -1,4 +1,3 @@
-# .github/workflows/production.yml
 name: Deploy to Production
 
 on:
@@ -10,7 +9,6 @@ jobs:
   deploy:
     uses: ./.github/workflows/deploy-to-dokku.yml
     with:
-      branch: main
       environment: production
     secrets:
       dokku_host: ${{ secrets.DOKKU_HOST_PRODUCTION }}
