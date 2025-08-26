@@ -23,7 +23,7 @@
       "ECAV",
       "HOUSTON_FIELD_HOUSE",
       "GHOST_STOP_2",
-      "STUDENT_UNION"
+      "STUDENT_UNION_RETURN"
     ],
     "STUDENT_UNION": {
       "COORDINATES": [
@@ -699,9 +699,10 @@
       "CITY_STATION",
       "BLITMAN",
       "CHASAN",
+      "GHOST_STOP_2",
       "FEDERAL_6TH",
       "WEST_HALL",
-      "STUDENT_UNION"
+      "STUDENT_UNION_RETURN"
     ],
     "STUDENT_UNION": {
       "COORDINATES": [
@@ -766,6 +767,14 @@
       ],
       "OFFSET": 12,
       "NAME": "Federal & 6th"
+    },
+    "GHOST_STOP_2": {
+      "COORDINATES": [
+        42.732217914196276,
+        -73.68715498765913
+      ],
+      "OFFSET": 12,
+      "NAME": "Fulton St"
     },
     "WEST_HALL": {
       "COORDINATES": [
