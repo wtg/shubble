@@ -165,6 +165,10 @@ def webhook():
 
 @bp.route('/api/today', methods=['GET'])
 def data_today():
+
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    
     now = datetime.now(timezone.utc)
     start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
     locations_today = VehicleLocation.query.filter(
@@ -192,10 +196,15 @@ def data_today():
             
         point, distance, route_name, polyline_index = Stops.get_closest_point((location.latitude, location.longitude))
         _, stop = Stops.is_at_stop((location.latitude, location.longitude))
-        if not is_loop and stop == "STUDENT_UNION":
+        if stop == "STUDENT_UNION":
             is_loop = True
-        if is_loop and distance > 0.0002 or time_since_movement >= timedelta(minutes=5):
-            is_loop = False
+        if is_loop:
+            if distance > 0.0002:
+                logger.info(str(location.vehicle_id) + "Distance > 0.002," + str(distance))
+                is_loop = False
+            if time_since_movement >= timedelta(seconds=15):
+                logger.info(str(location.vehicle_id) + "Time since movement > 15 secs," + str( time_since_movement))
+                is_loop = False
         vehicle_location = {
             "latitude": location.latitude,
             "longitude": location.longitude,
