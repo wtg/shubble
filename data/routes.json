@@ -4,6 +4,7 @@
     "STOPS": [
       "STUDENT_UNION",
       "COLONIE",
+      "GEORGIAN",
       "STAC_1",
       "STAC_2",
       "STAC_3",
@@ -15,6 +16,7 @@
       "STUDENT_UNION",
       "COLONIE",
       "GHOST_STOP_1",
+      "GEORGIAN",
       "STAC_1",
       "STAC_2",
       "STAC_3",
@@ -47,6 +49,14 @@
       "OFFSET": 4,
       "NAME": "Popeyes"
     },
+    "GEORGIAN": {
+      "COORDINATES": [
+        42.73685286847331,
+        -73.66683526747337
+      ],
+      "OFFSET": 5,
+      "NAME": "Georgian"
+    },
     "STAC_1": {
       "COORDINATES": [
         42.73562531436627,
@@ -57,8 +67,8 @@
     },
     "STAC_2": {
       "COORDINATES": [
-        42.734526,
-        -73.663352
+        42.734770439877316,
+        -73.66328461643356
       ],
       "OFFSET": 7,
       "NAME": "Stacwyck"
@@ -73,8 +83,8 @@
     },
     "ECAV": {
       "COORDINATES": [
-        42.730887,
-        -73.667313
+        42.73131441959902,
+        -73.66654393799506
       ],
       "OFFSET": 11,
       "NAME": "ECAV"
@@ -676,8 +686,9 @@
       "POLYTECHNIC",
       "CITY_STATION",
       "BLITMAN",
+      "CHASAN",
+      "FEDERAL_6TH",
       "WEST_HALL",
-      "_86_FIELD",
       "STUDENT_UNION_RETURN"
     ],
     "POLYLINE_STOPS": [
@@ -687,14 +698,15 @@
       "GHOST_STOP_1",
       "CITY_STATION",
       "BLITMAN",
+      "CHASAN",
+      "FEDERAL_6TH",
       "WEST_HALL",
-      "_86_FIELD",
       "STUDENT_UNION"
     ],
     "STUDENT_UNION": {
       "COORDINATES": [
-        42.730711,
-        -73.676737
+        42.73030957936359,
+        -73.67653679162925
       ],
       "OFFSET": 0,
       "NAME": "Student Union"
@@ -733,11 +745,27 @@
     },
     "BLITMAN": {
       "COORDINATES": [
-        42.73161,
-        -73.68635
+        42.730733889768935,
+        -73.68654871130366
       ],
       "OFFSET": 10,
       "NAME": "Blitman"
+    },
+    "CHASAN": {
+      "COORDINATES": [
+        42.73113007261683,
+        -73.68883082757004
+      ],
+      "OFFSET": 11,
+      "NAME": "Chasan Building"
+    },
+    "FEDERAL_6TH": {
+      "COORDINATES": [
+        42.73358721710756,
+        -73.68574634740555
+      ],
+      "OFFSET": 12,
+      "NAME": "Federal & 6th"
     },
     "WEST_HALL": {
       "COORDINATES": [
@@ -747,18 +775,10 @@
       "OFFSET": 12,
       "NAME": "West Hall"
     },
-    "_86_FIELD": {
-      "COORDINATES": [
-        42.731061,
-        -73.67908
-      ],
-      "OFFSET": 13,
-      "NAME": "86 Field"
-    },
     "STUDENT_UNION_RETURN": {
       "COORDINATES": [
-        42.730711,
-        -73.676737
+        42.73030957936359,
+        -73.67653679162925
       ],
       "OFFSET": 15,
       "NAME": "Student Union (Return)"
