@@ -16,11 +16,17 @@ bp = Blueprint('routes', __name__)
 @bp.route('/data')
 @bp.route('/generate-static-routes')
 def serve_react():
+    # serve the React app's index.html for all main routes
     root_dir = Path(__file__).parent.parent / 'client' / 'dist'
     return send_from_directory(root_dir, 'index.html')
 
 @bp.route('/api/locations', methods=['GET'])
 def get_locations():
+    """
+    Returns the latest location for each vehicle currently inside the geofence.
+    The vehicle is considered inside the geofence if its latest geofence event
+    today is a 'geofenceEntry'.
+    """
     # Start of today for filtering today's geofence events
     start_of_today = datetime.combine(date.today(), datetime.min.time())
 
@@ -86,6 +92,10 @@ def get_locations():
 
 @bp.route('/api/webhook', methods=['POST'])
 def webhook():
+    """
+    Handles incoming webhook events for geofence entries/exits.
+    Expects JSON payload with event details.
+    """
     data = request.get_json(force=True)
 
     if not data:
@@ -105,6 +115,7 @@ def webhook():
 
         for condition in conditions:
             details = condition.get('details', {})
+            # determine if entry or exit
             if 'geofenceEntry' in details:
                 geofence_event = details.get('geofenceEntry', {})
             else:
