@@ -228,13 +228,16 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
                 console.log(`Updating vehicle ${key} to ${vehicle.latitude}, ${vehicle.longitude}`);
                 vehicleOverlays.current[key].coordinate = coordinate;
                 vehicleOverlays.current[key].subtitle = `${vehicle.speed_mph} mph`;
+                if (vehicle.route_name !== "UNCLEAR") {
+                    vehicleOverlays.current[key].color = vehicle.route_name ? routeData[vehicle.route_name].COLOR : '#444444';
+                }
             } else {
                 // new vehicle: add to map
                 console.log(`Adding vehicle ${key} to ${vehicle.latitude}, ${vehicle.longitude}`);
                 const annotation = new window.mapkit.MarkerAnnotation(coordinate, {
                     title: vehicle.vehicle_name,
                     subtitle: `${vehicle.speed_mph} mph`,
-                    color: '#444444',
+                    color: vehicle.route_name && vehicle.route_name !== "UNCLEAR" ? routeData[vehicle.route_name].COLOR : '#444444',
                     glyphImage: { 1: 'shubble20.png' },
                     selectedGlyphImage: { 1: 'shubble20.png', 2: 'shubble40.png' },
                 });
