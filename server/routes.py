@@ -71,13 +71,14 @@ def get_locations():
     response = {}
     for loc, vehicle in results:
         # Get closest loop
-        _, closest_distance, closest_route_name, _ = Stops.get_closest_point(
+        closest_distance, _, closest_route_name, _ = Stops.get_closest_point(
             (loc.latitude, loc.longitude)
         )
-        _, stop_name = Stops.is_at_stop((loc.latitude, loc.longitude))
-        route_name = closest_route_name if closest_distance < 0.0002 else None  # within 20 meters
-        if stop_name == 'STUDENT_UNION':
+        logger.info(f"Vehicle {loc.vehicle_id} closest route {closest_route_name} at distance {closest_distance}")
+        if closest_distance is None:
             route_name = "UNCLEAR"
+        else:
+            route_name = closest_route_name if closest_distance < 0.0002 else None
         response[loc.vehicle_id] = {
             'name': loc.name,
             'latitude': loc.latitude,
