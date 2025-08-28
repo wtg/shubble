@@ -33,21 +33,13 @@ class Stops:
                 route name, and polyline index.
         """
         point = np.array(origin_point)
-        closest_point = None
-        closest_distance = float('inf')
-        closest_route_name = None
-        closest_polyline_index = None
 
+        closest_data = []
         for route_name, polylines in cls.polylines.items():
             for index, polyline in enumerate(polylines):
                 if len(polyline) < 2:
                     # not enough points to form a segment, just check distance to the point itself
-                    dist = np.linalg.norm(point - np.array(polyline[0]))
-                    if dist < closest_distance:
-                        closest_distance = dist
-                        closest_point = np.array(polyline[0])
-                        closest_route_name = route_name
-                        closest_polyline_index = index
+                    closest_data.append((np.linalg.norm(point - np.array(polyline[0])), np.array(polyline[0]), route_name, 0))
                     continue
 
                 # Build segments
@@ -62,11 +54,7 @@ class Stops:
                     zero_points = lines[0, ~nonzero_mask]
                     zero_distances = np.linalg.norm(point - zero_points, axis=1)
                     min_idx = np.argmin(zero_distances)
-                    if zero_distances[min_idx] < closest_distance:
-                        closest_distance = zero_distances[min_idx]
-                        closest_point = zero_points[min_idx]
-                        closest_route_name = route_name
-                        closest_polyline_index = index
+                    closest_data.append((zero_distances[min_idx], zero_points[min_idx], route_name, min_idx))
 
                 if not np.any(nonzero_mask):
                     # all segments are zero-length, already handled
@@ -79,13 +67,17 @@ class Stops:
                 distances = np.linalg.norm(point - closest_points, axis=1)
 
                 min_index = np.argmin(distances)
-                if distances[min_index] < closest_distance:
-                    closest_distance = distances[min_index]
-                    closest_point = closest_points[min_index]
-                    closest_route_name = route_name
-                    closest_polyline_index = index
+                closest_data.append((distances[min_index], closest_points[min_index], route_name, index))
 
-        return closest_point, closest_distance, closest_route_name, closest_polyline_index
+        # Find the overall closest point
+        if closest_data:
+            closest_routes = sorted(closest_data, key=lambda x: x[0])
+            # Check if closest route is significantly closer than others
+            if len(closest_routes) > 1 and closest_routes[1][0] - closest_routes[0][0] < 0.0001:
+                # If not significantly closer, return None to indicate ambiguity
+                return None, None, None, None
+            return closest_routes[0]
+        return None, None, None, None
 
     @classmethod
     def is_at_stop(cls, origin_point, threshold=0.0002):
