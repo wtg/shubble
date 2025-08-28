@@ -14,6 +14,7 @@ export default function LiveLocation() {
     const [location, setLocation] = useState(null);
     const [filteredRouteData, setFilteredRouteData] = useState({});
 
+    // Filter routeData to only include routes present in aggregatedSchedule
     useEffect(() => {
         setFilteredRouteData(
             Object.fromEntries(
@@ -22,6 +23,7 @@ export default function LiveLocation() {
         );
     }, []);
 
+    // Fetch location data on component mount and set up polling
     useEffect(() => {
         const pollLocation = async () => {
             try {

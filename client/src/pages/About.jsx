@@ -12,6 +12,7 @@ export default function About() {
     const [wordIndex, setWordIndex] = useState(0);
     const words = ['reliable', 'predictable', 'accountable'];
 
+    // Rotate words every 2 seconds
     useEffect(() => {
         setInterval(() => {
             setWordIndex((prevIndex) => {
