@@ -4,6 +4,7 @@ from .models import Vehicle, GeofenceEvent, VehicleLocation
 from pathlib import Path
 from sqlalchemy import func, and_
 from datetime import datetime, date
+from data.stops import Stops
 import logging
 
 logger = logging.getLogger(__name__)
@@ -69,6 +70,15 @@ def get_locations():
     # Format response
     response = {}
     for loc, vehicle in results:
+        # Get closest loop
+        closest_distance, _, closest_route_name, _ = Stops.get_closest_point(
+            (loc.latitude, loc.longitude)
+        )
+        logger.info(f"Vehicle {loc.vehicle_id} closest route {closest_route_name} at distance {closest_distance}")
+        if closest_distance is None:
+            route_name = "UNCLEAR"
+        else:
+            route_name = closest_route_name if closest_distance < 0.0002 else None
         response[loc.vehicle_id] = {
             'name': loc.name,
             'latitude': loc.latitude,
@@ -76,6 +86,7 @@ def get_locations():
             'timestamp': loc.timestamp.isoformat(),
             'heading_degrees': loc.heading_degrees,
             'speed_mph': loc.speed_mph,
+            'route_name': route_name,
             'is_ecu_speed': loc.is_ecu_speed,
             'formatted_location': loc.formatted_location,
             'address_id': loc.address_id,
