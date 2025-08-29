@@ -70,7 +70,6 @@ class Stops:
                 min_index = np.argmin(distances)
                 closest_data.append((distances[min_index], closest_points[min_index], route_name, index))
 
-        print(closest_data)
         # Find the overall closest point
         if closest_data:
             closest_routes = sorted(closest_data, key=lambda x: x[0])
