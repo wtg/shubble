@@ -4,6 +4,7 @@ import '../styles/MapKitMap.css';
 async function generateRoutePolylines(updatedRouteData) {
     // Use MapKit Directions API to generate polylines for each route segment
     const directions = new window.mapkit.Directions();
+    const annotations = [];
 
     for (const [routeName, routeInfo] of Object.entries(updatedRouteData)) {
         const polyStops = routeInfo.POLYLINE_STOPS || [];
@@ -182,7 +183,9 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
                 const annotation = new window.mapkit.MarkerAnnotation(
                     stopCoordinate,
                     {
-                        title: stopName
+                        title: stopName.replaceAll('_', ' '),
+                        subtitle: "What does this field do",
+                        selected: false,
                     }
                 )
                 map.addAnnotation(annotation);
