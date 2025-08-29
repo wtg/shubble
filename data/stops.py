@@ -1,5 +1,6 @@
 import json
 import numpy as np
+import math
 
 class Stops:
     with open('data/routes.json', 'r') as f:
@@ -73,14 +74,14 @@ class Stops:
         if closest_data:
             closest_routes = sorted(closest_data, key=lambda x: x[0])
             # Check if closest route is significantly closer than others
-            if len(closest_routes) > 1 and closest_routes[1][0] - closest_routes[0][0] < 0.0001:
+            if len(closest_routes) > 1 and haversine(closest_routes[0][1], closest_routes[1][1]) < 0.020:
                 # If not significantly closer, return None to indicate ambiguity
                 return None, None, None, None
             return closest_routes[0]
         return None, None, None, None
 
     @classmethod
-    def is_at_stop(cls, origin_point, threshold=0.0002):
+    def is_at_stop(cls, origin_point, threshold=0.020):
         """
         Check if the given point is close enough to any stop.
         :param origin_point: A tuple or list with (latitude, longitude) coordinates.
@@ -91,7 +92,37 @@ class Stops:
         for route_name, route in cls.routes_data.items():
             for stop in route.get('STOPS', []):
                 stop_point = np.array(route[stop]['COORDINATES'])
-                distance = np.linalg.norm(np.array(origin_point) - stop_point)
+                distance = haversine(origin_point, stop_point)
                 if distance < threshold:
                     return route_name, stop
         return None, None
+
+def haversine(coord1, coord2):
+    """
+    Calculate the great-circle distance between two points on the Earth
+    using the Haversine formula.
+
+    Parameters:
+        coord1: (lat1, lon1) in decimal degrees
+        coord2: (lat2, lon2) in decimal degrees
+
+    Returns:
+        Distance in kilometers.
+    """
+    # Earth radius in kilometers
+    R = 6371.0
+
+    lat1, lon1 = coord1
+    lat2, lon2 = coord2
+
+    # Convert degrees to radians
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+
+    # Haversine formula
+    a = math.sin(dphi / 2)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    return R * c
