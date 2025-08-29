@@ -91,8 +91,8 @@ def mock_feed():
                     'name': shuttle_id[-3:],
                     'gps': [
                         {
-                            'latitude': shuttles[shuttle_id].location[0],
-                            'longitude': shuttles[shuttle_id].location[1],
+                            'latitude': lat,
+                            'longitude': lon,
                             'time': datetime.fromtimestamp(shuttles[shuttle_id].last_updated).isoformat(timespec='seconds').replace('+00:00', 'Z'),
                             'speedMilesPerHour': shuttles[shuttle_id].speed,
                             'headingDegrees': 90,
