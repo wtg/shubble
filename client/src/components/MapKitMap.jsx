@@ -179,6 +179,13 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
                         )
                     }
                 );
+                const annotation = new window.mapkit.MarkerAnnotation(
+                    stopCoordinate,
+                    {
+                        title: stopName
+                    }
+                )
+                map.addAnnotation(annotation);
                 overlays.push(stopOverlay);
             }
         }
