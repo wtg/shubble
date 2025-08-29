@@ -186,6 +186,8 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
                         title: stopName.replaceAll('_', ' '),
                         subtitle: "What does this field do",
                         selected: false,
+                        visible: false,
+                        glyphText: ""
                     }
                 )
                 map.addAnnotation(annotation);
