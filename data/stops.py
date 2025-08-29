@@ -53,7 +53,7 @@ class Stops:
                 if np.any(~nonzero_mask):
                     # check distance directly to these points
                     zero_points = lines[0, ~nonzero_mask]
-                    zero_distances = np.linalg.norm(point - zero_points, axis=1)
+                    zero_distances = haversine_vectorized(point[np.newaxis, :], zero_points)
                     min_idx = np.argmin(zero_distances)
                     closest_data.append((zero_distances[min_idx], zero_points[min_idx], route_name, min_idx))
 
@@ -65,11 +65,12 @@ class Stops:
                 projections = np.sum((point - lines[0, nonzero_mask]) * diffs_normalized, axis=1)
                 projections = np.clip(projections, 0, lengths[nonzero_mask])
                 closest_points = lines[0, nonzero_mask] + projections[:, np.newaxis] * diffs_normalized
-                distances = np.linalg.norm(point - closest_points, axis=1)
+                distances = haversine_vectorized(point[np.newaxis, :], closest_points)
 
                 min_index = np.argmin(distances)
                 closest_data.append((distances[min_index], closest_points[min_index], route_name, index))
 
+        print(closest_data)
         # Find the overall closest point
         if closest_data:
             closest_routes = sorted(closest_data, key=lambda x: x[0])
@@ -92,7 +93,7 @@ class Stops:
         for route_name, route in cls.routes_data.items():
             for stop in route.get('STOPS', []):
                 stop_point = np.array(route[stop]['COORDINATES'])
-                distance = haversine(origin_point, stop_point)
+                distance = haversine_vectorized(origin_point, stop_point)[0]
                 if distance < threshold:
                     return route_name, stop
         return None, None
@@ -124,5 +125,40 @@ def haversine(coord1, coord2):
     # Haversine formula
     a = math.sin(dphi / 2)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2)**2
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    return R * c
+
+def haversine_vectorized(coords1, coords2):
+    """
+    Vectorized haversine distance between two sets of coordinates.
+
+    Parameters
+    ----------
+    coords1 : array_like, shape (N, 2)
+        Array of (lat, lon) pairs in decimal degrees.
+    coords2 : array_like, shape (N, 2)
+        Array of (lat, lon) pairs in decimal degrees.
+
+    Returns
+    -------
+    distances : ndarray, shape (N,)
+        Great-circle distances in kilometers.
+    """
+    coords1 = np.asarray(coords1, dtype=float)
+    coords2 = np.asarray(coords2, dtype=float)
+
+    # Earth radius in kilometers
+    R = 6371.0
+
+    lat1 = np.radians(coords1[:, 0])
+    lon1 = np.radians(coords1[:, 1])
+    lat2 = np.radians(coords2[:, 0])
+    lon2 = np.radians(coords2[:, 1])
+
+    dphi = lat2 - lat1
+    dlambda = lon2 - lon1
+
+    a = np.sin(dphi / 2.0)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlambda / 2.0)**2
+    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
 
     return R * c
