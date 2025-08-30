@@ -162,14 +162,15 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
                     }
 
                     // create temp marker for callout
-                    selectedRoute.current = new window.mapkit.MarkerAnnotation(e.overlay.coordinate, {
+                    const marker = new window.mapkit.MarkerAnnotation(e.overlay.coordinate, {
                         title: e.overlay.stopName,
                         glyphText: "",
                         color: "transparent",
                     });
 
-                    thisMap.addAnnotation(selectedRoute.current);
-                    thisMap.selectedOverlay = selectedRoute.current;
+                    thisMap.addAnnotation(marker);
+                    thisMap.selectedOverlay = marker;
+                    selectedRoute.current = marker;
                 }
             });
             setMap(thisMap);
