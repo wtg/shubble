@@ -204,7 +204,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
                         )
                     }
                 );
-                stopOverlay.stopName = stopName.replaceAll('_', ' ');
+                stopOverlay.stopName = thisRouteData[stopName].NAME
                 overlays.push(stopOverlay);
             }
         }
