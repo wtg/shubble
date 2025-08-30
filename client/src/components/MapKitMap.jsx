@@ -167,7 +167,6 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
                         glyphImage: {
                             1: "map-marker.png",
                         },
-                        color: "transparent"
                     });
 
                     thisMap.addAnnotation(marker);
