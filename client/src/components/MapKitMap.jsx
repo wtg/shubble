@@ -152,11 +152,11 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
                 false,
             );
             thisMap.setCameraDistanceAnimated(2500);
-            setMap(thisMap);
             thisMap.addEventListener("click", (event) => {
                 // const coordinate = thisMap.convertPoint(event.point, "map");
                 console.log("Map clicked at:", event);
             });
+            setMap(thisMap);
         }
     }, [mapLoaded]);
 
