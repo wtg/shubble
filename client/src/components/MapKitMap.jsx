@@ -157,7 +157,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
                 if(e.overlay && e.overlay.stopName) {
                     console.log(`Selected overlay: ${e.overlay.stopName}`);
                     if (selectedRoute.current) {
-                        map.removeAnnotation(selectedRoute.current);
+                        thisMap.removeAnnotation(selectedRoute.current);
                         selectedRoute.current = null;
                     }
 
@@ -169,7 +169,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
                     });
 
                     thisMap.addAnnotation(selectedRoute.current);
-                    thisMap.selectAnnotation(selectedRoute.current, true);
+                    thisMap.selectedOverlay = selectedRoute.current;
                 }
             });
             setMap(thisMap);
@@ -200,7 +200,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
                         )
                     }
                 );
-                stopOverlay.stopName = stopName;
+                stopOverlay.stopName = stopName.replaceAll('_', ' ');
                 overlays.push(stopOverlay);
             }
         }
