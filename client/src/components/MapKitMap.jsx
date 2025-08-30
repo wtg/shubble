@@ -180,17 +180,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
                         )
                     }
                 );
-                const annotation = new window.mapkit.MarkerAnnotation(
-                    stopCoordinate,
-                    {
-                        title: stopName.replaceAll('_', ' '),
-                        subtitle: "What does this field do",
-                        selected: false,
-                        visible: false,
-                        glyphText: ""
-                    }
-                )
-                map.addAnnotation(annotation);
+                stopOverlay.info = stopName;
                 overlays.push(stopOverlay);
             }
         }
@@ -270,6 +260,11 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
         });
 
     }, [map, vehicles]);
+
+    // see what the user clicked
+    map.addEventListener("select", (e) => {
+        console.log(e);
+    })
 
 return (
     <div
