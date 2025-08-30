@@ -177,6 +177,9 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
                 thisMap.removeAnnotation(selectedRoute.current);
                 selectedRoute.current = null;
             });
+            thisMap.addEventListener('single-tap', (e) => {
+                console.log(e);
+            });
             setMap(thisMap);
         }
     }, [mapLoaded]);
