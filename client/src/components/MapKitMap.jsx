@@ -169,7 +169,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
                     });
 
                     thisMap.addAnnotation(marker);
-                    thisMap.selectedOverlay = marker;
+                    selectedRoute.current = marker;
                 }
             });
             setMap(thisMap);
