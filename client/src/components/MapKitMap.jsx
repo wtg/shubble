@@ -168,8 +168,8 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
                         color: "transparent",
                     });
 
-                    this.map.addAnnotation(selectedRoute.current);
-                    this.map.selectAnnotation(selectedRoute.current, true);
+                    thisMap.addAnnotation(selectedRoute.current);
+                    thisMap.selectAnnotation(selectedRoute.current, true);
                 }
             });
             setMap(thisMap);
