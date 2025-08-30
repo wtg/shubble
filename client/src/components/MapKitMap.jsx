@@ -94,6 +94,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
     const [map, setMap] = useState(null);
     const vehicleOverlays = useRef({});
     const circleWidth = 15;
+    const selectedRoute = useRef(null);
 
     // source: https://developer.apple.com/documentation/mapkitjs/loading-the-latest-version-of-mapkit-js
     const setupMapKitJs = async() => {
@@ -152,13 +153,24 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
                 false,
             );
             thisMap.setCameraDistanceAnimated(2500);
-            thisMap.addEventListener("select", (event) => {
-                // const coordinate = thisMap.convertPoint(event.point, "map");
-                console.log("Map selected at:", event);
-            });
-            thisMap.addEventListener("click", (event) => {
-                // const coordinate = thisMap.convertPoint(event.point, "map");
-                console.log("Map clicked at:", event);
+            thisMap.addEventListener("select", (e) => {
+                if(e.overlay && e.overlay.stopName) {
+                    console.log(`Selected overlay: ${e.overlay.stopName}`);
+                    if (selectedRoute.current) {
+                        map.removeAnnotation(selectedRoute.current);
+                        selectedRoute.current = null;
+                    }
+
+                    // create temp marker for callout
+                    selectedRoute.current = new window.mapkit.MarkerAnnotation(e.overlay.coordinate, {
+                        title: e.overlay.stopName,
+                        glyphText: "",
+                        color: "transparent",
+                    });
+
+                    map.addAnnotation(selectedRoute.current);
+                    map.selectAnnotation(selectedRoute.current, true);
+                }
             });
             setMap(thisMap);
         }
@@ -188,7 +200,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
                         )
                     }
                 );
-                stopOverlay.info = stopName;
+                stopOverlay.stopName = stopName;
                 overlays.push(stopOverlay);
             }
         }
