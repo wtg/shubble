@@ -155,13 +155,12 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
             thisMap.setCameraDistanceAnimated(2500);
             thisMap.addEventListener("select", (e) => {
                 if(e.overlay && e.overlay.stopName) {
-                    console.log(`Selected overlay: ${e.overlay.stopName}`);
                     if (selectedRoute.current) {
                         thisMap.removeAnnotation(selectedRoute.current);
                         selectedRoute.current = null;
                     }
 
-                    // create temp marker for callout
+                    // temp marker
                     const marker = new window.mapkit.MarkerAnnotation(e.overlay.coordinate, {
                         title: e.overlay.stopName,
                         glyphImage: {
