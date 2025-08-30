@@ -164,8 +164,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
                     // create temp marker for callout
                     const marker = new window.mapkit.MarkerAnnotation(e.overlay.coordinate, {
                         title: e.overlay.stopName,
-                        glyphText: "",
-                        color: "transparent",
+                        glyphImage: "map-marker.png",
                     });
 
                     thisMap.addAnnotation(marker);
