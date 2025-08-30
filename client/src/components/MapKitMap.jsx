@@ -93,6 +93,8 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
     const token = import.meta.env.VITE_MAPKIT_KEY;
     const [map, setMap] = useState(null);
     const vehicleOverlays = useRef({});
+    const circleWidth = 15;
+    const selectedRoute = useRef(null);
 
     // source: https://developer.apple.com/documentation/mapkitjs/loading-the-latest-version-of-mapkit-js
     const setupMapKitJs = async() => {
@@ -151,6 +153,29 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
                 false,
             );
             thisMap.setCameraDistanceAnimated(2500);
+            thisMap.addEventListener("select", (e) => {
+                if(e.overlay && e.overlay.stopName) {
+                    if (selectedRoute.current) {
+                        thisMap.removeAnnotation(selectedRoute.current);
+                        selectedRoute.current = null;
+                    }
+
+                    // temp marker
+                    const marker = new window.mapkit.MarkerAnnotation(e.overlay.coordinate, {
+                        title: e.overlay.stopName,
+                        glyphImage: {
+                            1: "map-marker.png",
+                        },
+                    });
+
+                    thisMap.addAnnotation(marker);
+                    selectedRoute.current = marker;
+                }
+            });
+            thisMap.addEventListener("deselect", () => {
+                thisMap.removeAnnotation(selectedRoute.current);
+                selectedRoute.current = null;
+            });
             setMap(thisMap);
         }
     }, [mapLoaded]);
@@ -169,7 +194,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
                 // add stop overlay (circle)
                 const stopOverlay = new window.mapkit.CircleOverlay(
                     stopCoordinate,
-                    15,
+                    circleWidth,
                     {
                         style: new window.mapkit.Style(
                             {
@@ -179,6 +204,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
                         )
                     }
                 );
+                stopOverlay.stopName = thisRouteData[stopName].NAME
                 overlays.push(stopOverlay);
             }
         }
