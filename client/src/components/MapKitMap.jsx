@@ -4,7 +4,6 @@ import '../styles/MapKitMap.css';
 async function generateRoutePolylines(updatedRouteData) {
     // Use MapKit Directions API to generate polylines for each route segment
     const directions = new window.mapkit.Directions();
-    const annotations = [];
 
     for (const [routeName, routeInfo] of Object.entries(updatedRouteData)) {
         const polyStops = routeInfo.POLYLINE_STOPS || [];
@@ -152,7 +151,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
                 false,
             );
             thisMap.setCameraDistanceAnimated(2500);
-            thisMap.addEventListener("click", (event) => {
+            thisMap.addEventListener("select", (event) => {
                 // const coordinate = thisMap.convertPoint(event.point, "map");
                 console.log("Map clicked at:", event);
             });
