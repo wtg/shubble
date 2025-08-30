@@ -179,6 +179,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
                             {
                                 strokeColor: '#000000',
                                 lineWidth: 2,
+                                fillColor: "rgba(0,0,0,0.1)"
                             }
                         )
                     }
