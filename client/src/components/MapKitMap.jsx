@@ -173,7 +173,8 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
                     selectedRoute.current = marker;
                 }
             });
-            thisMap.addEventListener("deselect", () => {
+            thisMap.addEventListener("deselect", (e) => {
+                console.log(e);
                 thisMap.removeAnnotation(selectedRoute.current);
                 selectedRoute.current = null;
             });
