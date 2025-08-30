@@ -93,6 +93,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
     const token = import.meta.env.VITE_MAPKIT_KEY;
     const [map, setMap] = useState(null);
     const vehicleOverlays = useRef({});
+    const circleWidth = 15;
 
     // source: https://developer.apple.com/documentation/mapkitjs/loading-the-latest-version-of-mapkit-js
     const setupMapKitJs = async() => {
@@ -153,6 +154,10 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
             thisMap.setCameraDistanceAnimated(2500);
             thisMap.addEventListener("select", (event) => {
                 // const coordinate = thisMap.convertPoint(event.point, "map");
+                console.log("Map selected at:", event);
+            });
+            thisMap.addEventListener("click", (event) => {
+                // const coordinate = thisMap.convertPoint(event.point, "map");
                 console.log("Map clicked at:", event);
             });
             setMap(thisMap);
@@ -173,13 +178,12 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
                 // add stop overlay (circle)
                 const stopOverlay = new window.mapkit.CircleOverlay(
                     stopCoordinate,
-                    15,
+                    circleWidth,
                     {
                         style: new window.mapkit.Style(
                             {
                                 strokeColor: '#000000',
                                 lineWidth: 2,
-                                fillColor: "rgba(0,0,0,0.1)"
                             }
                         )
                     }
