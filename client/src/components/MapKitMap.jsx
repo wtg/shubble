@@ -153,6 +153,10 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
             );
             thisMap.setCameraDistanceAnimated(2500);
             setMap(thisMap);
+            thisMap.addEventListener("click", (event) => {
+                // const coordinate = thisMap.convertPoint(event.point, "map");
+                console.log("Map clicked at:", event);
+            });
         }
     }, [mapLoaded]);
 
@@ -260,11 +264,6 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes=false })
         });
 
     }, [map, vehicles]);
-
-    // see what the user clicked
-    map.addEventListener("select", (e) => {
-        console.log(e);
-    })
 
 return (
     <div
