@@ -3,10 +3,9 @@ from . import db
 from .models import Vehicle, GeofenceEvent, VehicleLocation
 from pathlib import Path
 from sqlalchemy import func, and_
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from data.stops import Stops
 import logging
-
 logger = logging.getLogger(__name__)
 
 bp = Blueprint('routes', __name__)
@@ -182,5 +181,52 @@ def webhook():
 
     except Exception as e:
         db.session.rollback()
+
         logger.exception("Webhook processing failed")
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@bp.route('/api/today', methods=['GET'])
+def data_today():
+    now = datetime.now(timezone.utc)
+    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    locations_today = VehicleLocation.query.filter(
+        and_(
+            VehicleLocation.timestamp >= start_of_day,
+            VehicleLocation.timestamp <= now
+        )
+    ).order_by(VehicleLocation.timestamp.asc()).all()
+
+    events_today = db.session.query(GeofenceEvent).filter(
+        and_(
+            GeofenceEvent.event_time >= start_of_day,
+            GeofenceEvent.event_time <= now
+        )
+    ).order_by(GeofenceEvent.event_time.asc()).all()
+
+    locations_today_dict = {}
+    for location in locations_today:
+        vehicle_location = {
+            "latitude": location.latitude,
+            "longitude": location.longitude,
+            "timestamp": location.timestamp,
+            "speed_mph": location.speed_mph,
+            "heading_degrees": location.heading_degrees,
+            "address_id": location.address_id
+        }
+        if location.vehicle_id in locations_today_dict:
+            locations_today_dict[location.vehicle_id]["data"].append(vehicle_location)
+        else:
+            locations_today_dict[location.vehicle_id] = {
+                "entry": None,
+                "exit": None,
+                "data": [vehicle_location]
+            }
+    for e, geofence_event in enumerate(events_today):
+        if geofence_event.event_type == "geofenceEntry":
+            if "entry" not in locations_today_dict[geofence_event.vehicle_id]: # first entry
+                locations_today_dict[geofence_event.vehicle_id]["entry"] = geofence_event.event_time
+        elif geofence_event.event_type == "geofenceExit":
+            if "entry" in locations_today_dict[geofence_event.vehicle_id]: # makes sure that the vehicle already entered
+                locations_today_dict[geofence_event.vehicle_id]["exit"] = geofence_event.event_time
+
+    return jsonify(locations_today_dict)

@@ -4,109 +4,106 @@ import React, {
 } from 'react';
 import "../styles/Data.css"
 import MapKitMap from '../components/MapKitMap';
+import DataBoard from '../components/DataBoard';
+import ShuttleRow from '../components/ShuttleRow';
 
 export default function Data() {
 
-    const [location, setLocation] = useState(null);
+    const [shuttleData, setShuttleData] = useState(null);
 
-	// Fetch location data on component mount
-    useEffect(() => {
-        const pollLocation = async () => {
-            try {
-                const response = await fetch('/api/locations');
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-                const data = await response.json();
-                setLocation(data);
-            } catch (error) {
-                console.error('Error fetching location:', error);
+    const [selectedShuttleID, setSelectedShuttleID] = useState(null);
+
+    const fetchShuttleData = async () => {
+	try {
+            const response = await fetch('/api/today');
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
             }
+            const data = await response.json();
+            setShuttleData(data);
+        } catch (error) {
+            console.error('Error fetching shuttleData:', error);
         }
+    }
 
-        pollLocation();
-
+    useEffect(() => {
+        fetchShuttleData();
     }, []);
 
-	// Format timestamp to 12-hour format with AM/PM
-    function formatTimestamp(shuttleLocation) {
-		if ("timestamp" in shuttleLocation) {
-			let tStamp = shuttleLocation.timestamp;
-			let hours = parseInt(tStamp.substring(11, 13));
-			let minutes = tStamp.substring(14, 16);
-			let seconds = tStamp.substring(17, 19);
-
-			if (hours > 12) {
-				hours -= 12;
-				return hours + ":" + minutes + ":" + seconds + "PM";
-			}
-			return hours + ":" + minutes + ":" + seconds + "AM";
-		}
-		return "No timestamp given"
-    }
-
-    const [shuttleID, setShuttleID] = useState(null);
-
-    const handleShuttleChange = (event) => {
-		setShuttleID(event.target.value === '' ? null : event.target.value);
-    }
+    useEffect(() => {
+	if (shuttleData != null) {
+	    if (!(selectedShuttleID in shuttleData)) {
+			setSelectedShuttleID(Object.keys(shuttleData)[0]);
+	    }
+	}
+    }, [shuttleData]);
 
     return (
-	<>
-	    <div className = "header">
-			<h1>Shubble Data</h1>
-			<p>Here you can view location history by shuttle.</p>
-		</div>
-
-		<div className = "table-map-sidebyside">
-			<div className = "left-screen">
-				{location ? (
-					<div>
-						<p className = "dropdown-p-style">
-						Shuttle: <select value={shuttleID || ''} onChange={handleShuttleChange} className = "dropdown-style">
-								<option value="">Select a shuttle</option>
-							{Object.keys(location).map(shuttleID => (
-							<option key={shuttleID} value={shuttleID}>
-								{shuttleID}
-							</option>
-							))}
-						</select>
-						</p>
-
-						{shuttleID ? (
-
-						<table className = "data-table">
+		<>
+			<div className="page-container">
+				<div className="sidebar">
+					<table className="sidebar-table">
 						<thead>
 							<tr>
-							<th>
-								Timestamp
-							</th>
-							<th>
-								Latitude, Longitude
-							</th>
-							<th>
-								Speed
-							</th>
+								<th colSpan={3}>
+									{new Date().toLocaleDateString('en-US', {
+										weekday: 'short',
+										month: 'long',
+										day: 'numeric'
+									})}
+								</th>
 							</tr>
 						</thead>
-						<tbody>
-							<tr>
-							<td>{formatTimestamp(location[shuttleID])}</td>
-							<td>{location[shuttleID].latitude}, {location[shuttleID].longitude}</td>
-							<td>{location[shuttleID].speed_mph} mph</td>
-							</tr>
-						</tbody>
-						</table>
+						{shuttleData ? (
+							<tbody>
+							{Object.keys(shuttleData).map(vehicleId => (
+								<tr key={vehicleId}>
+									<ShuttleRow
+										shuttleId={vehicleId}
+										isActive={false}
+										isAm={false}
+									/>
+								</tr>
+							))}
+							</tbody>
 						) : (
-						<p>No shuttle selected</p>
+							<p>No shuttle data given</p>
+						)}
+					</table>
+				</div>
+
+				{shuttleData ? (
+					<div>
+						{shuttleData[selectedShuttleID] ? (
+							<div className="main-content">
+							<DataBoard
+								title="Summary"
+								datatable={[["11:05 AM - NOW"], ["13 loops"], ["23 minutes of break time"]]}
+							/>
+							<DataBoard
+								title="Loops"
+								datatable={[["12 minutes", "11:07-11:19"], ["11 minutes", "11:23-11:34"]]}
+							/>
+							<DataBoard
+								title="Breaks"
+								datatable={[["17 minutes", "12:32-12:49"]]}
+							/>
+							<DataBoard
+								title="Historical Locations"
+								dataToDisplay={["..."]}
+							/>
+							<div className="map-container">
+								<MapKitMap vehicles={ shuttleData } />
+							</div>
+							</div>
+						) : (
+							<p>Invalid shuttle selected</p>
 						)}
 					</div>
 				) : (
-					<p>No locations found</p>
+					<p>No shuttle data given</p>
 				)}
 			</div>
-			<MapKitMap vehicles={ location } />
-	    </div>
-	</>
+		</>
     );
 }

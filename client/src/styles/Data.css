@@ -1,45 +1,84 @@
-.header {
-    width: 90%;
-}
-
-.data-table {
-    width: 100%;
-    text-align: left;
-}
-
-.dropdown-style {
-    padding: 5px;
-    font-size: 20px;
-    border: 1px solid;
-    border-radius: 5px;
-}
-
-.left-screen {
-    width: 30vw;
-}
-
-.dropdown-p-style {
-    font-size: 20px;
-}
-
-.table-map-sidebyside {
+.page-container {
     display: flex;
-    flex-direction: row;
-    gap: 50px;
-    width: 90%;
+    width: 100%;
+    height: auto;
 }
 
-@media (max-width: 768px){
-    .table-map-sidebyside {
-	flex-direction: column-reverse;
-    }
+.sidebar {
+    width: 300px;
+    background: #f5f5f5;
+    border: solid 2px;
+    border-collapse: collapse;
+    padding: 20px;
+    margin: 0;
+    padding: 0;
+    text-align: center;
+}
 
-    .data-table {
-	width: 90vw;
-    }
+.sidebar-table {
+    width: 100%;
+    border-collapse: collapse;
+}
 
-    .no-locations-found-style {
-	width: 90vw;
+.sidebar-table th {
+    padding: 10px 20px;
+    font-size: 20px;
+}
+
+.sidebar-table tr {
+    border-bottom: 2px solid;
+}
+
+.sidebar-table td {
+    padding: 8px 12px;
+}
+
+.main-content {
+    display: flex;
+    flex: 1;
+    flex-direction: row;
+    padding: 20px;
+    gap: 20px;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.map-container {
+    flex: 999;
+    overflow: scroll;
+}
+
+@media screen and (max-width: 768px) {
+    .sidebar-table tbody tr:last-child {
+	border-bottom: none;
     }
     
+    .sidebar {
+	width: 100%;
+    }
+    
+    .page-container {
+	flex-direction: column;
+	justify-content: center;
+    }
+
+    .main-content {
+	flex-direction: column;
+	width: 100vw;
+    }
+
+    .map-container {
+	width: 90%;
+	height: 50vh;
+    }
+}
+
+@media screen and (min-width: 768px) {
+    .main-content {
+	flex-wrap: wrap;
+    }
+
+    .map-container {
+	min-width: 60%;
+    }
 }
