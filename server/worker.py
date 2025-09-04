@@ -43,7 +43,11 @@ def get_vehicles_in_geofence():
     return {row.vehicle_id for row in latest_entries}
 
 def update_locations(after_token, previous_vehicle_ids, app):
-
+    """
+    Fetches and updates vehicle locations for vehicles currently in the geofence.
+    Uses pagination token to fetch subsequent pages.
+    Returns updated after_token and current vehicle IDs.
+    """
     # Get the current list of vehicles in the geofence
     current_vehicle_ids = get_vehicles_in_geofence()
 
@@ -52,11 +56,13 @@ def update_locations(after_token, previous_vehicle_ids, app):
         logger.info('Vehicle list changed; resetting after_token')
         after_token = None
 
+    # No vehicles to update
     if not current_vehicle_ids:
         logger.info('No vehicles in geofence to update')
         return after_token, current_vehicle_ids
 
     headers = {'Accept': 'application/json'}
+    # Determine API URL based on environment
     if app.config['ENV'] == 'development':
         url = 'http://localhost:4000/fleet/vehicles/stats/feed'
     else:
@@ -75,10 +81,13 @@ def update_locations(after_token, previous_vehicle_ids, app):
     try:
         has_next_page = True
         while has_next_page:
+            # Add pagination token if present
             if after_token:
                 url_params['after'] = after_token
             has_next_page = False
+            # Make the API request
             response = requests.get(url, headers=headers, params=url_params)
+            # Handle non-200 responses
             if response.status_code != 200:
                 logger.error(f'API error: {response.status_code} {response.text}')
                 if 'message' in response.text and 'Parameters differ' in response.text:
@@ -86,12 +95,14 @@ def update_locations(after_token, previous_vehicle_ids, app):
                 return after_token, current_vehicle_ids
 
             data = response.json()
+            # Handle pagination
             pagination = data.get('pagination', {})
             if pagination.get('hasNextPage'):
                 has_next_page = True
             after_token = pagination.get('endCursor', after_token)
 
             for vehicle in data.get('data', []):
+                # Process each vehicle's GPS data
                 vehicle_id = vehicle.get('id')
                 vehicle_name = vehicle.get('name')
                 gps_data_list = vehicle.get('gps', [])
@@ -99,12 +110,15 @@ def update_locations(after_token, previous_vehicle_ids, app):
                 if not vehicle_id or not gps_data_list:
                     continue
 
+                # Use the first GPS entry (most recent)
                 gps = gps_data_list[0]
                 timestamp_str = gps.get('time')
                 if not timestamp_str:
                     continue
+                # Convert ISO 8601 string to datetime
                 timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
 
+                # Check if this location already exists
                 exists = VehicleLocation.query.filter_by(
                     vehicle_id=vehicle_id,
                     timestamp=timestamp
@@ -112,6 +126,7 @@ def update_locations(after_token, previous_vehicle_ids, app):
                 if exists:
                     continue
 
+                # Create and add new VehicleLocation
                 loc = VehicleLocation(
                     vehicle_id=vehicle_id,
                     timestamp=timestamp,

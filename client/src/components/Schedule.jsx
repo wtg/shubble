@@ -13,10 +13,12 @@ export default function Schedule() {
     const [stopNames, setStopNames] = useState(routeData[selectedRoute].STOPS || []);
     const [schedule, setSchedule] = useState([]);
 
+    // Update schedule when selectedDay changes
     useEffect(() => {
         setSchedule(aggregatedSchedule[selectedDay]);
     }, [selectedDay]);
 
+    // Update stopNames and selectedStop when selectedRoute changes
     useEffect(() => {
         if (!(selectedStop in routeData[selectedRoute])) {
             setSelectedStop("all");
@@ -24,10 +26,12 @@ export default function Schedule() {
         setStopNames(routeData[selectedRoute].STOPS);
     }, [selectedRoute]);
 
+    // Handle day change from dropdown
     const handleDayChange = (e) => {
         setSelectedDay(parseInt(e.target.value));
     }
 
+    // Function to offset schedule time by given minutes
     const offsetTime = (time, offset) => {
         const date = new Date(time);
         date.setMinutes(date.getMinutes() + offset);

@@ -4,6 +4,7 @@ from .models import Vehicle, GeofenceEvent, VehicleLocation
 from pathlib import Path
 from sqlalchemy import func, and_
 from datetime import datetime, date, timezone
+from data.stops import Stops
 import logging
 logger = logging.getLogger(__name__)
 
@@ -15,11 +16,17 @@ bp = Blueprint('routes', __name__)
 @bp.route('/data')
 @bp.route('/generate-static-routes')
 def serve_react():
+    # serve the React app's index.html for all main routes
     root_dir = Path(__file__).parent.parent / 'client' / 'dist'
     return send_from_directory(root_dir, 'index.html')
 
 @bp.route('/api/locations', methods=['GET'])
 def get_locations():
+    """
+    Returns the latest location for each vehicle currently inside the geofence.
+    The vehicle is considered inside the geofence if its latest geofence event
+    today is a 'geofenceEntry'.
+    """
     # Start of today for filtering today's geofence events
     start_of_today = datetime.combine(date.today(), datetime.min.time())
 
@@ -62,6 +69,14 @@ def get_locations():
     # Format response
     response = {}
     for loc, vehicle in results:
+        # Get closest loop
+        closest_distance, _, closest_route_name, _ = Stops.get_closest_point(
+            (loc.latitude, loc.longitude)
+        )
+        if closest_distance is None:
+            route_name = "UNCLEAR"
+        else:
+            route_name = closest_route_name if closest_distance < 0.020 else None
         response[loc.vehicle_id] = {
             'name': loc.name,
             'latitude': loc.latitude,
@@ -69,6 +84,7 @@ def get_locations():
             'timestamp': loc.timestamp.isoformat(),
             'heading_degrees': loc.heading_degrees,
             'speed_mph': loc.speed_mph,
+            'route_name': route_name,
             'is_ecu_speed': loc.is_ecu_speed,
             'formatted_location': loc.formatted_location,
             'address_id': loc.address_id,
@@ -85,6 +101,10 @@ def get_locations():
 
 @bp.route('/api/webhook', methods=['POST'])
 def webhook():
+    """
+    Handles incoming webhook events for geofence entries/exits.
+    Expects JSON payload with event details.
+    """
     data = request.get_json(force=True)
 
     if not data:
@@ -104,6 +124,7 @@ def webhook():
 
         for condition in conditions:
             details = condition.get('details', {})
+            # determine if entry or exit
             if 'geofenceEntry' in details:
                 geofence_event = details.get('geofenceEntry', {})
             else:
@@ -181,7 +202,7 @@ def data_today():
             GeofenceEvent.event_time <= now
         )
     ).order_by(GeofenceEvent.event_time.asc()).all()
-    
+
     locations_today_dict = {}
     for location in locations_today:
         vehicle_location = {

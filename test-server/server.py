@@ -4,7 +4,8 @@ import time
 import os
 import logging
 from .shuttle import Shuttle, ShuttleState
-from datetime import datetime, timezone
+from datetime import datetime
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -81,13 +82,17 @@ def mock_feed():
         data = []
         for shuttle_id in vehicle_ids:
             if shuttle_id in shuttles:
+                # add error to location
+                lat, lon = shuttles[shuttle_id].location
+                lat += np.random.normal(0, 0.00008)
+                lon += np.random.normal(0, 0.00008)
                 data.append({
                     'id': shuttle_id,
                     'name': shuttle_id[-3:],
                     'gps': [
                         {
-                            'latitude': shuttles[shuttle_id].location[0],
-                            'longitude': shuttles[shuttle_id].location[1],
+                            'latitude': lat,
+                            'longitude': lon,
                             'time': datetime.fromtimestamp(shuttles[shuttle_id].last_updated).isoformat(timespec='seconds').replace('+00:00', 'Z'),
                             'speedMilesPerHour': shuttles[shuttle_id].speed,
                             'headingDegrees': 90,

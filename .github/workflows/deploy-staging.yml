@@ -1,19 +1,12 @@
-# .github/workflows/staging.yml
 name: Deploy to Staging
 
 on:
   workflow_dispatch:
-    inputs:
-      branch:
-        description: 'Branch to deploy'
-        required: true
-        default: 'main'
 
 jobs:
   deploy:
     uses: ./.github/workflows/deploy-to-dokku.yml
     with:
-      branch: ${{ github.event.inputs.branch }}
       environment: staging
     secrets:
       dokku_host: ${{ secrets.DOKKU_HOST_STAGING }}

@@ -1,14 +1,15 @@
-# .github/workflows/production.yml
 name: Deploy to Production
 
 on:
   workflow_dispatch:
+  release:
+    types: [published]
 
 jobs:
   deploy:
+    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.ref_name == 'main')
     uses: ./.github/workflows/deploy-to-dokku.yml
     with:
-      branch: main
       environment: production
     secrets:
       dokku_host: ${{ secrets.DOKKU_HOST_PRODUCTION }}
