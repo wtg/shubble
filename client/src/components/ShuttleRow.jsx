@@ -6,14 +6,10 @@ export default function ShuttleRow({ shuttleId, isActive, isAm }) {
 	<>
 	    <td>{shuttleId}</td>
 	    <td>
-		<StatusTag
-		isActive={isActive}
-		/>
+			<StatusTag isActive={isActive} />
 	    </td>
 	    <td>
-		<TimeTag
-		    isAm={isAm}
-		/>
+			<TimeTag isAm={isAm} />
 	    </td>
 	</>
     );
