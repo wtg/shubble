@@ -1,0 +1,11 @@
+.am-tag {
+    border-radius: 15px;
+    background-color: yellow;
+    text-align: center;
+}
+
+.pm-tag {
+    border-radius: 15px;
+    background-color: blue;
+    text-align: center; 
+}
