@@ -6,16 +6,17 @@ import { aggregatedSchedule } from '../data/parseSchedule';
 
 export default function Schedule() {
     const now = new Date();
-    const routeNames = Object.keys(routeData);
     const [selectedDay, setSelectedDay] = useState(now.getDay());
+    const [routeNames, setRouteNames] = useState(Object.keys(aggregatedSchedule[selectedDay]));
     const [selectedRoute, setSelectedRoute] = useState(routeNames[0]);
     const [selectedStop, setSelectedStop] = useState("all");
-    const [stopNames, setStopNames] = useState(routeData[selectedRoute].STOPS || []);
+    const [stopNames, setStopNames] = useState([]);
     const [schedule, setSchedule] = useState([]);
 
-    // Update schedule when selectedDay changes
+    // Update schedule and routeNames when selectedDay changes
     useEffect(() => {
         setSchedule(aggregatedSchedule[selectedDay]);
+        setRouteNames(Object.keys(aggregatedSchedule[selectedDay]));
     }, [selectedDay]);
 
     // Update stopNames and selectedStop when selectedRoute changes
