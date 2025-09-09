@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect } from 'react';
 import '../styles/Schedule.css';
 import scheduleData from '../data/schedule.json';
 import routeData from '../data/routes.json';
@@ -6,16 +6,17 @@ import { aggregatedSchedule } from '../data/parseSchedule';
 
 export default function Schedule() {
     const now = new Date();
-    const routeNames = Object.keys(routeData);
     const [selectedDay, setSelectedDay] = useState(now.getDay());
+    const [routeNames, setRouteNames] = useState(Object.keys(aggregatedSchedule[selectedDay]));
     const [selectedRoute, setSelectedRoute] = useState(routeNames[0]);
     const [selectedStop, setSelectedStop] = useState("all");
-    const [stopNames, setStopNames] = useState(routeData[selectedRoute].STOPS || []);
+    const [stopNames, setStopNames] = useState([]);
     const [schedule, setSchedule] = useState([]);
 
-    // Update schedule when selectedDay changes
+    // Update schedule and routeNames when selectedDay changes
     useEffect(() => {
         setSchedule(aggregatedSchedule[selectedDay]);
+        setRouteNames(Object.keys(aggregatedSchedule[selectedDay]));
     }, [selectedDay]);
 
     // Update stopNames and selectedStop when selectedRoute changes
@@ -37,6 +38,43 @@ export default function Schedule() {
         date.setMinutes(date.getMinutes() + offset);
         return date;
     }
+
+    // scroll to the current time on route change
+    useEffect(() => {
+        const scheduleDiv = document.querySelector('.schedule-scroll');
+        if (!scheduleDiv) return;
+
+        if (selectedDay !== now.getDay()) return; // only scroll if viewing today's schedule
+        const currentTimeRow = Array.from(scheduleDiv.querySelectorAll('td.outdented')).find(td => {
+            const text = td.textContent.trim();
+
+            // Expect "H:MM AM/PM ..." → split at the first space
+            const [timePart, meridian] = text.split(" ");
+            if (!timePart || !meridian) return false;
+
+            const [rawHours, rawMinutes] = timePart.split(":");
+            let hours = parseInt(rawHours, 10);
+            const minutes = parseInt(rawMinutes, 10);
+
+            // Convert to 24h
+            if (meridian.toUpperCase() === "PM" && hours < 12) {
+                hours += 12;
+            }
+            if (meridian.toUpperCase() === "AM" && hours === 12) {
+                hours = 0;
+            }
+
+            const timeDate = new Date();
+            timeDate.setHours(hours, minutes, 0, 0);
+
+            return timeDate >= now;
+        });
+
+        if (currentTimeRow) {
+            currentTimeRow.scrollIntoView({ behavior: "auto" });
+        }
+    }, [selectedRoute, selectedDay, selectedStop, schedule]);
+
 
     const daysOfTheWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -93,13 +131,13 @@ export default function Schedule() {
                             schedule[selectedRoute]?.map((time, index) => (
                                 routeData[selectedRoute].STOPS.map((stop, index) => (
                                     <tr key={index} className="">
-                                        <td className={ index === 0 ? "" : "indented-time" }>{offsetTime(time, routeData[selectedRoute][stop].OFFSET).toLocaleTimeString(undefined, { timeStyle: 'short' })} {routeData[selectedRoute][stop].NAME}</td>
+                                        <td className={ index === 0 ? "outdented" : "indented-time" }>{offsetTime(time, routeData[selectedRoute][stop].OFFSET).toLocaleTimeString(undefined, { timeStyle: 'short' })} {routeData[selectedRoute][stop].NAME}</td>
                                     </tr>
                                 ))
                             )) :
                             schedule[selectedRoute]?.map((time, index) => (
                                 <tr key={index} className="">
-                                    <td className="">{offsetTime(time, routeData[selectedRoute][selectedStop]?.OFFSET).toLocaleTimeString(undefined, { timeStyle: 'short' })}</td>
+                                    <td className="outdented">{offsetTime(time, routeData[selectedRoute][selectedStop]?.OFFSET).toLocaleTimeString(undefined, { timeStyle: 'short' })}</td>
                                 </tr>
                             ))
                         }
