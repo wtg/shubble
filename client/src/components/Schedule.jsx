@@ -79,7 +79,7 @@ export default function Schedule() {
   const daysOfTheWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
   return (
-    <div className="schedule-div">
+    <div className="p-4">
       <h2>Schedule</h2>
       <div>
         <label for='weekday-dropdown'>Weekday:</label>
