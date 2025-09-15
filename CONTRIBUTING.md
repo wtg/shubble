@@ -43,6 +43,10 @@ This will connect you to the `shubble` database. You can then run SQL commands t
 ```
 You should see the tables `vehicles`, `geofence_events`, and `vehicle_locations` listed.
 
+If you don't have a `.env` file in the project root, create one and add the following line to it:
+```DATABASE_URL=postgresql://localhost:5432/shubble```\
+This tells the backend where to find the PostgreSQL database.
+
 # Running the frontend
 To run the frontend, `cd` to the project root and run:
 ```bash
