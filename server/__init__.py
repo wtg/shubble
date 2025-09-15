@@ -4,8 +4,9 @@ from flask_migrate import Migrate
 import logging
 from .config import Config
 
+numeric_level = logging._nameToLevel.get(Config.LOG_LEVEL.upper(), logging.INFO)
 logging.basicConfig(
-    level=logging.INFO,
+    level=numeric_level,
 )
 
 db = SQLAlchemy()

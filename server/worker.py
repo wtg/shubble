@@ -1,4 +1,4 @@
-from . import create_app, db
+from . import create_app, db, Config
 from .models import VehicleLocation, GeofenceEvent
 from sqlalchemy import func, and_
 import time
@@ -8,7 +8,10 @@ import logging
 from datetime import datetime, date
 
 # Logging config
-logging.basicConfig(level=logging.INFO)
+numeric_level = logging._nameToLevel.get(Config.LOG_LEVEL.upper(), logging.INFO)
+logging.basicConfig(
+    level=numeric_level
+)
 logger = logging.getLogger(__name__)
 
 app = create_app()
