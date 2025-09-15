@@ -108,18 +108,19 @@ def webhook():
     data = request.get_json(force=True)
 
     if not data:
+        logger.error(f'Invalid JSON received: {request.data}')
         return jsonify({'status': 'error', 'message': 'Invalid JSON'}), 400
 
     try:
         # parse top-level event details
         event_id = data.get('eventId')
         event_time = datetime.fromisoformat(data.get('eventTime').replace("Z", "+00:00"))
-        event_type = data.get('eventType')
         event_data = data.get('data', {})
 
         # parse condition details
         conditions = event_data.get('conditions', [])
         if not conditions:
+            logger.error(f'No conditions found in webhook data: {data}')
             return jsonify({'status': 'error', 'message': 'Missing conditions'}), 400
 
         for condition in conditions:
@@ -182,7 +183,7 @@ def webhook():
     except Exception as e:
         db.session.rollback()
 
-        logger.exception("Webhook processing failed")
+        logger.exception(f'Error processing webhook data: {e}')
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @bp.route('/api/today', methods=['GET'])
