@@ -29,7 +29,7 @@ createdb shubble
 ```
 Initialize the database:
 ```bash
-flask db init
+flask db migrate
 ```
 
 ### Verify Database Setup
