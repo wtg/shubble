@@ -144,6 +144,6 @@ Not every change needs to be tested on a staging domain. However, you should use
 
 Shubble has a staging domain you can use for testing. The domain is [https://staging-web-shuttles.rpi.edu/](https://staging-web-shuttles.rpi.edu/).
 
-To deploy your code to the staging domain, push your code to a branch and then go to the Shubble GitHub Repository > Actions > Deploy to Staging. On the right, there's an option to run the workflow. Select your branch and click the green "Run workflow" button. You can monitor the progress of the deployment in the Actions tab. After a few minutes, your code should be live on the staging domain.
+To deploy your code to the staging domain, push your code to a branch and then go to the Shubble GitHub Repository > Actions > Deploy to Staging. On the right, there's an option to run the workflow. Select your branch and click the green "Run workflow" button. You can monitor the progress of the deployment in the Actions tab. Your code will need to be approved by a trusted contributor before it is loaded onto the staging server. A few minutes after someone approves it, your code should be live on the staging domain.
 
 If you use a staging domain, please notify other developers through the Shubble Developers Discord. This is important because the staging domain is shared among all developers, and you don't want to interfere with someone else's testing.
