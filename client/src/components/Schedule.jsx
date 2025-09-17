@@ -4,12 +4,10 @@ import scheduleData from '../data/schedule.json';
 import routeData from '../data/routes.json';
 import { aggregatedSchedule } from '../data/parseSchedule';
 
-export default function Schedule() {
+export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop, setSelectedStop }) {
   const now = new Date();
   const [selectedDay, setSelectedDay] = useState(now.getDay());
   const [routeNames, setRouteNames] = useState(Object.keys(aggregatedSchedule[selectedDay]));
-  const [selectedRoute, setSelectedRoute] = useState(routeNames[0]);
-  const [selectedStop, setSelectedStop] = useState("all");
   const [stopNames, setStopNames] = useState([]);
   const [schedule, setSchedule] = useState([]);
 
@@ -17,15 +15,22 @@ export default function Schedule() {
   useEffect(() => {
     setSchedule(aggregatedSchedule[selectedDay]);
     setRouteNames(Object.keys(aggregatedSchedule[selectedDay]));
+    // If parent hasn't provided a selectedRoute yet, pick the first available one
+    const firstRoute = Object.keys(aggregatedSchedule[selectedDay])[0];
+    if ((!selectedRoute || !(selectedRoute in aggregatedSchedule[selectedDay])) && typeof setSelectedRoute === 'function') {
+      setSelectedRoute(firstRoute);
+    }
   }, [selectedDay]);
 
   // Update stopNames and selectedStop when selectedRoute changes
   useEffect(() => {
-    if (!(selectedStop in routeData[selectedRoute])) {
+    const activeRoute = selectedRoute || routeNames[0];
+    if (!activeRoute || !(activeRoute in routeData)) return;
+    if (!(selectedStop in routeData[activeRoute]) && typeof setSelectedStop === 'function') {
       setSelectedStop("all");
     }
-    setStopNames(routeData[selectedRoute].STOPS);
-  }, [selectedRoute]);
+    setStopNames(routeData[activeRoute].STOPS);
+  }, [selectedRoute, routeNames]);
 
   // Handle day change from dropdown
   const handleDayChange = (e) => {
@@ -95,7 +100,7 @@ export default function Schedule() {
       </div>
       <div>
         <label for='loop-dropdown'>Loop:</label>
-        <select id='loop-dropdown' className="schedule-dropdown-style" value={selectedRoute} onChange={(e) => setSelectedRoute(e.target.value)}>
+  <select id='loop-dropdown' className="schedule-dropdown-style" value={selectedRoute || routeNames[0]} onChange={(e) => { if (typeof setSelectedRoute === 'function') setSelectedRoute(e.target.value); }}>
           {
             routeNames.map((route, index) =>
               <option key={index} value={route}>
@@ -107,12 +112,12 @@ export default function Schedule() {
       </div>
       <div>
         <label for='stop-dropdown'>Stop:</label>
-        <select id='stop-dropdown' className="schedule-dropdown-style" value={selectedStop} onChange={(e) => setSelectedStop(e.target.value)}>
+        <select id='stop-dropdown' className="schedule-dropdown-style" value={selectedStop || "all"} onChange={(e) => { if (typeof setSelectedStop === 'function') setSelectedStop(e.target.value); }}>
           <option value="all">All Stops</option>
           {
             stopNames.map((stop, index) =>
               <option key={index} value={stop}>
-                {routeData[selectedRoute][stop]?.NAME}
+                {routeData[(selectedRoute || routeNames[0])][stop]?.NAME}
               </option>
             )
           }
@@ -127,17 +132,17 @@ export default function Schedule() {
           </thead>
           <tbody>
             {
-              selectedStop === "all" ?
-                schedule[selectedRoute]?.map((time, index) => (
-                  routeData[selectedRoute].STOPS.map((stop, index) => (
-                    <tr key={index} className="">
-                      <td className={index === 0 ? "outdented" : "indented-time"}>{offsetTime(time, routeData[selectedRoute][stop].OFFSET).toLocaleTimeString(undefined, { timeStyle: 'short' })} {routeData[selectedRoute][stop].NAME}</td>
+              (selectedStop || "all") === "all" ?
+                schedule[(selectedRoute || routeNames[0])]?.map((time, index) => (
+                  routeData[(selectedRoute || routeNames[0])].STOPS.map((stop, sidx) => (
+                    <tr key={`${index}-${sidx}`} className="">
+                      <td className={sidx === 0 ? "outdented" : "indented-time"}>{offsetTime(time, routeData[(selectedRoute || routeNames[0])][stop].OFFSET).toLocaleTimeString(undefined, { timeStyle: 'short' })} {routeData[(selectedRoute || routeNames[0])][stop].NAME}</td>
                     </tr>
                   ))
                 )) :
-                schedule[selectedRoute]?.map((time, index) => (
+                schedule[(selectedRoute || routeNames[0])]?.map((time, index) => (
                   <tr key={index} className="">
-                    <td className="outdented">{offsetTime(time, routeData[selectedRoute][selectedStop]?.OFFSET).toLocaleTimeString(undefined, { timeStyle: 'short' })}</td>
+                    <td className="outdented">{offsetTime(time, routeData[(selectedRoute || routeNames[0])][selectedStop]?.OFFSET).toLocaleTimeString(undefined, { timeStyle: 'short' })}</td>
                   </tr>
                 ))
             }

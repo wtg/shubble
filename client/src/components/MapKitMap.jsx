@@ -86,7 +86,7 @@ async function generateRoutePolylines(updatedRouteData) {
   return updatedRouteData;
 }
 
-export default function MapKitMap({ routeData, vehicles, generateRoutes = false }) {
+export default function MapKitMap({ routeData, vehicles, generateRoutes = false, selectedRoute, setSelectedRoute, selectedStop, setSelectedStop }) {
 
   const mapRef = useRef(null);
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -154,22 +154,56 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false 
       );
       thisMap.setCameraDistanceAnimated(2500);
       thisMap.addEventListener("select", (e) => {
-        if (e.overlay && e.overlay.stopName) {
-          if (selectedRoute.current) {
-            thisMap.removeAnnotation(selectedRoute.current);
-            selectedRoute.current = null;
-          }
+        if (!e.overlay) return;
 
-          // temp marker
+        // Only change schedule selection on desktop-sized screens
+        const isDesktop = window.matchMedia('(min-width: 800px)').matches;
+        if (!isDesktop) {
+          // preserve marker-only behavior on mobile if needed (skip selection changes)
+          if (e.overlay && e.overlay.stopName) {
+            if (selectedMarkerRef.current) {
+              thisMap.removeAnnotation(selectedMarkerRef.current);
+              selectedMarkerRef.current = null;
+            }
+            const marker = new window.mapkit.MarkerAnnotation(e.overlay.coordinate, {
+              title: e.overlay.stopName,
+              glyphImage: { 1: "map-marker.png" },
+            });
+            thisMap.addAnnotation(marker);
+            selectedMarkerRef.current = marker;
+          }
+          return;
+        }
+
+        // Desktop: use attached keys to update shared selection
+        if (e.overlay.stopKey) {
+          const routeKey = e.overlay.routeKey;
+          const stopKey = e.overlay.stopKey;
+
+          if (setSelectedRoute && routeKey) setSelectedRoute(routeKey);
+          if (setSelectedStop && stopKey) setSelectedStop(stopKey);
+
+          if (selectedMarkerRef.current) {
+            thisMap.removeAnnotation(selectedMarkerRef.current);
+            selectedMarkerRef.current = null;
+          }
           const marker = new window.mapkit.MarkerAnnotation(e.overlay.coordinate, {
             title: e.overlay.stopName,
-            glyphImage: {
-              1: "map-marker.png",
-            },
+            glyphImage: { 1: "map-marker.png" },
           });
-
           thisMap.addAnnotation(marker);
-          selectedRoute.current = marker;
+          selectedMarkerRef.current = marker;
+        } else if (e.overlay && e.overlay.stopName) {
+          if (selectedMarkerRef.current) {
+            thisMap.removeAnnotation(selectedMarkerRef.current);
+            selectedMarkerRef.current = null;
+          }
+          const marker = new window.mapkit.MarkerAnnotation(e.overlay.coordinate, {
+            title: e.overlay.stopName,
+            glyphImage: { 1: "map-marker.png" },
+          });
+          thisMap.addAnnotation(marker);
+          selectedMarkerRef.current = marker;
         }
       });
       thisMap.addEventListener("deselect", () => {
@@ -189,8 +223,8 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false 
 
     // display stop overlays
     for (const [route, thisRouteData] of Object.entries(routeData)) {
-      for (const stopName of thisRouteData.STOPS) {
-        const stopCoordinate = new window.mapkit.Coordinate(...thisRouteData[stopName].COORDINATES);
+      for (const stopKey of thisRouteData.STOPS) {
+        const stopCoordinate = new window.mapkit.Coordinate(...thisRouteData[stopKey].COORDINATES);
         // add stop overlay (circle)
         const stopOverlay = new window.mapkit.CircleOverlay(
           stopCoordinate,
@@ -204,7 +238,10 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false 
             )
           }
         );
-        stopOverlay.stopName = thisRouteData[stopName].NAME
+        // attach exact identifiers so the select handler can update selection precisely
+        stopOverlay.routeKey = route;
+        stopOverlay.stopKey = stopKey;
+        stopOverlay.stopName = thisRouteData[stopKey].NAME;
         overlays.push(stopOverlay);
       }
     }
