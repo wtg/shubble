@@ -94,7 +94,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
   const [map, setMap] = useState(null);
   const vehicleOverlays = useRef({});
   const circleWidth = 15;
-  const selectedRoute = useRef(null);
+  const selectedRouteRef = useRef(null);
 
   // source: https://developer.apple.com/documentation/mapkitjs/loading-the-latest-version-of-mapkit-js
   const setupMapKitJs = async () => {
@@ -207,8 +207,8 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         }
       });
       thisMap.addEventListener("deselect", () => {
-        thisMap.removeAnnotation(selectedRoute.current);
-        selectedRoute.current = null;
+        thisMap.removeAnnotation(selectedRouteRef.current);
+        selectedRouteRef.current = null;
       });
       setMap(thisMap);
     }
