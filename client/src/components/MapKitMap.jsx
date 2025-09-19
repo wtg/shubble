@@ -136,7 +136,6 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         showsZoomControl: true,
         isRotationEnabled: false,
         showsPointsOfInterest: false,
-        showsUserLocation: true
       };
 
       // create the map
@@ -154,57 +153,38 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         false,
       );
       thisMap.setCameraDistanceAnimated(2500);
+      // Helper function to create and add stop marker
+      const createStopMarker = (overlay) => {
+        if (selectedMarkerRef.current) {
+          thisMap.removeAnnotation(selectedMarkerRef.current);
+          selectedMarkerRef.current = null;
+        }
+        const marker = new window.mapkit.MarkerAnnotation(overlay.coordinate, {
+          title: overlay.stopName,
+          glyphImage: { 1: "map-marker.png" },
+        });
+        thisMap.addAnnotation(marker);
+        selectedMarkerRef.current = marker;
+        return marker;
+      };
+
       thisMap.addEventListener("select", (e) => {
         if (!e.overlay) return;
 
         // Only change schedule selection on desktop-sized screens
         const isDesktop = window.matchMedia('(min-width: 800px)').matches;
-        if (!isDesktop) {
-          // preserve marker-only behavior on mobile if needed (skip selection changes)
-          if (e.overlay && e.overlay.stopName) {
-            if (selectedMarkerRef.current) {
-              thisMap.removeAnnotation(selectedMarkerRef.current);
-              selectedMarkerRef.current = null;
-            }
-            const marker = new window.mapkit.MarkerAnnotation(e.overlay.coordinate, {
-              title: e.overlay.stopName,
-              glyphImage: { 1: "map-marker.png" },
-            });
-            thisMap.addAnnotation(marker);
-            selectedMarkerRef.current = marker;
-          }
-          return;
-        }
-
-        // Desktop: use attached keys to update shared selection
+        
         if (e.overlay.stopKey) {
-          const routeKey = e.overlay.routeKey;
-          const stopKey = e.overlay.stopKey;
-
-          if (setSelectedRoute && routeKey) setSelectedRoute(routeKey);
-          if (setSelectedStop && stopKey) setSelectedStop(stopKey);
-
-          if (selectedMarkerRef.current) {
-            thisMap.removeAnnotation(selectedMarkerRef.current);
-            selectedMarkerRef.current = null;
+          // Create marker for both mobile and desktop
+          createStopMarker(e.overlay);
+          
+          if (isDesktop) {
+            // Desktop: handle schedule change
+            const routeKey = e.overlay.routeKey;
+            const stopKey = e.overlay.stopKey;
+            if (setSelectedRoute && routeKey) setSelectedRoute(routeKey);
+            if (setSelectedStop && stopKey) setSelectedStop(stopKey);
           }
-          const marker = new window.mapkit.MarkerAnnotation(e.overlay.coordinate, {
-            title: e.overlay.stopName,
-            glyphImage: { 1: "map-marker.png" },
-          });
-          thisMap.addAnnotation(marker);
-          selectedMarkerRef.current = marker;
-        } else if (e.overlay && e.overlay.stopName) {
-          if (selectedMarkerRef.current) {
-            thisMap.removeAnnotation(selectedMarkerRef.current);
-            selectedMarkerRef.current = null;
-          }
-          const marker = new window.mapkit.MarkerAnnotation(e.overlay.coordinate, {
-            title: e.overlay.stopName,
-            glyphImage: { 1: "map-marker.png" },
-          });
-          thisMap.addAnnotation(marker);
-          selectedMarkerRef.current = marker;
         }
       });
       thisMap.addEventListener("deselect", () => {
