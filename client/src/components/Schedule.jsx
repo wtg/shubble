@@ -41,7 +41,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop
       setSelectedStop("all");
     }
     setStopNames(routeData[safeSelectedRoute].STOPS);
-  }, [selectedRoute, safeSelectedRoute, selectedStop, setSelectedStop]);
+  }, [selectedRoute]);
 
   // Handle day change from dropdown
   const handleDayChange = (e) => {
