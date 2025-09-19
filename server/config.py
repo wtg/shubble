@@ -14,6 +14,6 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     if secret := os.environ.get('SAMSARA_SECRET', None):
-        SAMSARA_SECRET = base64.b64decode(secret.encode('utf-8'), 'utf-8')
+        SAMSARA_SECRET = base64.b64decode(secret.encode('utf-8'))
     else:
         SAMSARA_SECRET = None
