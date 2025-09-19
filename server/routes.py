@@ -104,6 +104,7 @@ def get_locations():
 @bp.route('/api/webhook', methods=['POST'])
 def webhook():
     if secret := current_app.config['SAMSARA_SECRET']:
+        # See https://developers.samsara.com/docs/webhooks#webhook-signatures
         try:
             timestamp = request.headers['X-Samsara-Timestamp']
             signature = request.headers['X-Samsara-Signature']
