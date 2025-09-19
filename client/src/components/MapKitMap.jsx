@@ -136,6 +136,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         showsZoomControl: true,
         isRotationEnabled: false,
         showsPointsOfInterest: false,
+        showsUserLocation: true
       };
 
       // create the map
