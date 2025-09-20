@@ -29,7 +29,7 @@ createdb shubble
 ```
 Initialize the database:
 ```bash
-flask db migrate
+flask db upgrade
 ```
 
 ### Verify Database Setup
@@ -45,6 +45,9 @@ You should see the tables `vehicles`, `geofence_events`, and `vehicle_locations`
 
 If you don't have a `.env` file in the project root, create one and add the following line to it:
 ```DATABASE_URL=postgresql://localhost:5432/shubble```\
+If you have authentication setup on PostgreSQL, the database URL is in the format
+`DATABASE_URL=postgresql://<username>:<password>@localhost:5432/shubble`\
+The default `<username>` is `postgres`.\
 This tells the backend where to find the PostgreSQL database.
 
 # Running the frontend
