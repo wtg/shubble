@@ -4,7 +4,7 @@ import scheduleData from '../data/schedule.json';
 import routeData from '../data/routes.json';
 import { aggregatedSchedule } from '../data/parseSchedule';
 
-export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop, setSelectedStop }) {
+export default function Schedule({ selectedRoute = null, setSelectedRoute = () => {}, selectedStop = null, setSelectedStop = () => {} }) {
   // Validate props once at the top
   if (typeof setSelectedRoute !== 'function') {
     throw new Error('setSelectedRoute must be a function');
