@@ -12,8 +12,11 @@ import Feedback from './components/Feedback';
 import Data from './pages/Data';
 import MapKitMap from './components/MapKitMap';
 import routeData from './data/routes.json';
+import { useState } from "react";
 
 function App() {
+  const [selectedRoute, setSelectedRoute] = useState(null);
+  const [selectedStop, setSelectedStop] = useState('all');
   return (
     <Router>
       <header>
@@ -41,7 +44,7 @@ function App() {
       <div className="App">
         <Routes>
           <Route path='/' element={<LiveLocation />} />
-          <Route path='/schedule' element={<Schedule />} />
+          <Route path='/schedule' element={<Schedule selectedRoute={selectedRoute} setSelectedRoute={setSelectedRoute} selectedStop={selectedStop} setSelectedStop={setSelectedStop}/>} />
           <Route path='/about' element={<About />} />
           <Route path='/data' element={<Data />} />
           <Route path='/generate-static-routes' element={<MapKitMap routeData={routeData} vehicles={null} generateRoutes={true} />} />
