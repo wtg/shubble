@@ -1,14 +1,38 @@
-name: Deploy to Staging
+name: Deploy to Staging domains
 
 on:
   workflow_dispatch:
 
 jobs:
-  deploy:
+  staging-web-shuttles:
     uses: ./.github/workflows/deploy-to-dokku.yml
     with:
       environment: staging
     secrets:
       dokku_host: ${{ secrets.DOKKU_HOST_STAGING }}
-      dokku_app: ${{ secrets.DOKKU_APP_STAGING }}
+      dokku_app: ${{ secrets.DOKKU_APP_STAGING_1 }}
+      ssh_key: ${{ secrets.DOKKU_SSH_KEY_STAGING }}
+  staging-api-shuttles:
+    uses: ./.github/workflows/deploy-to-dokku.yml
+    with:
+      environment: staging
+    secrets:
+      dokku_host: ${{ secrets.DOKKU_HOST_STAGING }}
+      dokku_app: ${{ secrets.DOKKU_APP_STAGING_2 }}
+      ssh_key: ${{ secrets.DOKKU_SSH_KEY_STAGING }}
+  web-shuttletracker-app:
+    uses: ./.github/workflows/deploy-to-dokku.yml
+    with:
+      environment: staging
+    secrets:
+      dokku_host: ${{ secrets.DOKKU_HOST_STAGING }}
+      dokku_app: ${{ secrets.DOKKU_APP_STAGING_3 }}
+      ssh_key: ${{ secrets.DOKKU_SSH_KEY_STAGING }}
+  web-shuttles:
+    uses: ./.github/workflows/deploy-to-dokku.yml
+    with:
+      environment: staging
+    secrets:
+      dokku_host: ${{ secrets.DOKKU_HOST_STAGING }}
+      dokku_app: ${{ secrets.DOKKU_APP_STAGING_4 }}
       ssh_key: ${{ secrets.DOKKU_SSH_KEY_STAGING }}
