@@ -1,11 +1,11 @@
-name: Deploy to Staging domains (4)
+name: Deploy to web-shuttles.rpi.edu
 
 on:
   workflow_dispatch:
 
 jobs:
   web-shuttles:
-    name: Deploy to web-shuttles.rpi.edu
+    name: Deploy to staging (4)
     uses: ./.github/workflows/deploy-to-dokku.yml
     with:
       environment: staging
