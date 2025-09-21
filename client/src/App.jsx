@@ -18,7 +18,7 @@ import WarningBanner from './components/WarningBanner';
 function App() {
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [selectedStop, setSelectedStop] = useState('all');
-  const staging = import.meta.env.VITE_MODE !== 'production';
+  const staging = import.meta.env.VITE_DEPLOY_MODE !== 'production';
   return (
     <Router>
       <header>
