@@ -1,0 +1,15 @@
+name: Deploy to Staging domains (1)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  staging-web-shuttles:
+    name: Deploy to staging-web-shuttles.rpi.edu
+    uses: ./.github/workflows/deploy-to-dokku.yml
+    with:
+      environment: staging
+    secrets:
+      dokku_host: ${{ secrets.DOKKU_HOST_STAGING }}
+      dokku_app: ${{ secrets.DOKKU_APP_STAGING_1 }}
+      ssh_key: ${{ secrets.DOKKU_SSH_KEY_STAGING }}
