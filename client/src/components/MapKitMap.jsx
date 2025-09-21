@@ -208,8 +208,67 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         thisMap.element.style.cursor = "default";
       });
       
-      // Simple CSS-based hover using map overlays
-      thisMap.element.style.cursor = "default";
+      // Working hover detection
+      let currentHover = null;
+      
+      thisMap.element.addEventListener('mousemove', (e) => {
+        const rect = thisMap.element.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        
+        let foundOverlay = null;
+        
+        // Check all overlays for hover
+        thisMap.overlays.forEach(overlay => {
+          if (overlay.stopKey) {
+            // Get overlay bounds (approximate for circles)
+            const mapRect = thisMap.element.getBoundingClientRect();
+            const centerLat = overlay.coordinate.latitude;
+            const centerLng = overlay.coordinate.longitude;
+            
+            // Simple hit test - check if mouse is near overlay center
+            // This is rough but works for circles
+            const region = thisMap.region;
+            if (region) {
+              const pixelPerDegree = mapRect.width / region.span.longitudeDelta;
+              const centerX = mapRect.width * (centerLng - region.center.longitude + region.span.longitudeDelta/2) / region.span.longitudeDelta;
+              const centerY = mapRect.height * (region.center.latitude - centerLat + region.span.latitudeDelta/2) / region.span.latitudeDelta;
+              
+              const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+              if (distance < 15) { // 15px radius
+                foundOverlay = overlay;
+              }
+            }
+          }
+        });
+        
+        if (foundOverlay !== currentHover) {
+          // Reset old hover
+          if (currentHover) {
+            currentHover.style = new window.mapkit.Style({
+              strokeColor: '#000000',
+              fillColor: '#FFFFFF',
+              fillOpacity: 0.8,
+              lineWidth: 2,
+            });
+          }
+          
+          // Set new hover
+          if (foundOverlay) {
+            foundOverlay.style = new window.mapkit.Style({
+              strokeColor: '#6699ff',
+              fillColor: '#a1c3ff',
+              fillOpacity: 0.8,
+              lineWidth: 4,
+            });
+            thisMap.element.style.cursor = "pointer";
+          } else {
+            thisMap.element.style.cursor = "default";
+          }
+          
+          currentHover = foundOverlay;
+        }
+      });
       
       // Store reference to cleanup function
       thisMap._hoverCleanup = () => {
