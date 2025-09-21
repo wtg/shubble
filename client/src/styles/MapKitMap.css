@@ -7,9 +7,17 @@
     cursor: default;
 }
 
-/* Ensure hover effects work properly */
-.map * {
-    pointer-events: auto;
+/* Hover effects for map overlays */
+.map {
+    cursor: default;
+}
+
+.map .mk-overlay-circle:hover {
+    cursor: pointer !important;
+}
+
+.map:hover {
+    cursor: grab;
 }
 
 @media (max-width: 768px) {

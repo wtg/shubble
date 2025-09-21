@@ -95,7 +95,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
   const vehicleOverlays = useRef({});
   const circleWidth = 15;
   const selectedMarkerRef = useRef(null);
-  const stopOverlayRefs = useRef([]);
+
 
   // source: https://developer.apple.com/documentation/mapkitjs/loading-the-latest-version-of-mapkit-js
   const setupMapKitJs = async () => {
@@ -208,66 +208,8 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         thisMap.element.style.cursor = "default";
       });
       
-      // Add mouse move listener to detect hover over stops
-      const handleMouseMove = (event) => {
-        if (!stopOverlayRefs.current || !stopOverlayRefs.current.length) return;
-        
-        const rect = thisMap.element.getBoundingClientRect();
-        const x = event.clientX - rect.left;
-        const y = event.clientY - rect.top;
-        
-        let foundHover = false;
-        
-        // Check each stop overlay for hover
-        stopOverlayRefs.current.forEach(overlayInfo => {
-          const overlay = overlayInfo.overlay;
-          const coordinate = overlayInfo.coordinate;
-          
-          // Convert map coordinate to screen position
-          const point = thisMap.convertCoordinateToPointOnPage(coordinate);
-          const distance = Math.sqrt(Math.pow(x - point.x, 2) + Math.pow(y - point.y, 2));
-          
-          // Check if mouse is within the circle radius (approximate)
-          if (distance <= circleWidth && !foundHover) {
-            foundHover = true;
-            if (currentHoveredOverlay !== overlay) {
-              // Reset previous hover
-              if (currentHoveredOverlay) {
-                currentHoveredOverlay.style = new window.mapkit.Style({
-                  strokeColor: '#000000',
-                  fillColor: '#FFFFFF',
-                  fillOpacity: 0.8,
-                  lineWidth: 2,
-                });
-              }
-              
-              // Set new hover
-              currentHoveredOverlay = overlay;
-              thisMap.element.style.cursor = "pointer";
-              overlay.style = new window.mapkit.Style({
-                strokeColor: '#000000',
-                fillColor: '#FFD700', // Yellow on hover
-                fillOpacity: 0.8,
-                lineWidth: 3,
-              });
-            }
-          }
-        });
-        
-        // If no hover found, reset
-        if (!foundHover && currentHoveredOverlay) {
-          thisMap.element.style.cursor = "default";
-          currentHoveredOverlay.style = new window.mapkit.Style({
-            strokeColor: '#000000',
-            fillColor: '#FFFFFF',
-            fillOpacity: 0.8,
-            lineWidth: 2,
-          });
-          currentHoveredOverlay = null;
-        }
-      };
-      
-      thisMap.element.addEventListener('mousemove', handleMouseMove);
+      // Simple CSS-based hover using map overlays
+      thisMap.element.style.cursor = "default";
       
       // Store reference to cleanup function
       thisMap._hoverCleanup = () => {
@@ -291,8 +233,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
     if (!map || !routeData) return;
 
     var overlays = [];
-    // Reset stop overlay refs for hover detection
-    stopOverlayRefs.current = [];
+
 
     // display stop overlays
     for (const [route, thisRouteData] of Object.entries(routeData)) {
@@ -319,11 +260,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         stopOverlay.stopName = thisRouteData[stopKey].NAME;
         overlays.push(stopOverlay);
         
-        // Store reference for hover detection
-        stopOverlayRefs.current.push({
-          overlay: stopOverlay,
-          coordinate: stopCoordinate
-        });
+
       }
     }
 
