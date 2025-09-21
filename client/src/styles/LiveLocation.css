@@ -4,7 +4,8 @@
     gap: 40px;
     width: 100%;
     justify-content: center;
-    padding: 20px;
+    padding-top: 20px;
+    padding-bottom: 20px;
 }
 
 .schedule-table {
