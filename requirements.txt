@@ -6,3 +6,4 @@ Flask-Migrate>=4.1.0
 SQLAlchemy>=2.0.41
 gunicorn>=22.0.0
 numpy>=2.3.2
+python-dotenv>=1.1.1

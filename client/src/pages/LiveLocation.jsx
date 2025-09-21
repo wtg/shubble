@@ -14,6 +14,10 @@ export default function LiveLocation() {
   const [location, setLocation] = useState(null);
   const [filteredRouteData, setFilteredRouteData] = useState({});
 
+  //New selection state for the schedule
+  const [selectedRoute, setSelectedRoute] = useState(null);
+  const [selectedStop, setSelectedStop] = useState('all');
+
   // Filter routeData to only include routes present in aggregatedSchedule
   useEffect(() => {
     setFilteredRouteData(
@@ -51,9 +55,21 @@ export default function LiveLocation() {
 
   return (
     <div className="live-location-div">
-      <MapKitMap routeData={filteredRouteData} vehicles={location} />
+      <MapKitMap
+        routeData={filteredRouteData}
+        vehicles={location}
+        selectedRoute={selectedRoute}
+        setSelectedRoute={setSelectedRoute}
+        selectedStop={selectedStop}
+        setSelectedStop={setSelectedStop}
+      />
       <div className="schedule-table">
-        <Schedule />
+        <Schedule
+          selectedRoute={selectedRoute}
+          setSelectedRoute={setSelectedRoute}
+          selectedStop={selectedStop}
+          setSelectedStop={setSelectedStop}
+        />
       </div>
     </div>
   );
