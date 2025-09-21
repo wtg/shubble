@@ -197,7 +197,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         }
       });
       
-      // Add hover effects using DOM mouse events
+      // Detect hover on stop overlays
       let currentHoveredOverlay = null;
       
       thisMap.addEventListener("region-change-start", () => {
@@ -218,16 +218,15 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         
         let foundOverlay = null;
         
-        // Check all overlays for hover
+        // Check overlays for mouse position
         thisMap.overlays.forEach(overlay => {
           if (overlay.stopKey) {
-            // Get overlay bounds (approximate for circles)
+            // Calculate overlay screen position
             const mapRect = thisMap.element.getBoundingClientRect();
             const centerLat = overlay.coordinate.latitude;
             const centerLng = overlay.coordinate.longitude;
             
-            // Simple hit test - check if mouse is near overlay center
-            // This is rough but works for circles
+            // Check if mouse is within overlay radius
             const region = thisMap.region;
             if (region) {
               const pixelPerDegree = mapRect.width / region.span.longitudeDelta;
@@ -235,7 +234,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
               const centerY = mapRect.height * (region.center.latitude - centerLat + region.span.latitudeDelta/2) / region.span.latitudeDelta;
               
               const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
-              if (distance < 15) { // 15px radius
+              if (distance < 15) { // Within hover radius
                 foundOverlay = overlay;
               }
             }
@@ -243,7 +242,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         });
         
         if (foundOverlay !== currentHover) {
-          // Reset old hover
+          // Clear previous hover style
           if (currentHover) {
             currentHover.style = new window.mapkit.Style({
               strokeColor: '#000000',
@@ -253,7 +252,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
             });
           }
           
-          // Set new hover
+          // Apply hover style
           if (foundOverlay) {
             foundOverlay.style = new window.mapkit.Style({
               strokeColor: '#6699ff',
