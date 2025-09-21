@@ -13,10 +13,12 @@ import Data from './pages/Data';
 import MapKitMap from './components/MapKitMap';
 import routeData from './data/routes.json';
 import { useState } from "react";
+import WarningBanner from './components/WarningBanner';
 
 function App() {
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [selectedStop, setSelectedStop] = useState('all');
+  const staging = import.meta.env.VITE_MODE !== 'production';
   return (
     <Router>
       <header>
@@ -42,6 +44,7 @@ function App() {
         </nav>
       </header>
       <div className="App">
+        {staging && <WarningBanner bannerText="This is a staging domain. Please visit the production site." bannerLink="https://shuttles.rpi.edu" />}
         <Routes>
           <Route path='/' element={<LiveLocation />} />
           <Route path='/schedule' element={<Schedule selectedRoute={selectedRoute} setSelectedRoute={setSelectedRoute} selectedStop={selectedStop} setSelectedStop={setSelectedStop}/>} />
