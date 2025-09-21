@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "scripts": {
-    "dev": "cp -r data/ client/src/data/ && vite",
+    "dev": "vite",
     "build": "cp -r data/ client/src/data/ && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
