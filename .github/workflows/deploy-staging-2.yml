@@ -1,4 +1,4 @@
-name: Deploy to staging-api-shuttles.rpi.edu
+name: Deploy to staging-api-shuttles.rpi.edu (2)
 
 on:
   workflow_dispatch:

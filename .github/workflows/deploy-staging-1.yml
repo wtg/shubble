@@ -1,4 +1,4 @@
-name: Deploy to staging-web-shuttles.rpi.edu
+name: Deploy to staging-web-shuttles.rpi.edu (1)
 
 on:
   workflow_dispatch:
