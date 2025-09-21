@@ -5,6 +5,7 @@ on:
 
 jobs:
   staging-web-shuttles:
+    name: Deploy to staging-web-shuttles.rpi.edu
     uses: ./.github/workflows/deploy-to-dokku.yml
     with:
       environment: staging
@@ -13,6 +14,7 @@ jobs:
       dokku_app: ${{ secrets.DOKKU_APP_STAGING_1 }}
       ssh_key: ${{ secrets.DOKKU_SSH_KEY_STAGING }}
   staging-api-shuttles:
+    name: Deploy to staging-api.shuttles.rpi.edu
     uses: ./.github/workflows/deploy-to-dokku.yml
     with:
       environment: staging
@@ -21,6 +23,7 @@ jobs:
       dokku_app: ${{ secrets.DOKKU_APP_STAGING_2 }}
       ssh_key: ${{ secrets.DOKKU_SSH_KEY_STAGING }}
   web-shuttletracker-app:
+    name: Deploy to web.shuttletracker.app
     uses: ./.github/workflows/deploy-to-dokku.yml
     with:
       environment: staging
@@ -29,6 +32,7 @@ jobs:
       dokku_app: ${{ secrets.DOKKU_APP_STAGING_3 }}
       ssh_key: ${{ secrets.DOKKU_SSH_KEY_STAGING }}
   web-shuttles:
+    name: Deploy to web-shuttles.rpi.edu
     uses: ./.github/workflows/deploy-to-dokku.yml
     with:
       environment: staging
