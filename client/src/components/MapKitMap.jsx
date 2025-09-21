@@ -195,6 +195,49 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
          selectedMarkerRef.current = null;
         }
       });
+      
+      // Add hover effects using MapKit's built-in events
+      let currentHoveredOverlay = null;
+      
+      thisMap.addEventListener("region-change-start", () => {
+        thisMap.element.style.cursor = "grab";
+      });
+      
+      thisMap.addEventListener("region-change-end", () => {
+        thisMap.element.style.cursor = "default";
+      });
+      
+      // Use MapKit's mouseover event for overlays
+      thisMap.addEventListener("overlay-mouseover", (event) => {
+        const overlay = event.overlay;
+        if (overlay && overlay.stopKey) {
+          thisMap.element.style.cursor = "pointer";
+          currentHoveredOverlay = overlay;
+          // Change stop color on hover
+          overlay.style = new window.mapkit.Style({
+            strokeColor: '#000000',
+            fillColor: '#FFD700', // Yellow on hover
+            fillOpacity: 0.8,
+            lineWidth: 3,
+          });
+        }
+      });
+      
+      thisMap.addEventListener("overlay-mouseout", (event) => {
+        const overlay = event.overlay;
+        if (overlay && overlay.stopKey) {
+          thisMap.element.style.cursor = "default";
+          // Reset stop color
+          overlay.style = new window.mapkit.Style({
+            strokeColor: '#000000',
+            fillColor: '#FFFFFF',
+            fillOpacity: 0.8,
+            lineWidth: 2,
+          });
+          currentHoveredOverlay = null;
+        }
+      });
+      
       setMap(thisMap);
     }
   }, [mapLoaded]);
@@ -218,6 +261,8 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
             style: new window.mapkit.Style(
               {
                 strokeColor: '#000000',
+                fillColor: '#FFFFFF', // White fill by default
+                fillOpacity: 0.8,
                 lineWidth: 2,
               }
             )

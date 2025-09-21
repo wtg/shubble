@@ -4,6 +4,12 @@
     touch-action: manipulation;
     -webkit-overflow-scrolling: touch;
     background-color: #f0f0f0;
+    cursor: default;
+}
+
+/* Ensure hover effects work properly */
+.map * {
+    pointer-events: auto;
 }
 
 @media (max-width: 768px) {
