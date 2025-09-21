@@ -94,7 +94,8 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
   const [map, setMap] = useState(null);
   const vehicleOverlays = useRef({});
   const circleWidth = 15;
-   const selectedMarkerRef = useRef(null);
+  const selectedMarkerRef = useRef(null);
+  const stopOverlayRefs = useRef([]);
 
   // source: https://developer.apple.com/documentation/mapkitjs/loading-the-latest-version-of-mapkit-js
   const setupMapKitJs = async () => {
@@ -196,7 +197,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         }
       });
       
-      // Add hover effects using MapKit's built-in events
+      // Add hover effects using DOM mouse events
       let currentHoveredOverlay = null;
       
       thisMap.addEventListener("region-change-start", () => {
@@ -207,28 +208,56 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         thisMap.element.style.cursor = "default";
       });
       
-      // Use MapKit's mouseover event for overlays
-      thisMap.addEventListener("overlay-mouseover", (event) => {
-        const overlay = event.overlay;
-        if (overlay && overlay.stopKey) {
-          thisMap.element.style.cursor = "pointer";
-          currentHoveredOverlay = overlay;
-          // Change stop color on hover
-          overlay.style = new window.mapkit.Style({
-            strokeColor: '#000000',
-            fillColor: '#FFD700', // Yellow on hover
-            fillOpacity: 0.8,
-            lineWidth: 3,
-          });
-        }
-      });
-      
-      thisMap.addEventListener("overlay-mouseout", (event) => {
-        const overlay = event.overlay;
-        if (overlay && overlay.stopKey) {
+      // Add mouse move listener to detect hover over stops
+      const handleMouseMove = (event) => {
+        if (!stopOverlayRefs.current || !stopOverlayRefs.current.length) return;
+        
+        const rect = thisMap.element.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        
+        let foundHover = false;
+        
+        // Check each stop overlay for hover
+        stopOverlayRefs.current.forEach(overlayInfo => {
+          const overlay = overlayInfo.overlay;
+          const coordinate = overlayInfo.coordinate;
+          
+          // Convert map coordinate to screen position
+          const point = thisMap.convertCoordinateToPointOnPage(coordinate);
+          const distance = Math.sqrt(Math.pow(x - point.x, 2) + Math.pow(y - point.y, 2));
+          
+          // Check if mouse is within the circle radius (approximate)
+          if (distance <= circleWidth && !foundHover) {
+            foundHover = true;
+            if (currentHoveredOverlay !== overlay) {
+              // Reset previous hover
+              if (currentHoveredOverlay) {
+                currentHoveredOverlay.style = new window.mapkit.Style({
+                  strokeColor: '#000000',
+                  fillColor: '#FFFFFF',
+                  fillOpacity: 0.8,
+                  lineWidth: 2,
+                });
+              }
+              
+              // Set new hover
+              currentHoveredOverlay = overlay;
+              thisMap.element.style.cursor = "pointer";
+              overlay.style = new window.mapkit.Style({
+                strokeColor: '#000000',
+                fillColor: '#FFD700', // Yellow on hover
+                fillOpacity: 0.8,
+                lineWidth: 3,
+              });
+            }
+          }
+        });
+        
+        // If no hover found, reset
+        if (!foundHover && currentHoveredOverlay) {
           thisMap.element.style.cursor = "default";
-          // Reset stop color
-          overlay.style = new window.mapkit.Style({
+          currentHoveredOverlay.style = new window.mapkit.Style({
             strokeColor: '#000000',
             fillColor: '#FFFFFF',
             fillOpacity: 0.8,
@@ -236,10 +265,24 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
           });
           currentHoveredOverlay = null;
         }
-      });
+      };
+      
+      thisMap.element.addEventListener('mousemove', handleMouseMove);
+      
+      // Store reference to cleanup function
+      thisMap._hoverCleanup = () => {
+        thisMap.element.removeEventListener('mousemove', handleMouseMove);
+      };
       
       setMap(thisMap);
     }
+    
+    // Cleanup on component unmount
+    return () => {
+      if (map && map._hoverCleanup) {
+        map._hoverCleanup();
+      }
+    };
   }, [mapLoaded]);
 
   // add fixed details to the map
@@ -248,6 +291,8 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
     if (!map || !routeData) return;
 
     var overlays = [];
+    // Reset stop overlay refs for hover detection
+    stopOverlayRefs.current = [];
 
     // display stop overlays
     for (const [route, thisRouteData] of Object.entries(routeData)) {
@@ -273,6 +318,12 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         stopOverlay.stopKey = stopKey;
         stopOverlay.stopName = thisRouteData[stopKey].NAME;
         overlays.push(stopOverlay);
+        
+        // Store reference for hover detection
+        stopOverlayRefs.current.push({
+          overlay: stopOverlay,
+          coordinate: stopCoordinate
+        });
       }
     }
 
