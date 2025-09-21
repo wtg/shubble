@@ -1,11 +1,11 @@
-name: Deploy to Staging domains (2)
+name: Deploy to staging-api-shuttles.rpi.edu
 
 on:
   workflow_dispatch:
 
 jobs:
   staging-api-shuttles:
-    name: Deploy to staging-api.shuttles.rpi.edu
+    name: Deploy to staging (2)
     uses: ./.github/workflows/deploy-to-dokku.yml
     with:
       environment: staging
