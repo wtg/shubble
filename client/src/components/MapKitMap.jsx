@@ -86,7 +86,7 @@ async function generateRoutePolylines(updatedRouteData) {
   return updatedRouteData;
 }
 
-export default function MapKitMap({ routeData, vehicles, generateRoutes = false }) {
+export default function MapKitMap({ routeData, vehicles, generateRoutes = false, selectedRoute, setSelectedRoute, selectedStop, setSelectedStop }) {
 
   const mapRef = useRef(null);
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -94,7 +94,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false 
   const [map, setMap] = useState(null);
   const vehicleOverlays = useRef({});
   const circleWidth = 15;
-  const selectedRoute = useRef(null);
+   const selectedMarkerRef = useRef(null);
 
   // source: https://developer.apple.com/documentation/mapkitjs/loading-the-latest-version-of-mapkit-js
   const setupMapKitJs = async () => {
@@ -136,6 +136,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false 
         showsZoomControl: true,
         isRotationEnabled: false,
         showsPointsOfInterest: false,
+        showsUserLocation: true,
       };
 
       // create the map
@@ -153,28 +154,46 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false 
         false,
       );
       thisMap.setCameraDistanceAnimated(2500);
+      // Helper function to create and add stop marker
+      const createStopMarker = (overlay) => {
+        if (selectedMarkerRef.current) {
+          thisMap.removeAnnotation(selectedMarkerRef.current);
+          selectedMarkerRef.current = null;
+        }
+        const marker = new window.mapkit.MarkerAnnotation(overlay.coordinate, {
+          title: overlay.stopName,
+          glyphImage: { 1: "map-marker.png" },
+        });
+        thisMap.addAnnotation(marker);
+        selectedMarkerRef.current = marker;
+        return marker;
+      };
+
       thisMap.addEventListener("select", (e) => {
-        if (e.overlay && e.overlay.stopName) {
-          if (selectedRoute.current) {
-            thisMap.removeAnnotation(selectedRoute.current);
-            selectedRoute.current = null;
+        if (!e.overlay) return;
+
+        // Only change schedule selection on desktop-sized screens
+        const isDesktop = window.matchMedia('(min-width: 800px)').matches;
+        
+        if (e.overlay.stopKey) {
+          // Create marker for both mobile and desktop
+          createStopMarker(e.overlay);
+          
+          if (isDesktop) {
+            // Desktop: handle schedule change
+            const routeKey = e.overlay.routeKey;
+            const stopKey = e.overlay.stopKey;
+            if (setSelectedRoute && routeKey) setSelectedRoute(routeKey);
+            if (setSelectedStop && stopKey) setSelectedStop(stopKey);
           }
-
-          // temp marker
-          const marker = new window.mapkit.MarkerAnnotation(e.overlay.coordinate, {
-            title: e.overlay.stopName,
-            glyphImage: {
-              1: "map-marker.png",
-            },
-          });
-
-          thisMap.addAnnotation(marker);
-          selectedRoute.current = marker;
         }
       });
       thisMap.addEventListener("deselect", () => {
-        thisMap.removeAnnotation(selectedRoute.current);
-        selectedRoute.current = null;
+        // remove any selected stop/marker annotation on when deselected
+        if (selectedMarkerRef.current) {
+         thisMap.removeAnnotation(selectedMarkerRef.current);
+         selectedMarkerRef.current = null;
+        }
       });
       setMap(thisMap);
     }
@@ -189,8 +208,8 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false 
 
     // display stop overlays
     for (const [route, thisRouteData] of Object.entries(routeData)) {
-      for (const stopName of thisRouteData.STOPS) {
-        const stopCoordinate = new window.mapkit.Coordinate(...thisRouteData[stopName].COORDINATES);
+      for (const stopKey of thisRouteData.STOPS) {
+        const stopCoordinate = new window.mapkit.Coordinate(...thisRouteData[stopKey].COORDINATES);
         // add stop overlay (circle)
         const stopOverlay = new window.mapkit.CircleOverlay(
           stopCoordinate,
@@ -204,7 +223,10 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false 
             )
           }
         );
-        stopOverlay.stopName = thisRouteData[stopName].NAME
+        // attach exact identifiers so the select handler can update selection precisely
+        stopOverlay.routeKey = route;
+        stopOverlay.stopKey = stopKey;
+        stopOverlay.stopName = thisRouteData[stopKey].NAME;
         overlays.push(stopOverlay);
       }
     }

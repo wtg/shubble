@@ -1,5 +1,12 @@
+
 __pycache__/
 node_modules/
 .env
 client/dist
 .DS_Store
+
+.vscode/
+.idea/
+
+.venv/
+venv/
