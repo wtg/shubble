@@ -246,8 +246,8 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
           if (currentHover) {
             currentHover.style = new window.mapkit.Style({
               strokeColor: '#000000',
-              fillColor: '#FFFFFF',
-              fillOpacity: 0.8,
+              fillColor: '#a1c3ff',
+              fillOpacity: 0.1,
               lineWidth: 2,
             });
           }
@@ -257,7 +257,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
             foundOverlay.style = new window.mapkit.Style({
               strokeColor: '#6699ff',
               fillColor: '#a1c3ff',
-              fillOpacity: 0.1,
+              fillOpacity: 0.3,
               lineWidth: 2.5,
             });
             thisMap.element.style.cursor = "pointer";
