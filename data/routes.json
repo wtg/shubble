@@ -702,7 +702,7 @@
       "BLITMAN",
       "CHASAN",
       "FEDERAL_6TH",
-      "WEST_HALL",
+      "HEFFNER_HOUSE",
       "STUDENT_UNION_RETURN"
     ],
     "POLYLINE_STOPS": [
@@ -715,7 +715,7 @@
       "CHASAN",
       "GHOST_STOP_2",
       "FEDERAL_6TH",
-      "WEST_HALL",
+      "HEFFNER_HOUSE",
       "STUDENT_UNION_RETURN"
     ],
     "STUDENT_UNION": {
