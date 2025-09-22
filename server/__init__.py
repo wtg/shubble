@@ -1,6 +1,7 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
+from flask_caching import Cache
 import logging
 from .config import Config
 
@@ -11,6 +12,7 @@ logging.basicConfig(
 
 db = SQLAlchemy()
 migrate = Migrate()
+cache = Cache()
 
 def create_app():
     # create and configure the app
@@ -21,6 +23,8 @@ def create_app():
     db.init_app(app)
     # make any necessary migrations
     migrate.init_app(app, db)
+    # initialize cache
+    cache.init_app(app, config={'CACHE_TYPE': 'SimpleCache'})
 
     # register routes
     from . import routes

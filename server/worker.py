@@ -1,4 +1,4 @@
-from . import create_app, db, Config
+from . import create_app, db, cache, Config
 from .models import VehicleLocation, GeofenceEvent
 from sqlalchemy import func, and_
 import time
@@ -15,6 +15,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = create_app()
+
+@cache.cached(timeout=60, key_prefix="vehicles_in_geofence")
 
 def get_vehicles_in_geofence():
     """

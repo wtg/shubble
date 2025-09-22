@@ -1,11 +1,12 @@
 from flask import Blueprint, request, jsonify, send_from_directory
-from . import db
+from . import db, cache
 from .models import Vehicle, GeofenceEvent, VehicleLocation
 from pathlib import Path
 from sqlalchemy import func, and_
 from datetime import datetime, date, timezone
 from data.stops import Stops
 import logging
+
 logger = logging.getLogger(__name__)
 
 bp = Blueprint('routes', __name__)
@@ -27,6 +28,11 @@ def get_locations():
     The vehicle is considered inside the geofence if its latest geofence event
     today is a 'geofenceEntry'.
     """
+    
+    # If there is a cached result, return it
+    cached_result = cache.get('locations_in_geofence')
+    if cached_result is not None:
+        return jsonify(cached_result)
     # Start of today for filtering today's geofence events
     start_of_today = datetime.combine(date.today(), datetime.min.time())
 
@@ -97,6 +103,7 @@ def get_locations():
             'gateway_serial': vehicle.gateway_serial,
         }
 
+    cache.set('locations_in_geofence', response)
     return jsonify(response)
 
 @bp.route('/api/webhook', methods=['POST'])
@@ -178,6 +185,10 @@ def webhook():
             db.session.add(event)
 
         db.session.commit()
+        
+        # Invalidate Cache
+        cache.delete('locations_in_geofence') 
+        
         return jsonify({'status': 'success'}), 200
 
     except Exception as e:
