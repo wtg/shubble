@@ -702,6 +702,7 @@
       "BLITMAN",
       "CHASAN",
       "FEDERAL_6TH",
+      "SAGE_AVE",
       "HEFFNER_HOUSE",
       "STUDENT_UNION_RETURN"
     ],
@@ -715,6 +716,7 @@
       "CHASAN",
       "GHOST_STOP_2",
       "FEDERAL_6TH",
+      "SAGE_AVE",
       "HEFFNER_HOUSE",
       "STUDENT_UNION_RETURN"
     ],
@@ -789,6 +791,14 @@
       ],
       "OFFSET": 12,
       "NAME": "Fulton St"
+    },
+    "SAGE_AVE": {
+      "COORDINATES": [
+        42.73297257935473,
+        -73.68253457194481
+      ],
+      "OFFSET": 13,
+      "NAME": "Sage Ave"
     },
     "HEFFNER_HOUSE": {
       "COORDINATES": [
