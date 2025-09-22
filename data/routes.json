@@ -790,13 +790,13 @@
       "OFFSET": 12,
       "NAME": "Fulton St"
     },
-    "WEST_HALL": {
+    "HEFFNER_HOUSE": {
       "COORDINATES": [
-        42.731503,
-        -73.681261
+        42.733192421315145,
+        -73.67772658084554
       ],
-      "OFFSET": 12,
-      "NAME": "West Hall"
+      "OFFSET": 14,
+      "NAME": "Heffner Alumni House"
     },
     "STUDENT_UNION_RETURN": {
       "COORDINATES": [
