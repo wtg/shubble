@@ -703,7 +703,7 @@
       "CHASAN",
       "FEDERAL_6TH",
       "SAGE_AVE",
-      "HEFFNER_HOUSE",
+      "RMA",
       "STUDENT_UNION_RETURN"
     ],
     "POLYLINE_STOPS": [
@@ -717,7 +717,7 @@
       "GHOST_STOP_2",
       "FEDERAL_6TH",
       "SAGE_AVE",
-      "HEFFNER_HOUSE",
+      "RMA",
       "STUDENT_UNION_RETURN"
     ],
     "STUDENT_UNION": {
@@ -800,13 +800,13 @@
       "OFFSET": 13,
       "NAME": "Sage Ave"
     },
-    "HEFFNER_HOUSE": {
+    "RMA": {
       "COORDINATES": [
-        42.733192421315145,
-        -73.67772658084554
+        42.733507308481016,
+        -73.67968981295384
       ],
       "OFFSET": 14,
-      "NAME": "Heffner Alumni House"
+      "NAME": "RMA"
     },
     "STUDENT_UNION_RETURN": {
       "COORDINATES": [
