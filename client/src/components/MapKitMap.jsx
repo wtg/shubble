@@ -234,7 +234,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
               const centerY = mapRect.height * (region.center.latitude - centerLat + region.span.latitudeDelta/2) / region.span.latitudeDelta;
               
               const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
-              if (distance < 15) { // Within hover radius
+              if (distance < circleWidth) { // Within hover radius
                 foundOverlay = overlay;
               }
             }
@@ -257,8 +257,8 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
             foundOverlay.style = new window.mapkit.Style({
               strokeColor: '#6699ff',
               fillColor: '#a1c3ff',
-              fillOpacity: 0.8,
-              lineWidth: 4,
+              fillOpacity: 0.1,
+              lineWidth: 2.5,
             });
             thisMap.element.style.cursor = "pointer";
           } else {
