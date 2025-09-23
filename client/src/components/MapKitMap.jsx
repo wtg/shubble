@@ -246,11 +246,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
           if (currentHover) {
             currentHover.style = new window.mapkit.Style({
               strokeColor: '#000000',
-<<<<<<< HEAD
               fillColor: '#FFFFFF',
-=======
-              fillColor: '#a1c3ff',
->>>>>>> f3221cb8b87dd5de04a3173eb6ad31e410723c3a
               fillOpacity: 0.1,
               lineWidth: 2,
             });
