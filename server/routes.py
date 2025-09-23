@@ -249,3 +249,13 @@ def data_today():
                 locations_today_dict[geofence_event.vehicle_id]["exit"] = geofence_event.event_time
 
     return jsonify(locations_today_dict)
+
+@bp.route('/api/routes', methods=['GET'])
+def get_shuttle_routes():
+    root_dir = Path(__file__).parent.parent
+    return send_from_directory(root_dir / 'data', 'routes.json')
+
+@bp.route('/api/schedule', methods=['GET'])
+def get_shuttle_schedule():
+    root_dir = Path(__file__).parent.parent
+    return send_from_directory(root_dir / 'data', 'schedule.json')
