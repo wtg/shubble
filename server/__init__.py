@@ -23,11 +23,12 @@ def create_app():
     db.init_app(app)
     # make any necessary migrations
     migrate.init_app(app, db)
+    
     # initialize cache
-    cache.init_app(app, config={'CACHE_TYPE': 'SimpleCache'})
+    cache.init_app(app, config={'CACHE_TYPE': 'RedisCache', 'CACHE_REDIS_URL': 'redis://localhost:6379'})
 
     # register routes
     from . import routes
     app.register_blueprint(routes.bp)
-
+    
     return app

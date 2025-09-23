@@ -22,18 +22,13 @@ def serve_react():
     return send_from_directory(root_dir, 'index.html')
 
 @bp.route('/api/locations', methods=['GET'])
+@cache.cached(timeout=60, key_prefix="locations_in_geofence")
 def get_locations():
     """
     Returns the latest location for each vehicle currently inside the geofence.
     The vehicle is considered inside the geofence if its latest geofence event
     today is a 'geofenceEntry'.
     """
-    
-    # If there is a cached result, return it
-    cached_result = cache.get('locations_in_geofence')
-    if cached_result is not None:
-        return jsonify(cached_result)
-    # Start of today for filtering today's geofence events
     start_of_today = datetime.combine(date.today(), datetime.min.time())
 
     # Subquery: latest geofence event today per vehicle
@@ -103,7 +98,6 @@ def get_locations():
             'gateway_serial': vehicle.gateway_serial,
         }
 
-    cache.set('locations_in_geofence', response)
     return jsonify(response)
 
 @bp.route('/api/webhook', methods=['POST'])
@@ -187,7 +181,7 @@ def webhook():
         db.session.commit()
         
         # Invalidate Cache
-        cache.delete('locations_in_geofence') 
+        cache.delete('vehicles_in_geofence') 
         
         return jsonify({'status': 'success'}), 200
 

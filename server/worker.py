@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 app = create_app()
 
 @cache.cached(timeout=60, key_prefix="vehicles_in_geofence")
-
 def get_vehicles_in_geofence():
     """
     Returns a set of vehicle_ids where the latest geofence event from today
@@ -148,6 +147,7 @@ def update_locations(after_token, previous_vehicle_ids, app):
                 db.session.add(loc)
 
             db.session.commit()
+            cache.delete('locations_in_geofence')
             logger.info(f'Updated locations for {len(current_vehicle_ids)} vehicles')
 
     except requests.RequestException as e:
