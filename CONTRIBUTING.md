@@ -29,7 +29,7 @@ createdb shubble
 ```
 Initialize the database:
 ```bash
-flask db init
+flask db upgrade
 ```
 
 ### Verify Database Setup
@@ -45,6 +45,9 @@ You should see the tables `vehicles`, `geofence_events`, and `vehicle_locations`
 
 If you don't have a `.env` file in the project root, create one and add the following line to it:
 ```DATABASE_URL=postgresql://localhost:5432/shubble```\
+If you have authentication setup on PostgreSQL, the database URL is in the format
+`DATABASE_URL=postgresql://<username>:<password>@localhost:5432/shubble`\
+The default `<username>` is `postgres`.\
 This tells the backend where to find the PostgreSQL database.
 
 # Running the frontend
@@ -133,3 +136,17 @@ Then apply the migration using:
 flask db upgrade
 ```
 Migration files will be generated in the `migrations` directory. You should commit these files to the Git repository so that any database changes you make can be mirrored by others using `upgrade`.
+
+# Staging Domains
+
+A staging domain is a server that mimics the production environment. It allows you to test changes in an environment that is similar to production before deploying them live.
+
+**When should I use a staging domain?**
+
+Not every change needs to be tested on a staging domain. However, you should use a staging domain when you need to test changes that are related to external services, such as the Apple MapKit JS integration or the Samsara API integration. These services cannot be tested locally because they require a publicly accessible URL.
+
+Shubble has a staging domain you can use for testing. The domain is [https://staging-web-shuttles.rpi.edu/](https://staging-web-shuttles.rpi.edu/).
+
+To deploy your code to the staging domain, push your code to a branch and then go to the Shubble GitHub Repository > Actions > Deploy to Staging. On the right, there's an option to run the workflow. Select your branch and click the green "Run workflow" button. You can monitor the progress of the deployment in the Actions tab. Your code will need to be approved by a trusted contributor before it is loaded onto the staging server. A few minutes after someone approves it, your code should be live on the staging domain.
+
+If you use a staging domain, please notify other developers through the Shubble Developers Discord. This is important because the staging domain is shared among all developers, and you don't want to interfere with someone else's testing.

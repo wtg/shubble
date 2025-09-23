@@ -1,10 +1,12 @@
-from flask import Blueprint, request, jsonify, send_from_directory
+from flask import Blueprint, request, jsonify, send_from_directory, current_app
 from . import db, cache
 from .models import Vehicle, GeofenceEvent, VehicleLocation
 from pathlib import Path
 from sqlalchemy import func, and_
 from datetime import datetime, date, timezone
 from data.stops import Stops
+from hashlib import sha256
+import hmac
 import logging
 
 logger = logging.getLogger(__name__)
@@ -102,6 +104,22 @@ def get_locations():
 
 @bp.route('/api/webhook', methods=['POST'])
 def webhook():
+    if secret := current_app.config['SAMSARA_SECRET']:
+        # See https://developers.samsara.com/docs/webhooks#webhook-signatures
+        try:
+            timestamp = request.headers['X-Samsara-Timestamp']
+            signature = request.headers['X-Samsara-Signature']
+
+            prefix = 'v1:{0}:'.format(timestamp)
+            message = bytes(prefix, 'utf-8') + request.data
+            h = hmac.new(secret, message, sha256)
+            expected_signature = 'v1=' + h.hexdigest()
+
+            if expected_signature != signature:
+                return jsonify({'status': 'error', 'message': 'Failed to authenticate request.'}), 401
+        except KeyError as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 400
+
     """
     Handles incoming webhook events for geofence entries/exits.
     Expects JSON payload with event details.
