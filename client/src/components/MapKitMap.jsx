@@ -247,7 +247,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
             currentHover.style = new window.mapkit.Style({
               strokeColor: '#000000',
               fillColor: '#FFFFFF',
-              fillOpacity: 0.8,
+              fillOpacity: 0.1,
               lineWidth: 2,
             });
           }
@@ -306,7 +306,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
               {
                 strokeColor: '#000000',
                 fillColor: '#FFFFFF', // White fill by default
-                fillOpacity: 0.8,
+                fillOpacity: 0.1,
                 lineWidth: 2,
               }
             )
