@@ -74,6 +74,7 @@ https://hub.docker.com/_/redis
 Press on "run in docker desktop"
 
 This should open up your docker desktop application and run it. On this display you should see a localhost port that redis is running on. (e.g localhost:32678)
+<img width="288" height="94" alt="image" src="https://github.com/user-attachments/assets/fe1816b9-a47e-4ede-91f6-530290e80606" />
 
 Copy this localhost with the port and put the following in your env
 
