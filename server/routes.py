@@ -24,13 +24,14 @@ def serve_react():
     return send_from_directory(root_dir, 'index.html')
 
 @bp.route('/api/locations', methods=['GET'])
-@cache.cached(timeout=60, key_prefix="locations_in_geofence")
+@cache.cached(timeout=300, key_prefix="locations_in_geofence")
 def get_locations():
     """
     Returns the latest location for each vehicle currently inside the geofence.
     The vehicle is considered inside the geofence if its latest geofence event
     today is a 'geofenceEntry'.
     """
+    print('cache not hit, locations')
     start_of_today = datetime.combine(date.today(), datetime.min.time())
 
     # Subquery: latest geofence event today per vehicle

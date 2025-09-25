@@ -5,7 +5,7 @@ import time
 import requests
 import os
 import logging
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 # Logging config
 numeric_level = logging._nameToLevel.get(Config.LOG_LEVEL.upper(), logging.INFO)
@@ -22,6 +22,7 @@ def get_vehicles_in_geofence():
     Returns a set of vehicle_ids where the latest geofence event from today
     is a geofenceEntry.
     """
+    print('cache not hit, vehicles_in_geofence')
     start_of_today = datetime.combine(date.today(), datetime.min.time())
 
     # Filter to today's events first
@@ -84,6 +85,7 @@ def update_locations(after_token, previous_vehicle_ids, app):
 
     try:
         has_next_page = True
+        new_records_added = 0
         while has_next_page:
             # Add pagination token if present
             if after_token:
@@ -122,12 +124,13 @@ def update_locations(after_token, previous_vehicle_ids, app):
                 # Convert ISO 8601 string to datetime
                 timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
 
-                # Check if this location already exists
-                exists = VehicleLocation.query.filter_by(
-                    vehicle_id=vehicle_id,
-                    timestamp=timestamp
-                ).first()
-                if exists:
+                # Check if we have a very recent location for this vehicle (within last 5 minutes)
+                recent_location = VehicleLocation.query.filter(
+                    VehicleLocation.vehicle_id == vehicle_id,
+                    VehicleLocation.timestamp >= timestamp - timedelta(minutes=1)
+                ).order_by(VehicleLocation.timestamp.desc()).first()
+                
+                if recent_location:
                     continue
 
                 # Create and add new VehicleLocation
@@ -145,10 +148,16 @@ def update_locations(after_token, previous_vehicle_ids, app):
                     address_name=gps.get('address', {}).get('name'),
                 )
                 db.session.add(loc)
+                new_records_added += 1
 
-            db.session.commit()
-            cache.delete('locations_in_geofence')
-            logger.info(f'Updated locations for {len(current_vehicle_ids)} vehicles')
+            # Only commit and invalidate cache if we actually added new records
+            if new_records_added > 0:
+                db.session.commit()
+                cache.delete('locations_in_geofence')
+                logger.info(f'Updated locations for {len(current_vehicle_ids)} vehicles - {new_records_added} new records')
+                print("invalidating locations")
+            else:
+                logger.info(f'No new location data for {len(current_vehicle_ids)} vehicles')
 
     except requests.RequestException as e:
         logger.error(f'Failed to fetch locations: {e}')

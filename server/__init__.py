@@ -25,7 +25,7 @@ def create_app():
     migrate.init_app(app, db)
     
     # initialize cache
-    cache.init_app(app, config={'CACHE_TYPE': 'RedisCache', 'CACHE_REDIS_URL': 'redis://localhost:6379'})
+    cache.init_app(app, config={'CACHE_TYPE': 'RedisCache', 'CACHE_REDIS_URL': app.config["REDIS_URL"]})
 
     # register routes
     from . import routes
