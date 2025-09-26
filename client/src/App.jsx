@@ -44,7 +44,7 @@ function App() {
         </nav>
       </header>
       <div className="App">
-        {staging && <WarningBanner bannerText="This is a staging domain. Please visit the production site." bannerLink="https://shuttles.rpi.edu" />}
+      {staging && <WarningBanner bannerLink="https://shuttles.rpi.edu" />}
         <Routes>
           <Route path='/' element={<LiveLocation />} />
           <Route path='/schedule' element={<Schedule selectedRoute={selectedRoute} setSelectedRoute={setSelectedRoute} selectedStop={selectedStop} setSelectedStop={setSelectedStop}/>} />
