@@ -13,6 +13,7 @@ class Config:
         SQLALCHEMY_DATABASE_URI = SQLALCHEMY_DATABASE_URI.replace('postgres://', 'postgresql://', 1)
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
+    REDIS_URL = os.environ.get('REDIS_URL')
     if secret := os.environ.get('SAMSARA_SECRET', None):
         SAMSARA_SECRET = base64.b64decode(secret.encode('utf-8'))
     else:

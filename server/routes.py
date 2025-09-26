@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify, send_from_directory, current_app
-from . import db
+from . import db, cache
 from .models import Vehicle, GeofenceEvent, VehicleLocation
 from pathlib import Path
 from sqlalchemy import func, and_
@@ -8,6 +8,7 @@ from data.stops import Stops
 from hashlib import sha256
 import hmac
 import logging
+
 logger = logging.getLogger(__name__)
 
 bp = Blueprint('routes', __name__)
@@ -23,13 +24,14 @@ def serve_react():
     return send_from_directory(root_dir, 'index.html')
 
 @bp.route('/api/locations', methods=['GET'])
+@cache.cached(timeout=300, key_prefix="locations_in_geofence")
 def get_locations():
     """
     Returns the latest location for each vehicle currently inside the geofence.
     The vehicle is considered inside the geofence if its latest geofence event
     today is a 'geofenceEntry'.
     """
-    # Start of today for filtering today's geofence events
+    print('cache not hit, locations')
     start_of_today = datetime.combine(date.today(), datetime.min.time())
 
     # Subquery: latest geofence event today per vehicle
@@ -196,6 +198,10 @@ def webhook():
             db.session.add(event)
 
         db.session.commit()
+        
+        # Invalidate Cache
+        cache.delete('vehicles_in_geofence') 
+        
         return jsonify({'status': 'success'}), 200
 
     except Exception as e:
