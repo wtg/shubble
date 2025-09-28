@@ -1,11 +1,10 @@
-from datetime import datetime, time, timezone
-from zoneinfo import ZoneInfo
+from datetime import datetime, timezone
 
-CAMPUS_TZ = ZoneInfo("America/New_York")
+from flask import current_app
 
 
 def get_campus_start_of_day():
-    now = datetime.now(CAMPUS_TZ)
+    now = datetime.now(current_app.config['CAMPUS_TZ'])
     midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
     return midnight.astimezone(timezone.utc)
