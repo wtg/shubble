@@ -18,7 +18,7 @@ class ShuttleState(Enum):
     EXITING = "exiting"
 
 class Shuttle:
-    def __init__(self, shuttle_id: str):
+    def __init__(self, shuttle_id: str, latitude: float = 0, longitude: float = 0):
         # larger state
         self.id = shuttle_id
         self.state = ShuttleState.WAITING
@@ -26,7 +26,7 @@ class Shuttle:
 
         # shuttle properties
         self.last_updated = time.time()
-        self.location = (0, 0)
+        self.location = (latitude, longitude)
         self.speed = 0.0002
 
         self.path = []

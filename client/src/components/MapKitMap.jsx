@@ -94,7 +94,8 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
   const [map, setMap] = useState(null);
   const vehicleOverlays = useRef({});
   const circleWidth = 15;
-   const selectedMarkerRef = useRef(null);
+  const selectedMarkerRef = useRef(null);
+
 
   // source: https://developer.apple.com/documentation/mapkitjs/loading-the-latest-version-of-mapkit-js
   const setupMapKitJs = async () => {
@@ -195,8 +196,93 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
          selectedMarkerRef.current = null;
         }
       });
+      
+      // Detect hover on stop overlays
+      let currentHoveredOverlay = null;
+      
+      thisMap.addEventListener("region-change-start", () => {
+        thisMap.element.style.cursor = "grab";
+      });
+      
+      thisMap.addEventListener("region-change-end", () => {
+        thisMap.element.style.cursor = "default";
+      });
+      
+      // Working hover detection
+      let currentHover = null;
+      
+      thisMap.element.addEventListener('mousemove', (e) => {
+        const rect = thisMap.element.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        
+        let foundOverlay = null;
+        
+        // Check overlays for mouse position
+        thisMap.overlays.forEach(overlay => {
+          if (overlay.stopKey) {
+            // Calculate overlay screen position
+            const mapRect = thisMap.element.getBoundingClientRect();
+            const centerLat = overlay.coordinate.latitude;
+            const centerLng = overlay.coordinate.longitude;
+            
+            // Check if mouse is within overlay radius
+            const region = thisMap.region;
+            if (region) {
+              const pixelPerDegree = mapRect.width / region.span.longitudeDelta;
+              const centerX = mapRect.width * (centerLng - region.center.longitude + region.span.longitudeDelta/2) / region.span.longitudeDelta;
+              const centerY = mapRect.height * (region.center.latitude - centerLat + region.span.latitudeDelta/2) / region.span.latitudeDelta;
+              
+              const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+              if (distance < circleWidth) { // Within hover radius
+                foundOverlay = overlay;
+              }
+            }
+          }
+        });
+        
+        if (foundOverlay !== currentHover) {
+          // Clear previous hover style
+          if (currentHover) {
+            currentHover.style = new window.mapkit.Style({
+              strokeColor: '#000000',
+              fillColor: '#FFFFFF',
+              fillOpacity: 0.1,
+              lineWidth: 2,
+            });
+          }
+          
+          // Apply hover style
+          if (foundOverlay) {
+            foundOverlay.style = new window.mapkit.Style({
+              strokeColor: '#6699ff',
+              fillColor: '#a1c3ff',
+              fillOpacity: 0.3,
+              lineWidth: 2.5,
+            });
+            thisMap.element.style.cursor = "pointer";
+          } else {
+            thisMap.element.style.cursor = "default";
+          }
+          
+          currentHover = foundOverlay;
+        }
+      });
+      
+      // Store reference to cleanup function
+      thisMap._hoverCleanup = () => {
+        thisMap.element.removeEventListener('mousemove', handleMouseMove);
+      };
+      
       setMap(thisMap);
     }
+    
+    // Cleanup on component unmount
+    return () => {
+      if (map && map._hoverCleanup) {
+        map._hoverCleanup();
+      }
+    };
   }, [mapLoaded]);
 
   // add fixed details to the map
@@ -205,6 +291,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
     if (!map || !routeData) return;
 
     var overlays = [];
+
 
     // display stop overlays
     for (const [route, thisRouteData] of Object.entries(routeData)) {
@@ -218,6 +305,8 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
             style: new window.mapkit.Style(
               {
                 strokeColor: '#000000',
+                fillColor: '#FFFFFF', // White fill by default
+                fillOpacity: 0.1,
                 lineWidth: 2,
               }
             )
@@ -228,6 +317,8 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         stopOverlay.stopKey = stopKey;
         stopOverlay.stopName = thisRouteData[stopKey].NAME;
         overlays.push(stopOverlay);
+        
+
       }
     }
 
