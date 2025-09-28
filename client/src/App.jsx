@@ -19,6 +19,7 @@ function App() {
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [selectedStop, setSelectedStop] = useState('all');
   const staging = import.meta.env.VITE_DEPLOY_MODE !== 'production';
+  const GIT_REV = import.meta.env.VITE_GIT_REV || 'unknown';
   return (
     <Router>
       <header>
@@ -44,7 +45,7 @@ function App() {
         </nav>
       </header>
       <div className="App">
-        {staging && <WarningBanner bannerText="This is a staging domain. Please visit the production site." bannerLink="https://shuttles.rpi.edu" />}
+        {staging && <WarningBanner bannerText="This is a staging domain. Please visit the production site." bannerLink="https://shuttles.rpi.edu" gitRev={GIT_REV} />}
         <Routes>
           <Route path='/' element={<LiveLocation />} />
           <Route path='/schedule' element={<Schedule selectedRoute={selectedRoute} setSelectedRoute={setSelectedRoute} selectedStop={selectedStop} setSelectedStop={setSelectedStop}/>} />
