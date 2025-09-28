@@ -155,3 +155,7 @@ footer {
   color: #000;
   text-decoration: underline;
 }
+
+.banner * {
+  margin: 5px;
+}
