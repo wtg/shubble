@@ -8,6 +8,9 @@ from data.stops import Stops
 from hashlib import sha256
 import hmac
 import logging
+
+from .time_utils import get_campus_start_of_day
+
 logger = logging.getLogger(__name__)
 
 bp = Blueprint('routes', __name__)
@@ -30,7 +33,7 @@ def get_locations():
     today is a 'geofenceEntry'.
     """
     # Start of today for filtering today's geofence events
-    start_of_today = datetime.combine(date.today(), datetime.min.time())
+    start_of_today = get_campus_start_of_day()
 
     # Subquery: latest geofence event today per vehicle
     latest_geofence_events = db.session.query(
@@ -207,7 +210,7 @@ def webhook():
 @bp.route('/api/today', methods=['GET'])
 def data_today():
     now = datetime.now(timezone.utc)
-    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    start_of_day = get_campus_start_of_day()
     locations_today = VehicleLocation.query.filter(
         and_(
             VehicleLocation.timestamp >= start_of_day,

@@ -3,6 +3,8 @@ from threading import Thread, Lock
 import time
 import os
 import logging
+
+from server.time_utils import get_campus_start_of_day
 from .shuttle import Shuttle, ShuttleState
 from datetime import datetime, date
 from server.models import Vehicle, GeofenceEvent, VehicleLocation
@@ -26,7 +28,7 @@ db.init_app(app)
 # setup function to populate the shuttles dict, same as in server/routes
 def setup():
     # Start of today for filtering today's geofence events
-    start_of_today = datetime.combine(date.today(), datetime.min.time())
+    start_of_today = get_campus_start_of_day()
 
     # Subquery: latest geofence event today per vehicle
     # Returns a query result of (vehicle_id, event_time)
