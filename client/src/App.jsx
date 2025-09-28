@@ -19,7 +19,7 @@ function App() {
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [selectedStop, setSelectedStop] = useState('all');
   const staging = import.meta.env.VITE_DEPLOY_MODE !== 'production';
-  const GIT_REV = import.meta.env.VITE_GIT_REV || 'unknown';
+  const GIT_REV = import.meta.env.GIT_REV || 'unknown';
   return (
     <Router>
       <header>
