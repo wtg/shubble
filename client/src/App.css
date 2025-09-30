@@ -159,6 +159,10 @@ footer {
   text-decoration: underline;
 }
 
+.banner p {
+  margin: 4px 0;
+}
+
 .banner * {
   margin: 5px;
 }

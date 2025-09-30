@@ -1,10 +1,12 @@
 export default function WarningBanner({ bannerText, gitRev, bannerLink }) {
     return (
         <div className="banner">
+            <p>{bannerText}</p>
             {bannerLink && (
                 <p>
-                    This is a staging domain. Please visit our official website{" "}
-                    <a href={bannerLink}>here</a>!
+                    <a href={bannerLink}>
+                    Official Website
+                    </a>
                 </p>
             )}
             {
