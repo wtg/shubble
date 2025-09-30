@@ -130,10 +130,7 @@ def update_locations(after_token, previous_vehicle_ids, app):
                     VehicleLocation.timestamp >= timestamp - timedelta(seconds=10)
                 ).order_by(VehicleLocation.timestamp.desc()).first()
                 
-                print(gps_data_list)
-                print(recent_location.latitude if recent_location else "None")
                 if recent_location and haversine((gps['latitude'], gps['longitude']), (recent_location.latitude, recent_location.longitude)) < 0.01:
-                    print("Location is the same")
                     continue
                 
                 
