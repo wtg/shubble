@@ -1,4 +1,4 @@
-export default function WarningBanner({ bannerText, bannerLink }) {
+export default function WarningBanner({ bannerText, gitRev, bannerLink }) {
     return (
         <div className="banner">
             <h1>{bannerText}</h1>
@@ -9,6 +9,14 @@ export default function WarningBanner({ bannerText, bannerLink }) {
                     </a>
                 </p>
             )}
+            {
+                gitRev != 'unknown' ? (
+                    <a href={`https://github.com/wtg/shubble/commit/${gitRev}`}>
+                        {gitRev}
+                    </a>
+                ) :
+                <p>Version unknown</p>
+            }
         </div>
     );
-    }
+}

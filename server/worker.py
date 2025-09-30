@@ -1,4 +1,5 @@
 from . import create_app, db, cache, Config
+from .time_utils import get_campus_start_of_day
 from .models import VehicleLocation, GeofenceEvent
 from sqlalchemy import func, and_
 import time
@@ -23,7 +24,7 @@ def get_vehicles_in_geofence():
     Returns a set of vehicle_ids where the latest geofence event from today
     is a geofenceEntry.
     """
-    start_of_today = datetime.combine(date.today(), datetime.min.time())
+    start_of_today = get_campus_start_of_day()
 
     # Filter to today's events first
     today_events = db.session.query(GeofenceEvent).filter(
