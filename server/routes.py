@@ -231,23 +231,45 @@ def data_today():
     ).order_by(GeofenceEvent.event_time.asc()).all()
 
     locations_today_dict = {}
+    # locations 
     for location in locations_today:
-        vehicle_location = {
+        # _coordinate = (location.latitude, location.longitude), use _corrdinate[0] and [1] for later
+        # _closest_route_location = Stops.get_closest_point(location.latitude, location.longitude)
+        vechicle_location = {
             "latitude": location.latitude,
             "longitude": location.longitude,
-            "timestamp": location.timestamp,
-            "speed_mph": location.speed_mph,
-            "heading_degrees": location.heading_degrees,
-            "address_id": location.address_id
+            "closest_route_location": (0, 0),   # update this, maybe Stops.get_closest_point(_current_coords)
+            "distance": 0,                      # update this, maybe Stops.haversine((location.latitude, location.longitude), _closest_route_location)
+            "closest_route": "some",            # update this...
+            "closest_polyline": 0               # update this...
         }
         if location.vehicle_id in locations_today_dict:
-            locations_today_dict[location.vehicle_id]["data"].append(vehicle_location)
+            locations_today_dict[location.vehicle_id]["locations"].append(vechicle_location)
         else:
             locations_today_dict[location.vehicle_id] = {
-                "entry": None,
-                "exit": None,
-                "data": [vehicle_location]
+                "locations": {location.timestamp: vechicle_location},
+                "loops": [],
+                "breaks": []
             }
+    # for location in locations_today:
+    #     vehicle_location = {
+    #         "latitude": location.latitude,
+    #         "longitude": location.longitude,
+    #         "timestamp": location.timestamp,
+    #         "speed_mph": location.speed_mph,
+    #         "heading_degrees": location.heading_degrees,
+    #         "address_id": location.address_id
+    #     }
+    #     if location.vehicle_id in locations_today_dict:
+    #         locations_today_dict[location.vehicle_id]["data"].append(vehicle_location)
+    #     else:
+    #         locations_today_dict[location.vehicle_id] = {
+    #             "entry": None,
+    #             "exit": None,
+    #             "data": [vehicle_location]
+    #         }
+
+    # loops and breaks
     for e, geofence_event in enumerate(events_today):
         if geofence_event.event_type == "geofenceEntry":
             if "entry" not in locations_today_dict[geofence_event.vehicle_id]: # first entry
