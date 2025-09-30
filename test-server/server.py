@@ -89,6 +89,18 @@ t = Thread(target=update_loop, daemon=True)
 t.start()
 
 # --- API Routes ---
+@app.route("/api/events/today", methods=["GET"])
+def get_todays_events():
+    #start_of_today = datetime.combine(date.today(), datetime.min.time())
+    return jsonify({
+        'locationCount': 9999,
+        'geofenceCount': 1234
+    })
+
+@app.route("/api/events/today", methods=["DELETE"])
+def clear_todays_events():
+    pass
+
 @app.route("/api/shuttles", methods=["GET"])
 def list_shuttles():
     with shuttle_lock:

@@ -6,12 +6,28 @@ const NEXT_STATES = ["waiting", "entering", "looping", "on_break", "exiting"];
 function App() {
   const [shuttles, setShuttles] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
+  const [locationCount, setLocationCount] = useState(null);
+  const [geofenceCount, setGeofenceCount] = useState(null);
+
+  const clearEvents = async () => {
+    console.log("Clearing events...")
+    await fetch("/api/events/today", {method: "DELETE"});
+  };
+
+  const fetchEvents = async () => {
+    const res = await fetch("/api/events/today");
+    const data = await res.json();
+    console.log(data);
+    setLocationCount(data.locationCount);
+    setGeofenceCount(data.geofenceCount);
+  }
 
   const fetchShuttles = async () => {
     const res = await fetch("/api/shuttles");
     const data = await res.json();
     setShuttles(data);
     console.log("Fetched shuttles:", data);
+    await fetchEvents();
   };
 
   const addShuttle = async () => {
@@ -96,6 +112,11 @@ function App() {
       ) : (
         <p>No shuttle selected.</p>
       )}
+
+      <div className="today-events">
+        {locationCount} previous shuttle locations and {geofenceCount} previous entry/exit events
+      </div>
+      <button onclick={clearEvents}>Clear Events</button>
     </div>
   );
 }
