@@ -154,36 +154,6 @@ def update_locations(after_token, previous_vehicle_ids, app):
 
     return after_token, current_vehicle_ids
 
-def haversine(coord1, coord2):
-    """
-    Calculate the great-circle distance between two points on the Earth
-    using the Haversine formula.
-
-    Parameters:
-        coord1: (lat1, lon1) in decimal degrees
-        coord2: (lat2, lon2) in decimal degrees
-
-    Returns:
-        Distance in kilometers.
-    """
-    # Earth radius in kilometers
-    R = 6371.0
-
-    lat1, lon1 = coord1
-    lat2, lon2 = coord2
-
-    # Convert degrees to radians
-    phi1 = math.radians(lat1)
-    phi2 = math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlambda = math.radians(lon2 - lon1)
-
-    # Haversine formula
-    a = math.sin(dphi / 2)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2)**2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-
-    return R * c
-
 def run_worker():
     logger.info('Worker started...')
     after_token = None
