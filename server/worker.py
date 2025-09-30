@@ -124,7 +124,7 @@ def update_locations(after_token, previous_vehicle_ids, app):
                 # Convert ISO 8601 string to datetime
                 timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
                 
-                # Check if we have a very recent location for this vehicle (within last 2 minutes)
+                # Check if we have a very recent location for this vehicle (within last 10 seconds)
                 recent_location = VehicleLocation.query.filter(
                     VehicleLocation.vehicle_id == vehicle_id,
                     VehicleLocation.timestamp >= timestamp - timedelta(seconds=10)
