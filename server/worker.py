@@ -123,7 +123,20 @@ def update_locations(after_token, previous_vehicle_ids, app):
                     continue
                 # Convert ISO 8601 string to datetime
                 timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
-
+                
+                # Check if we have a very recent location for this vehicle (within last 2 minutes)
+                recent_location = VehicleLocation.query.filter(
+                    VehicleLocation.vehicle_id == vehicle_id,
+                    VehicleLocation.timestamp >= timestamp - timedelta(seconds=10)
+                ).order_by(VehicleLocation.timestamp.desc()).first()
+                
+                print(gps_data_list)
+                print(recent_location.latitude if recent_location else "None")
+                if recent_location and haversine((gps['latitude'], gps['longitude']), (recent_location.latitude, recent_location.longitude)) < 0.01:
+                    print("Location is the same")
+                    continue
+                
+                
                 # Create and add new VehicleLocation
                 loc = VehicleLocation(
                     vehicle_id=vehicle_id,
