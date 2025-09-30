@@ -64,3 +64,20 @@ class VehicleLocation(db.Model):
 
     def __repr__(self):
         return f"<ShuttleLocation {self.vehicle_id} @ {self.timestamp}>"
+
+class Drivers(db.Model):
+    __tablename__ = 'drivers'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    
+class DriverVehicles(db.Model):
+    __tablename__ = 'driver_vehicles'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    driver_id = db.Column(db.Integer, db.ForeignKey('drivers.id'), nullable=False)
+    vehicle_id = db.Column(db.String, db.ForeignKey('vehicles.id'), nullable=False)
+    
+    driver = db.relationship('Drivers', backref=db.backref('driver_vehicles', lazy=True))
+    vehicle = db.relationship('Vehicle', backref=db.backref('driver_vehicles', lazy=True))
+    
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)

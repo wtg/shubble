@@ -1,6 +1,6 @@
 from .time_utils import get_campus_start_of_day
 from . import create_app, db, Config
-from .models import VehicleLocation, GeofenceEvent
+from .models import VehicleLocation, GeofenceEvent, DriverVehicles, Drivers
 from sqlalchemy import func, and_
 import time
 import requests
@@ -45,6 +45,74 @@ def get_vehicles_in_geofence():
     ).filter(today_events.c.event_type == 'geofenceEntry').all()
 
     return {row.vehicle_id for row in latest_entries}
+
+def get_drivers_for_vehicle(current_vehicle_ids):
+    """
+    Stores new driver relationships in DriverVehicles table.
+    """
+    if not current_vehicle_ids:
+        return
+
+    headers = {'Accept': 'application/json'}
+    # Determine API URL based on environment
+    if app.config['ENV'] == 'development':
+        url = 'http://localhost:4000/fleet/drivers/feed'
+    else:
+        api_key = os.environ.get('API_KEY')
+        if not api_key:
+            logger.error('API_KEY not set')
+            return
+        headers['Authorization'] = f'Bearer {api_key}'
+        url = 'https://api.samsara.com/fleet/driver-vehicle-assignments'
+
+    url_params = {
+        'vehicleIds': ','.join(current_vehicle_ids),
+        'types': 'driver',
+    }
+
+    try:
+        response = requests.get(url, headers=headers, params=url_params)
+        # Handle non-200 responses
+        if response.status_code != 200:
+            logger.error(f'API error: {response.status_code} {response.text}')
+            return
+
+        data = response.json()
+
+        for vehicle in data.get('data', []):
+            vehicle_id = vehicle.get('id')
+            driver_data_list = vehicle.get('driver', [])
+
+            if not vehicle_id or not driver_data_list:
+                continue
+
+            for driver_data in driver_data_list:
+                driver_id = driver_data.get('id')
+                if not driver_id:
+                    continue
+
+                # Check if this relationship already exists
+                exists = DriverVehicles.query.filter_by(
+                    DriverVehicles.timestamp >= get_campus_start_of_day(),
+                    driver_id=driver_id,
+                    vehicle_id=vehicle_id,
+                ).first()
+                if exists:
+                    continue
+
+                # Create and add new DriverVehicles entry
+                driver_vehicle = DriverVehicles(
+                    driver_id=driver_id,
+                    vehicle_id=vehicle_id,
+                    timestamp=datetime.utcnow()
+                )
+                db.session.add(driver_vehicle)
+
+        db.session.commit()
+        logger.info(f'Updated drivers for {len(current_vehicle_ids)} vehicles')
+
+    except requests.RequestException as e:
+        logger.error(f'Failed to fetch drivers: {e}')
 
 def update_locations(after_token, previous_vehicle_ids, app):
     """
