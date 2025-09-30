@@ -6,6 +6,7 @@ import requests
 import os
 import logging
 from datetime import datetime, date, timedelta
+import math
 
 # Logging config
 numeric_level = logging._nameToLevel.get(Config.LOG_LEVEL.upper(), logging.INFO)
@@ -22,7 +23,6 @@ def get_vehicles_in_geofence():
     Returns a set of vehicle_ids where the latest geofence event from today
     is a geofenceEntry.
     """
-    print('cache not hit, vehicles_in_geofence')
     start_of_today = datetime.combine(date.today(), datetime.min.time())
 
     # Filter to today's events first
@@ -124,14 +124,6 @@ def update_locations(after_token, previous_vehicle_ids, app):
                 # Convert ISO 8601 string to datetime
                 timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
 
-                # Check if we have a very recent location for this vehicle (within last 2 minutes)
-                recent_location = VehicleLocation.query.filter(
-                    VehicleLocation.vehicle_id == vehicle_id,
-                    # VehicleLocation.timestamp >= timestamp - timedelta(seconds=1)
-                ).order_by(VehicleLocation.timestamp.desc()).first()
-                # print(gps_data_list)
-                # print(recent_location.latitude if recent_location else "None")
-
                 # Create and add new VehicleLocation
                 loc = VehicleLocation(
                     vehicle_id=vehicle_id,
@@ -154,7 +146,6 @@ def update_locations(after_token, previous_vehicle_ids, app):
                 db.session.commit()
                 cache.delete('vehicle_locations')
                 logger.info(f'Updated locations for {len(current_vehicle_ids)} vehicles - {new_records_added} new records')
-                print("invalidating locations")
             else:
                 logger.info(f'No new location data for {len(current_vehicle_ids)} vehicles')
 
@@ -162,6 +153,36 @@ def update_locations(after_token, previous_vehicle_ids, app):
         logger.error(f'Failed to fetch locations: {e}')
 
     return after_token, current_vehicle_ids
+
+def haversine(coord1, coord2):
+    """
+    Calculate the great-circle distance between two points on the Earth
+    using the Haversine formula.
+
+    Parameters:
+        coord1: (lat1, lon1) in decimal degrees
+        coord2: (lat2, lon2) in decimal degrees
+
+    Returns:
+        Distance in kilometers.
+    """
+    # Earth radius in kilometers
+    R = 6371.0
+
+    lat1, lon1 = coord1
+    lat2, lon2 = coord2
+
+    # Convert degrees to radians
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+
+    # Haversine formula
+    a = math.sin(dphi / 2)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    return R * c
 
 def run_worker():
     logger.info('Worker started...')

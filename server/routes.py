@@ -31,7 +31,6 @@ def get_locations():
     The vehicle is considered inside the geofence if its latest geofence event
     today is a 'geofenceEntry'.
     """
-    print('cache not hit, locations')
     start_of_today = datetime.combine(date.today(), datetime.min.time())
 
     # Subquery: latest geofence event today per vehicle
