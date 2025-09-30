@@ -7,5 +7,8 @@ export default defineConfig({
   build: {
     outDir: '../client/dist',
     emptyOutDir: true
+  },
+  define: {
+    'import.meta.env.GIT_REV': JSON.stringify(process.env.GIT_REV || 'unknown')
   }
 })

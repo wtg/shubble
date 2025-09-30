@@ -8,6 +8,7 @@ from data.stops import Stops
 from hashlib import sha256
 import hmac
 import logging
+from .time_utils import get_campus_start_of_day
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,8 @@ def get_locations():
     The vehicle is considered inside the geofence if its latest geofence event
     today is a 'geofenceEntry'.
     """
-    start_of_today = datetime.combine(date.today(), datetime.min.time())
+    # Start of today for filtering today's geofence events
+    start_of_today = get_campus_start_of_day()
 
     # Subquery: latest geofence event today per vehicle
     latest_geofence_events = db.session.query(
@@ -212,7 +214,7 @@ def webhook():
 @bp.route('/api/today', methods=['GET'])
 def data_today():
     now = datetime.now(timezone.utc)
-    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    start_of_day = get_campus_start_of_day()
     locations_today = VehicleLocation.query.filter(
         and_(
             VehicleLocation.timestamp >= start_of_day,
@@ -254,3 +256,13 @@ def data_today():
                 locations_today_dict[geofence_event.vehicle_id]["exit"] = geofence_event.event_time
 
     return jsonify(locations_today_dict)
+
+@bp.route('/api/routes', methods=['GET'])
+def get_shuttle_routes():
+    root_dir = Path(__file__).parent.parent
+    return send_from_directory(root_dir / 'data', 'routes.json')
+
+@bp.route('/api/schedule', methods=['GET'])
+def get_shuttle_schedule():
+    root_dir = Path(__file__).parent.parent
+    return send_from_directory(root_dir / 'data', 'schedule.json')

@@ -1,5 +1,7 @@
 import base64
 import os
+from zoneinfo import ZoneInfo
+
 
 class Config:
     # hosting settings
@@ -18,3 +20,7 @@ class Config:
         SAMSARA_SECRET = base64.b64decode(secret.encode('utf-8'))
     else:
         SAMSARA_SECRET = None
+
+
+    # shubble settings
+    CAMPUS_TZ = ZoneInfo('America/New_York')
