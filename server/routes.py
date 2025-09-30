@@ -24,7 +24,7 @@ def serve_react():
     return send_from_directory(root_dir, 'index.html')
 
 @bp.route('/api/locations', methods=['GET'])
-@cache.cached(timeout=300, key_prefix="locations_in_geofence")
+@cache.cached(timeout=300, key_prefix="vehicle_locations")
 def get_locations():
     """
     Returns the latest location for each vehicle currently inside the geofence.

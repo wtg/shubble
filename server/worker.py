@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 app = create_app()
 
-@cache.cached(timeout=60, key_prefix="vehicles_in_geofence")
+@cache.cached(timeout=300, key_prefix="vehicles_in_geofence")
 def get_vehicles_in_geofence():
     """
     Returns a set of vehicle_ids where the latest geofence event from today
@@ -127,11 +127,10 @@ def update_locations(after_token, previous_vehicle_ids, app):
                 # Check if we have a very recent location for this vehicle (within last 2 minutes)
                 recent_location = VehicleLocation.query.filter(
                     VehicleLocation.vehicle_id == vehicle_id,
-                    VehicleLocation.timestamp >= timestamp - timedelta(minutes=2)
+                    # VehicleLocation.timestamp >= timestamp - timedelta(seconds=1)
                 ).order_by(VehicleLocation.timestamp.desc()).first()
-                
-                if recent_location:
-                    continue
+                # print(gps_data_list)
+                # print(recent_location.latitude if recent_location else "None")
 
                 # Create and add new VehicleLocation
                 loc = VehicleLocation(
@@ -153,7 +152,7 @@ def update_locations(after_token, previous_vehicle_ids, app):
             # Only commit and invalidate cache if we actually added new records
             if new_records_added > 0:
                 db.session.commit()
-                cache.delete('locations_in_geofence')
+                cache.delete('vehicle_locations')
                 logger.info(f'Updated locations for {len(current_vehicle_ids)} vehicles - {new_records_added} new records')
                 print("invalidating locations")
             else:
