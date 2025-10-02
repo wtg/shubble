@@ -75,7 +75,7 @@ def get_locations():
     response = {}
     for loc, vehicle in results:
         # Get closest loop
-        closest_distance, _, closest_route_name, _ = Stops.get_closest_point(
+        closest_distance, _, closest_route_name, polyline_index = Stops.get_closest_point(
             (loc.latitude, loc.longitude)
         )
         if closest_distance is None:
@@ -90,6 +90,7 @@ def get_locations():
             'heading_degrees': loc.heading_degrees,
             'speed_mph': loc.speed_mph,
             'route_name': route_name,
+            'polyline_index': polyline_index,
             'is_ecu_speed': loc.is_ecu_speed,
             'formatted_location': loc.formatted_location,
             'address_id': loc.address_id,
