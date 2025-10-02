@@ -702,7 +702,7 @@
       "BLITMAN",
       "CHASAN",
       "FEDERAL_6TH",
-      "SAGE_AVE",
+      "WEST_HALL",
       "RMA",
       "STUDENT_UNION_RETURN"
     ],
@@ -716,7 +716,7 @@
       "CHASAN",
       "GHOST_STOP_2",
       "FEDERAL_6TH",
-      "SAGE_AVE",
+      "WEST_HALL",
       "RMA",
       "STUDENT_UNION_RETURN"
     ],
@@ -792,13 +792,13 @@
       "OFFSET": 12,
       "NAME": "Fulton St"
     },
-    "SAGE_AVE": {
+    "WEST_HALL": {
       "COORDINATES": [
-        42.73297257935473,
-        -73.68253457194481
+        42.73155332161482,
+        -73.68135702064839
       ],
       "OFFSET": 13,
-      "NAME": "Sage Ave"
+      "NAME": "West Hall"
     },
     "RMA": {
       "COORDINATES": [
