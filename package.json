@@ -3,8 +3,8 @@
   "private": true,
   "version": "0.0.0",
   "scripts": {
-    "dev": "shx cp -r data/ client/src/data/ && vite",
-    "build": "shx cp -r data/ client/src/data/ && vite build",
+    "dev": "shx cp -r data/ client/src/ && vite",
+    "build": "shx cp -r data/ client/src/ && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
