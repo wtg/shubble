@@ -10,14 +10,13 @@ function App() {
   const [geofenceCount, setGeofenceCount] = useState(null);
 
   const clearEvents = async () => {
-    console.log("Clearing events...")
     await fetch("/api/events/today", {method: "DELETE"});
+    console.log("Cleared events for today");
   };
 
   const fetchEvents = async () => {
     const res = await fetch("/api/events/today");
     const data = await res.json();
-    console.log(data);
     setLocationCount(data.locationCount);
     setGeofenceCount(data.geofenceCount);
   }
@@ -27,7 +26,6 @@ function App() {
     const data = await res.json();
     setShuttles(data);
     console.log("Fetched shuttles:", data);
-    await fetchEvents();
   };
 
   const addShuttle = async () => {
@@ -47,6 +45,12 @@ function App() {
     });
     await fetchShuttles();
   };
+
+  useEffect(() => {
+    fetchEvents();
+    const interval = setInterval(fetchEvents, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     fetchShuttles();
@@ -113,10 +117,12 @@ function App() {
         <p>No shuttle selected.</p>
       )}
 
-      <div className="today-events">
-        {locationCount} previous shuttle locations and {geofenceCount} previous entry/exit events
+      <div className="events-container">
+        <div className="events-today">
+          {locationCount} previous shuttle locations and {geofenceCount} previous entry/exit events
+        </div>
+        <button onClick={clearEvents}>Clear Events</button>
       </div>
-      <button onclick={clearEvents}>Clear Events</button>
     </div>
   );
 }

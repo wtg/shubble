@@ -91,15 +91,22 @@ t.start()
 # --- API Routes ---
 @app.route("/api/events/today", methods=["GET"])
 def get_todays_events():
-    #start_of_today = datetime.combine(date.today(), datetime.min.time())
+    start_of_today = datetime.combine(date.today(), datetime.min.time())
+    loc_count = db.session.query(VehicleLocation).filter(VehicleLocation.timestamp >= start_of_today).count()
+    geo_count = db.session.query(GeofenceEvent).filter(GeofenceEvent.event_time >= start_of_today).count()
     return jsonify({
-        'locationCount': 9999,
-        'geofenceCount': 1234
+        'locationCount': loc_count,
+        'geofenceCount': geo_count
     })
 
 @app.route("/api/events/today", methods=["DELETE"])
 def clear_todays_events():
-    pass
+    start_of_today = datetime.combine(date.today(), datetime.min.time())
+    db.session.query(VehicleLocation).filter(VehicleLocation.timestamp >= start_of_today).delete()
+    db.session.query(GeofenceEvent).filter(GeofenceEvent.event_time >= start_of_today).delete()
+    db.session.commit()
+    logger.info(f"Deleted location and geofence events past {start_of_today}")
+    return "", 204
 
 @app.route("/api/shuttles", methods=["GET"])
 def list_shuttles():
