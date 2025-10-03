@@ -1,11 +1,11 @@
 export default function WarningBanner({ bannerText, gitRev, bannerLink }) {
     return (
         <div className="banner">
-            <h1>{bannerText}</h1>
+            <p>{bannerText}</p>
             {bannerLink && (
                 <p>
                     <a href={bannerLink}>
-                        Production Site
+                    Official Website
                     </a>
                 </p>
             )}
