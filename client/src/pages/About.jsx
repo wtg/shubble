@@ -10,7 +10,7 @@ import {
 export default function About() {
 
   const [wordIndex, setWordIndex] = useState(0);
-  const words = ['reliable', 'predictable', 'accountable'];
+  const words = ['Reliable', 'Predictable', 'Accountable'];
 
   // Rotate words every 2 seconds
   useEffect(() => {
@@ -23,7 +23,8 @@ export default function About() {
 
   return (
     <div className='about'>
-      <p>Making shuttles <span className='word-rotator'>{words[wordIndex]}</span></p>
+      <h1>Making Shuttles</h1>
+      <h1><span className='word-rotator'>{words[wordIndex]}</span></h1>
       <p>
         Shubble is the latest shuttle tracker, which is built using Mapkit JS, React, and Flask.
       </p>
@@ -34,9 +35,9 @@ export default function About() {
         Have an idea to improve it? Contributions are welcome. Visit our <a href='https://github.com/wtg/shubble' target='_blank'>Github Repository</a> to learn more.
       </p>
       <p>
-        Interested in Shubble's data? Take a look at our
+        Interested in Shubble's data? Take a look at our 
         <Link to='/data'>
-          <span>data page</span>
+          <span> data page</span>
         </Link>.
       </p>
       <div className='small'>
