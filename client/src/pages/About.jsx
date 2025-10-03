@@ -37,7 +37,7 @@ export default function About() {
       <p>
         Interested in Shubble's data? Take a look at our
         <Link to='/data'>
-          <link1>data page</link1>
+          <span className = 'link1'>data page</span>
         </Link>.
       </p>
       <div className='small'>
