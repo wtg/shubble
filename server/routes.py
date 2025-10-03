@@ -3,6 +3,7 @@ from . import db
 from .models import Vehicle, GeofenceEvent, VehicleLocation
 from pathlib import Path
 from sqlalchemy import func, and_
+from sqlalchemy.dialects import postgresql
 from datetime import datetime, date, timezone
 from data.stops import Stops
 from hashlib import sha256
@@ -186,18 +187,18 @@ def webhook():
                 )
                 db.session.add(vehicle)
 
-            # Create GeofenceEvent
-            event = GeofenceEvent(
-                id=event_id,
-                vehicle_id=vehicle_id,
-                event_type='geofenceEntry' if 'geofenceEntry' in details else 'geofenceExit',
-                event_time=event_time,
-                address_name=address.get("name"),
-                address_formatted=address.get("formattedAddress"),
-                latitude=latitude,
-                longitude=longitude,
+            db.session.execute(
+                postgresql.insert(GeofenceEvent).on_conflict_do_nothing().values(
+                    id=event_id,
+                    vehicle_id=vehicle_id,
+                    event_type='geofenceEntry' if 'geofenceEntry' in details else 'geofenceExit',
+                    event_time=event_time,
+                    address_name=address.get("name"),
+                    address_formatted=address.get("formattedAddress"),
+                    latitude=latitude,
+                    longitude=longitude,
+                )
             )
-            db.session.add(event)
 
         db.session.commit()
         return jsonify({'status': 'success'}), 200
