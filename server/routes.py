@@ -197,7 +197,7 @@ def webhook():
                 latitude=latitude,
                 longitude=longitude,
             )
-            db.session.add(event)
+            db.session.merge(event)
 
         db.session.commit()
         return jsonify({'status': 'success'}), 200
