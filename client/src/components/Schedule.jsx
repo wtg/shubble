@@ -3,6 +3,7 @@ import '../styles/Schedule.css';
 import scheduleData from '../data/schedule.json';
 import routeData from '../data/routes.json';
 import { aggregatedSchedule } from '../data/parseSchedule';
+import LoopToggle from './LoopToggle';
 
 export default function Schedule() {
   const now = new Date();
@@ -80,7 +81,8 @@ export default function Schedule() {
 
   return (
     <div className="p-4">
-      <h2>Schedule</h2>
+      <h2>Today's schedule</h2>
+      <LoopToggle />
       <div>
         <label for='weekday-dropdown'>Weekday:</label>
         <select id='weekday-dropdown' className="schedule-dropdown-style" value={selectedDay} onChange={handleDayChange}>
