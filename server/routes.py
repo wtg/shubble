@@ -96,7 +96,6 @@ def get_locations():
             'formatted_location': loc.formatted_location,
             'address_id': loc.address_id,
             'address_name': loc.address_name,
-            'vehicle_name': vehicle.name,
             'license_plate': vehicle.license_plate,
             'vin': vehicle.vin,
             'asset_type': vehicle.asset_type,

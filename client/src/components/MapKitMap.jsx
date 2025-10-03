@@ -379,7 +379,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         // new vehicle: add to map
         console.log(`Adding vehicle ${key} to ${vehicle.latitude}, ${vehicle.longitude}`);
         const annotation = new window.mapkit.MarkerAnnotation(coordinate, {
-          title: vehicle.vehicle_name,
+          title: vehicle.name,
           subtitle: `${vehicle.speed_mph} mph`,
           color: vehicle.route_name && vehicle.route_name !== "UNCLEAR" ? routeData[vehicle.route_name].COLOR : '#444444',
           glyphImage: { 1: 'shubble20.png' },
