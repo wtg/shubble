@@ -175,11 +175,11 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
         // Only change schedule selection on desktop-sized screens
         const isDesktop = window.matchMedia('(min-width: 800px)').matches;
-        
+
         if (e.overlay.stopKey) {
           // Create marker for both mobile and desktop
           createStopMarker(e.overlay);
-          
+
           if (isDesktop) {
             // Desktop: handle schedule change
             const routeKey = e.overlay.routeKey;
@@ -196,28 +196,28 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
          selectedMarkerRef.current = null;
         }
       });
-      
+
       // Detect hover on stop overlays
       let currentHoveredOverlay = null;
-      
+
       thisMap.addEventListener("region-change-start", () => {
         thisMap.element.style.cursor = "grab";
       });
-      
+
       thisMap.addEventListener("region-change-end", () => {
         thisMap.element.style.cursor = "default";
       });
-      
+
       // Working hover detection
       let currentHover = null;
-      
+
       thisMap.element.addEventListener('mousemove', (e) => {
         const rect = thisMap.element.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
-        
+
         let foundOverlay = null;
-        
+
         // Check overlays for mouse position
         thisMap.overlays.forEach(overlay => {
           if (overlay.stopKey) {
@@ -225,14 +225,14 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
             const mapRect = thisMap.element.getBoundingClientRect();
             const centerLat = overlay.coordinate.latitude;
             const centerLng = overlay.coordinate.longitude;
-            
+
             // Check if mouse is within overlay radius
             const region = thisMap.region;
             if (region) {
               const pixelPerDegree = mapRect.width / region.span.longitudeDelta;
               const centerX = mapRect.width * (centerLng - region.center.longitude + region.span.longitudeDelta/2) / region.span.longitudeDelta;
               const centerY = mapRect.height * (region.center.latitude - centerLat + region.span.latitudeDelta/2) / region.span.latitudeDelta;
-              
+
               const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
               if (distance < circleWidth) { // Within hover radius
                 foundOverlay = overlay;
@@ -240,7 +240,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
             }
           }
         });
-        
+
         if (foundOverlay !== currentHover) {
           // Clear previous hover style
           if (currentHover) {
@@ -251,7 +251,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
               lineWidth: 2,
             });
           }
-          
+
           // Apply hover style
           if (foundOverlay) {
             foundOverlay.style = new window.mapkit.Style({
@@ -264,19 +264,19 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
           } else {
             thisMap.element.style.cursor = "default";
           }
-          
+
           currentHover = foundOverlay;
         }
       });
-      
+
       // Store reference to cleanup function
       thisMap._hoverCleanup = () => {
         thisMap.element.removeEventListener('mousemove', handleMouseMove);
       };
-      
+
       setMap(thisMap);
     }
-    
+
     // Cleanup on component unmount
     return () => {
       if (map && map._hoverCleanup) {
@@ -317,7 +317,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         stopOverlay.stopKey = stopKey;
         stopOverlay.stopName = thisRouteData[stopKey].NAME;
         overlays.push(stopOverlay);
-        
+
 
       }
     }
@@ -325,18 +325,23 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
     function displayRouteOverlays(routeData) {
       // display route overlays
       for (const [route, thisRouteData] of Object.entries(routeData)) {
-        const routeCoordinates = thisRouteData.ROUTES?.map(
-          (route) => route.map(([lat, lon]) => new window.mapkit.Coordinate(lat, lon))
-        ).flat();
-        if (!routeCoordinates || routeCoordinates.length === 0) continue;
-        // add route overlay (polyline)
-        const routePolyline = new mapkit.PolylineOverlay(routeCoordinates, {
-          style: new mapkit.Style({
-            strokeColor: thisRouteData.COLOR,
-            lineWidth: 2
-          })
-        });
-        overlays.push(routePolyline);
+        // for route (WEST, NORTH)
+        const routePolylines = thisRouteData.ROUTES?.map(
+          // for segment (STOP1 -> STOP2, STOP2 -> STOP3, ...)
+          (route) => {
+            const coords = route.map(([lat, lon]) => new window.mapkit.Coordinate(lat, lon));
+            if (coords.length === 0) return null;
+            const polyline = new window.mapkit.PolylineOverlay(coords, {
+              // for coordinate ([lat, lon], ...)
+              style: new window.mapkit.Style({
+                strokeColor: thisRouteData.COLOR,
+                lineWidth: 2
+              })
+            });
+            return polyline;
+          }
+        ).filter(p => p !== null);
+        overlays.push(...routePolylines);
       }
     }
 
