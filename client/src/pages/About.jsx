@@ -35,9 +35,9 @@ export default function About() {
         Have an idea to improve it? Contributions are welcome. Visit our <a href='https://github.com/wtg/shubble' target='_blank'>Github Repository</a> to learn more.
       </p>
       <p>
-        Interested in Shubble's data? Take a look at our 
+        Interested in Shubble's data? Take a look at our
         <Link to='/data'>
-          <span> data page</span>
+          <link1>data page</link1>
         </Link>.
       </p>
       <div className='small'>

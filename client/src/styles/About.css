@@ -5,8 +5,15 @@
     text-decoration: underline;
     text-decoration-color: #206ef9;
 }
+
+
+
 .about {
     padding: 10px;
+}
+
+.about link1{
+    margin-left: .6ch;
 }
 
 .about h1 {
