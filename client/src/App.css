@@ -1,6 +1,6 @@
 :root {
   --text-color: #141301;
-  --header-color: #a1c3ff;
+  --header-color: #578FCA;
 }
 
 .App {
@@ -12,6 +12,11 @@
   flex-grow: 1;
   box-sizing: border-box;
   width: 100%;
+}
+
+.title {
+  font-family: "KoHo", sans-serif;
+  font-weight: 700;
 }
 
 nav.small ul {
@@ -29,13 +34,15 @@ nav.small ul {
 nav.big ul {
   margin: 0;
   padding: 0;
+  padding-top:10px;
   box-sizing: border-box;
   display: flex;
   gap: 30px;
   flex-direction: row;
   width: 100%;
   list-style: none;
-  font-size: 0.8em;
+  font-size: 0.6em;
+  font-family: "Karla", sans-serif;
 }
 
 li {
@@ -57,12 +64,11 @@ header {
   padding: 20px;
   margin: 0;
   font-size: 2em;
-  font-weight: bold;
   z-index: 1000;
   display: flex;
   flex-direction: row;
-  justify-content: space-between;
-  gap: 10px;
+  gap: 30px;
+  justify-content: center;
 }
 
 @media (max-width: 768px) {
