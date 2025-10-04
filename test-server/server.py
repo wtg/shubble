@@ -89,25 +89,6 @@ t = Thread(target=update_loop, daemon=True)
 t.start()
 
 # --- API Routes ---
-@app.route("/api/events/today", methods=["GET"])
-def get_todays_events():
-    start_of_today = datetime.combine(date.today(), datetime.min.time())
-    loc_count = db.session.query(VehicleLocation).filter(VehicleLocation.timestamp >= start_of_today).count()
-    geo_count = db.session.query(GeofenceEvent).filter(GeofenceEvent.event_time >= start_of_today).count()
-    return jsonify({
-        'locationCount': loc_count,
-        'geofenceCount': geo_count
-    })
-
-@app.route("/api/events/today", methods=["DELETE"])
-def clear_todays_events():
-    start_of_today = datetime.combine(date.today(), datetime.min.time())
-    db.session.query(VehicleLocation).filter(VehicleLocation.timestamp >= start_of_today).delete()
-    db.session.query(GeofenceEvent).filter(GeofenceEvent.event_time >= start_of_today).delete()
-    db.session.commit()
-    logger.info(f"Deleted location and geofence events past {start_of_today}")
-    return "", 204
-
 @app.route("/api/shuttles", methods=["GET"])
 def list_shuttles():
     with shuttle_lock:
@@ -140,6 +121,69 @@ def trigger_action(shuttle_id):
         shuttle.set_next_state(desired_state)
         logger.info(f"Set shuttle {shuttle_id} next state to {next_state}")
         return jsonify(shuttle.to_dict())
+
+@app.route("/api/events/today", methods=["GET"])
+def get_events_today():
+    start_of_today = get_campus_start_of_day()
+    loc_count = db.session.query(VehicleLocation).filter(VehicleLocation.timestamp >= start_of_today).count()
+    geo_count = db.session.query(GeofenceEvent).filter(GeofenceEvent.event_time >= start_of_today).count()
+    return jsonify({
+        'locationCount': loc_count,
+        'geofenceCount': geo_count
+    })
+
+@app.route("/api/events/today", methods=["DELETE"])
+def clear_events_today():
+    keep_shuttles = request.args.get("keepShuttles", "false").lower() == "true"
+    start_of_today = get_campus_start_of_day()
+
+    db.session.query(VehicleLocation).filter(VehicleLocation.timestamp >= start_of_today).delete()
+    logger.info(f"Deleted vehicle location events past {start_of_today}")
+
+    if not keep_shuttles:
+        db.session.query(GeofenceEvent).filter(GeofenceEvent.event_time >= start_of_today).delete()
+        logger.info(f"Deleted geofence events past {start_of_today}")
+
+        global shuttle_counter
+        with shuttle_lock:
+            shuttles.clear()
+            shuttle_counter = 1
+        logger.info(f"Deleted all shuttles")
+    else:
+        '''
+        Delete all geofence events >= start_of_today except for: each vehicle's latest one (if it
+        is a geofenceEntry. geofenceExits are still deleted). This allows all currently running
+        shuttles to keep running in the test suite.
+        '''
+
+        # Get today's geofence events
+        today_events = db.session.query(GeofenceEvent).filter(
+            GeofenceEvent.event_time >= start_of_today
+        ).subquery()
+        # Get latest event per vehicle from today's geofence events
+        latest_times = db.session.query(
+            today_events.c.vehicle_id,
+            func.max(today_events.c.event_time).label("latest_time")
+        ).group_by(today_events.c.vehicle_id).subquery()
+        # Join back to get the full event row, select to keep only geofenceEntry, project on id
+        latest_entries = db.session.query(today_events.c.id).join(
+            latest_times,
+            and_(
+                today_events.c.vehicle_id == latest_times.c.vehicle_id,
+                today_events.c.event_time == latest_times.c.latest_time
+            )
+        ).filter(today_events.c.event_type == 'geofenceEntry').subquery()
+        # Delete all in today_events that aren't in latest_entries
+        db.session.query(GeofenceEvent).filter(
+            GeofenceEvent.id.in_(db.session.query(today_events.c.id))
+        ).filter(
+            ~GeofenceEvent.id.in_(db.session.query(latest_entries.c.id))
+        ).delete()
+
+        logger.info(f"Deleted geofence events past {start_of_today} except for currently running shuttles")
+
+    db.session.commit()
+    return "", 204
 
 # --- Frontend Serving ---
 @app.route("/")

@@ -6,20 +6,9 @@ const NEXT_STATES = ["waiting", "entering", "looping", "on_break", "exiting"];
 function App() {
   const [shuttles, setShuttles] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
-  const [locationCount, setLocationCount] = useState(null);
-  const [geofenceCount, setGeofenceCount] = useState(null);
-
-  const clearEvents = async () => {
-    await fetch("/api/events/today", {method: "DELETE"});
-    console.log("Cleared events for today");
-  };
-
-  const fetchEvents = async () => {
-    const res = await fetch("/api/events/today");
-    const data = await res.json();
-    setLocationCount(data.locationCount);
-    setGeofenceCount(data.geofenceCount);
-  }
+  const [locationCount, setLocationCount] = useState(0);
+  const [geofenceCount, setGeofenceCount] = useState(0);
+  const [keepShuttles, setKeepShuttles] = useState(false);
 
   const fetchShuttles = async () => {
     const res = await fetch("/api/shuttles");
@@ -44,6 +33,21 @@ function App() {
       body: JSON.stringify({ state: nextState }),
     });
     await fetchShuttles();
+  };
+
+  const fetchEvents = async () => {
+    const res = await fetch("/api/events/today");
+    const data = await res.json();
+    setLocationCount(data.locationCount);
+    setGeofenceCount(data.geofenceCount);
+  }
+
+  const clearEvents = async () => {
+    await fetch(`/api/events/today?keepShuttles=${keepShuttles}`, {method: "DELETE"});
+    if (!keepShuttles) {
+      setSelectedId(null);
+    }
+    console.log("Cleared events for today");
   };
 
   useEffect(() => {
@@ -122,6 +126,14 @@ function App() {
           {locationCount} previous shuttle locations and {geofenceCount} previous entry/exit events
         </div>
         <button onClick={clearEvents}>Clear Events</button>
+        <label>
+          <input
+            type="checkbox"
+            checked={keepShuttles}
+            onChange={(e) => setKeepShuttles(e.target.checked)}
+          />
+          Keep Shuttles
+        </label>
       </div>
     </div>
   );
