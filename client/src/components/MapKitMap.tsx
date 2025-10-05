@@ -100,6 +100,7 @@ type MapKitMapProps = {
 };
 
 // @ts-expect-error selectedRoutes is never used
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export default function MapKitMap({ routeData, vehicles, generateRoutes = false, selectedRoute, setSelectedRoute, selectedStop, setSelectedStop }: MapKitMapProps) {
 
   const mapRef = useRef(null);
@@ -224,8 +225,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
       // Working hover detection
       let currentHover: mapkit.CircleOverlay | null = null;
-
-      const handleMouseMove = (e: Event) => {
+      thisMap.element.addEventListener('mousemove', (e) => {
         const rect = thisMap.element.getBoundingClientRect();
         const x = (e as MouseEvent).clientX - rect.left;
         const y = (e as MouseEvent).clientY - rect.top;
@@ -234,7 +234,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
         // Check overlays for mouse position
         for (const overlay of thisMap.overlays) {
-          if (!(overlay instanceof mapkit.CircleOverlay)) return;
+          if (!(overlay instanceof mapkit.CircleOverlay)) continue;
           if (overlay.stopKey) {
             // Calculate overlay screen position
             const mapRect = thisMap.element.getBoundingClientRect();
@@ -281,12 +281,11 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
           currentHover = foundOverlay;
         }
-      };
-      thisMap.element.addEventListener('mousemove', handleMouseMove);
+      });
 
       // Store reference to cleanup function
       thisMap._hoverCleanup = () => {
-        thisMap.element.removeEventListener('mousemove', handleMouseMove);
+        // thisMap.element.removeEventListener('mousemove', _);
       };
 
       setMap(thisMap);
@@ -310,7 +309,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
     for (const [route, thisRouteData] of Object.entries(routeData)) {
       for (const stopKey of thisRouteData.STOPS) {
         const stopData = thisRouteData[stopKey] as ShuttleStopData;
-        const stopCoordinate = new mapkit.Coordinate(...(stopData.COORDINATES as [number, number]));
+        const stopCoordinate = new mapkit.Coordinate(...(stopData.COORDINATES));
         // add stop overlay (circle)
         const stopOverlay = new mapkit.CircleOverlay(
           stopCoordinate,
@@ -330,14 +329,14 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         stopOverlay.routeKey = route;
         stopOverlay.stopKey = stopKey;
         stopOverlay.stopName = stopData.NAME;
+        // cast circle overlay to generic overlay for adding to map
         overlays.push(stopOverlay as mapkit.Overlay);
-
-
       }
     }
 
     function displayRouteOverlays(routeData: ShuttleRouteData) {
       // display route overlays
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       for (const [_route, thisRouteData] of Object.entries(routeData)) {
         // for route (WEST, NORTH)
         const routePolylines = thisRouteData.ROUTES?.map(
