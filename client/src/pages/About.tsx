@@ -19,6 +19,7 @@ export default function About() {
         return (prevIndex + 1) % words.length;
       });
     }, 2000);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
