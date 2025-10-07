@@ -46,7 +46,7 @@ def get_vehicles_in_geofence():
 
     return {row.vehicle_id for row in latest_entries}
 
-def get_drivers_for_vehicle(current_vehicle_ids):
+def get_drivers_for_vehicle(after_token, current_vehicle_ids, current_driver_ids):
     """
     Stores new driver relationships in DriverVehicles table.
     """
@@ -56,6 +56,7 @@ def get_drivers_for_vehicle(current_vehicle_ids):
     headers = {'Accept': 'application/json'}
     # Determine API URL based on environment
     if app.config['ENV'] == 'development':
+        # There is no testing server for drivers, so this won't work locally
         url = 'http://localhost:4000/fleet/drivers/feed'
     else:
         api_key = os.environ.get('API_KEY')
@@ -71,26 +72,47 @@ def get_drivers_for_vehicle(current_vehicle_ids):
     }
 
     try:
-        response = requests.get(url, headers=headers, params=url_params)
-        # Handle non-200 responses
-        if response.status_code != 200:
-            logger.error(f'API error: {response.status_code} {response.text}')
-            return
+        has_next_page = True
+        while has_next_page:
+            if after_token:
+                url_params['after'] = after_token
+            has_next_page = False
+            response = requests.get(url, headers=headers, params=url_params)
+            # Handle non-200 responses
+            if response.status_code != 200:
+                logger.error(f'API error: {response.status_code} {response.text}')
+                if 'message' in response.text and 'Parameters differ' in response.text:
+                    return None, current_driver_ids
+                return after_token, current_driver_ids
 
-        data = response.json()
+            data = response.json()
 
-        for vehicle in data.get('data', []):
-            vehicle_id = vehicle.get('id')
-            driver_data_list = vehicle.get('driver', [])
+            # Handle pagination
+            pagination = data.get('pagination', {})
+            if pagination.get('hasNextPage'):
+                has_next_page = True
+            after_token = pagination.get('endCursor', after_token)
 
-            if not vehicle_id or not driver_data_list:
-                continue
+            for vehicle in data.get('data', []):
+                vehicle_id = vehicle.get('id')
+                driver = vehicle.get('driver')
 
-            for driver_data in driver_data_list:
-                driver_id = driver_data.get('id')
+                if not vehicle_id or not driver:
+                    continue
+
+                driver_id = driver.get('id')
                 if not driver_id:
                     continue
 
+                current_driver_ids.add(driver_id)
+                # Ensure driver exists in Drivers table
+                existing_driver = Drivers.query.get(driver_id)
+                if not existing_driver:
+                    new_driver = Drivers(
+                        id=driver_id,
+                    )
+                    db.session.add(new_driver)
+                    
                 # Check if this relationship already exists
                 exists = DriverVehicles.query.filter_by(
                     DriverVehicles.timestamp >= get_campus_start_of_day(),
@@ -114,6 +136,8 @@ def get_drivers_for_vehicle(current_vehicle_ids):
     except requests.RequestException as e:
         logger.error(f'Failed to fetch drivers: {e}')
 
+    return after_token, current_driver_ids
+
 def update_locations(after_token, previous_vehicle_ids, app):
     """
     Fetches and updates vehicle locations for vehicles currently in the geofence.
@@ -126,6 +150,7 @@ def update_locations(after_token, previous_vehicle_ids, app):
     # If vehicle list changed, reset pagination token
     if current_vehicle_ids != previous_vehicle_ids:
         logger.info('Vehicle list changed; resetting after_token')
+        get_drivers_for_vehicle(current_vehicle_ids)
         after_token = None
 
     # No vehicles to update
@@ -226,13 +251,22 @@ def run_worker():
     logger.info('Worker started...')
     after_token = None
     previous_vehicle_ids = set()
-
+    previous_driver_ids =  {driver.id for driver in Drivers.query.all()}
+    minutes_between_driver_updates = 30
+    count = 0
+    
     while True:
         try:
             with app.app_context():
                 after_token, previous_vehicle_ids = update_locations(after_token, previous_vehicle_ids, app)
         except Exception as e:
             logger.exception(f'Error in worker loop: {e}')
+            
+        if count == minutes_between_driver_updates * 12:
+            with app.app_context():
+                after_token, previous_driver_ids = get_drivers_for_vehicle(after_token, previous_vehicle_ids, previous_driver_ids)
+            count = 0
+        count += 1
         time.sleep(5)
 
 if __name__ == '__main__':

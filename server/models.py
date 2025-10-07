@@ -68,7 +68,8 @@ class VehicleLocation(db.Model):
 class Drivers(db.Model):
     __tablename__ = 'drivers'
     
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.String, primary_key=True)
+
     
 class DriverVehicles(db.Model):
     __tablename__ = 'driver_vehicles'
