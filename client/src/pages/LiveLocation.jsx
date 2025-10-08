@@ -18,14 +18,19 @@ export default function LiveLocation() {
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [selectedStop, setSelectedStop] = useState('all');
 
+  const now = new Date();
+  const [selectedDay, setSelectedDay] = useState(now.getDay());
+
   // Filter routeData to only include routes present in aggregatedSchedule
   useEffect(() => {
+    const daySchedule = aggregatedSchedule[selectedDay];
+    
     setFilteredRouteData(
       Object.fromEntries(
-        Object.entries(routeData).filter(([routeName]) => aggregatedSchedule.some(daySchedule => routeName in daySchedule))
+      Object.entries(routeData).filter(([routeName]) => routeName in daySchedule)
       )
     );
-  }, []);
+  }, [selectedDay]);
 
   // Fetch location data on component mount and set up polling
   useEffect(() => {
@@ -69,6 +74,8 @@ export default function LiveLocation() {
           setSelectedRoute={setSelectedRoute}
           selectedStop={selectedStop}
           setSelectedStop={setSelectedStop}
+          selectedDay={selectedDay}     
+          setSelectedDay={setSelectedDay}
         />
       </div>
     </div>

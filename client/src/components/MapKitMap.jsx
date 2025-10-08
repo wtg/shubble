@@ -358,6 +358,11 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
       map.addOverlays(overlays);
     }
 
+    //cleanup 
+    return () => { 
+    if (map && overlays.length > 0) { map.removeOverlays(overlays); } 
+    };
+
   }, [map, routeData]);
 
   // display vehicles on map

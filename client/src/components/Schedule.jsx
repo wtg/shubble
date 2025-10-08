@@ -4,7 +4,7 @@ import scheduleData from '../data/schedule.json';
 import routeData from '../data/routes.json';
 import { aggregatedSchedule } from '../data/parseSchedule';
 
-export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop, setSelectedStop }) {
+export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop, setSelectedStop, selectedDay, setSelectedDay }) {
   // Validate props once at the top
   if (typeof setSelectedRoute !== 'function') {
     throw new Error('setSelectedRoute must be a function');
@@ -12,9 +12,12 @@ export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop
   if (typeof setSelectedStop !== 'function') {
     throw new Error('setSelectedStop must be a function');
   }
+// if (setSelectedDay && typeof setSelectedDay !== 'function') {
+//   throw new Error('setSelectedDay must be a functionnnn');
+// }
 
   const now = new Date();
-  const [selectedDay, setSelectedDay] = useState(now.getDay());
+  // const [selectedDay, setSelectedDay] = useState(now.getDay());
   const [routeNames, setRouteNames] = useState(Object.keys(aggregatedSchedule[selectedDay]));
   const [stopNames, setStopNames] = useState([]);
   const [schedule, setSchedule] = useState([]);
