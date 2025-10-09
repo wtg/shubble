@@ -1,6 +1,8 @@
 :root {
   --text-color: #141301;
   --header-color: #a1c3ff;
+  --border-color: #e1e8ed;  
+  --shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
 }
 
 .App {
@@ -63,6 +65,7 @@ header {
   flex-direction: row;
   justify-content: space-between;
   gap: 10px;
+  color: #184b7f;
 }
 
 @media (max-width: 1024px) {
@@ -108,17 +111,33 @@ li a {
 }
 
 .feedback-container {
-  border: 1px solid #444;
-  border-radius: 5px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
   padding: 10px;
   margin: 20px 20px 20px 20px;
+  box-shadow: var(--shadow);
+  position: relative;
+  overflow: hidden;
+}
+
+.feedback-container::before{
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 6px;
+    height: 100%;
+    background-color: var(--header-color);
 }
 
 footer {
-  padding: 20px;
+  padding: 10px;
   box-sizing: border-box;
   width: 100%;
-  background-color: #ddd;
+  background-color: white;
+  border-top: 1px solid var(--border-color);
+  border-radius: 0;
+
 }
 
 .big-footer {
@@ -165,4 +184,11 @@ footer {
 
 .banner * {
   margin: 5px;
+}
+
+@media (max-width: 768px) {
+  header{
+    padding: 10px 20px;
+    font-size: 1.5em;
+  }
 }
