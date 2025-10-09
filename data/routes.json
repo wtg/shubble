@@ -703,7 +703,7 @@
       "CHASAN",
       "FEDERAL_6TH",
       "WEST_HALL",
-      "RMA",
+      "HEFFNER_HOUSE",
       "STUDENT_UNION_RETURN"
     ],
     "POLYLINE_STOPS": [
@@ -717,7 +717,7 @@
       "GHOST_STOP_2",
       "FEDERAL_6TH",
       "WEST_HALL",
-      "RMA",
+      "HEFFNER_HOUSE",
       "STUDENT_UNION_RETURN"
     ],
     "STUDENT_UNION": {
@@ -800,13 +800,13 @@
       "OFFSET": 13,
       "NAME": "West Hall"
     },
-    "RMA": {
+    "HEFFNER_HOUSE": {
       "COORDINATES": [
-        42.733507308481016,
-        -73.67968981295384
+        42.73329160230368,
+        -73.6784236750388
       ],
       "OFFSET": 14,
-      "NAME": "RMA"
+      "NAME": "Heffner House"
     },
     "STUDENT_UNION_RETURN": {
       "COORDINATES": [
