@@ -44,7 +44,7 @@ function App() {
           </ul>
         </nav>
       </header>
-      {staging && <WarningBanner bannerText="This is a staging domain. Please visit our official website!" bannerLink="https://shuttles.rpi.edu" gitRev={GIT_REV} />}
+      {/* {staging && <WarningBanner bannerText="This is a staging domain. Please visit our official website!" bannerLink="https://shuttles.rpi.edu" gitRev={GIT_REV} />} */}
       <div className="App">
         <Routes>
           <Route path='/' element={<LiveLocation />} />

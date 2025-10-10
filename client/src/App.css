@@ -1,6 +1,7 @@
 :root {
   --text-color: #141301;
   --header-color: #a1c3ff;
+  --accent-color: #206ef9;
   --border-color: #e1e8ed;  
   --shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
 }
@@ -54,7 +55,7 @@ header {
   top: 0;
   width: 100%;
   box-sizing: border-box;
-  max-height: 100px;
+  max-height: 80px;
   background-color: var(--header-color);
   padding: 20px;
   margin: 0;
@@ -66,6 +67,9 @@ header {
   justify-content: space-between;
   gap: 10px;
   color: #184b7f;
+  /* adding static height for full-screen content */
+  height:80px;
+  min-height: 80px;
 }
 
 @media (max-width: 1024px) {
@@ -95,6 +99,16 @@ header {
 
   footer {
     border-radius: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  header {
+    height: 50px;
+    min-height: 50px;
+    max-height: 50px;
+    padding: 10px 20px;
+    font-size: 1.5em;
   }
 }
 
@@ -184,11 +198,4 @@ footer {
 
 .banner * {
   margin: 5px;
-}
-
-@media (max-width: 768px) {
-  header{
-    padding: 10px 20px;
-    font-size: 1.5em;
-  }
 }

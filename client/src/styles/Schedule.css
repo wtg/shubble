@@ -164,8 +164,9 @@
 /* Timeline Content */
 .timeline-content {
     position: relative;
-    padding-left: 50px;
+    padding-left: 48px;
     padding-right:20px;
+    
 }
 
 /* Timeline Items */
@@ -302,13 +303,15 @@
 }
 
 .secondary-timeline.collapsible-content.expanded {
-    max-height: 1000px; /* Large enough to accommodate content */
+    max-height: 1000px; 
     opacity: 1;
     transition: max-height 0.3s ease-in, opacity 0.3s ease-in;
     margin-left: 30px;
     padding-left: 20px;
     padding-top:10px;
-    padding-right:10px;
+    padding-right:10px;    
+    overflow: visible;
+
 }
 
 .secondary-timeline.collapsible-content.expanded::before {
@@ -374,26 +377,26 @@
     font-weight: 400;
 }
 
-/* Current Time Highlighting */
+/* current stop */
 .timeline-item.current-time .timeline-dot {
-    background: #e74c3c;
+    background: var(--accent-color);
     animation: pulse 2s infinite;
-    box-shadow: 0 0 0 4px rgba(231, 76, 60, 0.2);
+    box-shadow: 0 0 0 4px rgba(126, 161, 237, 0.2);
 }
 
 .timeline-item.current-time .timeline-content-item {
-    background: linear-gradient(135deg, #fff5f5, #ffffff);
-    border-color: #e74c3c;
-    box-shadow: 0 4px 16px rgba(231, 76, 60, 0.15);
+    background: linear-gradient(135deg, #afcbfc5c, #ffffff);
+    border-color: var(--accent-color);
+    box-shadow: 0 4px 16px rgba(126, 161, 237, 0.15);
 }
 
 .timeline-item.current-time .timeline-time {
-    color: #e74c3c;
+    color: var(--accent-color);
     font-weight: 700;
 }
 
 .timeline-item.current-time .timeline-stop {
-    color: #c0392b;
+    color: var(--accent-color);
     font-weight: 600;
 }
 
@@ -403,7 +406,7 @@
 }
 
 .timeline-item.single-stop.current-time .timeline-dot {
-    background: #e74c3c;
+    background: var(--accent-color);
 }
 
 /* Past Time Styling */
@@ -449,13 +452,13 @@
 
 /* Override current time styling for past times */
 .timeline-item.past-time.current-time .timeline-dot {
-    background: #e74c3c !important;
+    background: var(--accent-color) !important;
     opacity: 1;
 }
 
 .timeline-item.past-time.current-time .timeline-content-item {
-    background: linear-gradient(135deg, #fff5f5, #ffffff) !important;
-    border-color: #e74c3c !important;
+    background: linear-gradient(135deg, #afcbfc5c, #ffffff) !important;
+    border-color: var(--accent-color) !important;
     opacity: 1;
 }
 
@@ -464,34 +467,34 @@
 }
 
 .timeline-item.past-time.current-time .timeline-time {
-    color: #e74c3c !important;
+    color: var(--accent-color) !important;
     text-decoration: none !important;
 }
 
 .timeline-item.past-time.current-time .timeline-stop {
-    color: #c0392b !important;
+    color: var(--accent-color) !important;
 }
 
 /* Secondary Timeline Current Time Styling */
 .secondary-timeline-item.current-time .secondary-timeline-dot {
-    background: #e74c3c !important;
+    background: var(--accent-color) !important;
     animation: pulse 2s infinite;
-    box-shadow: 0 0 0 3px rgba(231, 76, 60, 0.2);
+    box-shadow: 0 0 0 3px rgba(126, 161, 237, 0.2);
 }
 
 .secondary-timeline-item.current-time .secondary-timeline-content {
-    background: linear-gradient(135deg, #fff5f5, #ffffff) !important;
-    border-color: #e74c3c !important;
-    box-shadow: 0 2px 8px rgba(231, 76, 60, 0.15);
+    background: linear-gradient(135deg, #afcbfc5c, #ffffff) !important;
+    border-color: var(--accent-color) !important;
+    box-shadow: 0 2px 8px rgba(126, 161, 237, 0.15);
 }
 
 .secondary-timeline-item.current-time .secondary-timeline-time {
-    color: #e74c3c !important;
+    color: var(--accent-color) !important;
     font-weight: 600;
 }
 
 .secondary-timeline-item.current-time .secondary-timeline-stop {
-    color: #c0392b !important;
+    color: var(--accent-color) !important;
     font-weight: 500;
 }
 
@@ -538,13 +541,13 @@
 
 /* Override current time styling for past times in secondary timeline */
 .secondary-timeline-item.past-time.current-time .secondary-timeline-dot {
-    background: #e74c3c !important;
+    background: var(--accent-color) !important;
     opacity: 1;
 }
 
 .secondary-timeline-item.past-time.current-time .secondary-timeline-content {
-    background: linear-gradient(135deg, #fff5f5, #ffffff) !important;
-    border-color: #e74c3c !important;
+    background: linear-gradient(135deg, #afcbfc5c, #ffffff) !important
+    border-color: var(--accent-color) !important;
     opacity: 1;
 }
 
@@ -553,21 +556,21 @@
 }
 
 .secondary-timeline-item.past-time.current-time .secondary-timeline-time {
-    color: #e74c3c !important;
+    color: var(--accent-color) !important;
     text-decoration: none !important;
 }
 
 .secondary-timeline-item.past-time.current-time .secondary-timeline-stop {
-    color: #c0392b !important;
+    color: var(--accent-color) !important;
 }
 
 /* Animations */
 @keyframes pulse {
     0% {
-        box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.4);
+        box-shadow: 0 0 0 0 rgba(126, 161, 237, 0.4);
     }
     70% {
-        box-shadow: 0 0 0 8px rgba(231, 76, 60, 0);
+        box-shadow: 0 0 0 8px rgba(126, 161, 237, 0);
     }
     100% {
         box-shadow: 0 0 0 0 rgba(231, 76, 60, 0);
