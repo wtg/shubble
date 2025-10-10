@@ -125,6 +125,13 @@ def update_locations(after_token, previous_vehicle_ids, app):
                 # Convert ISO 8601 string to datetime
                 timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
 
+                exists = VehicleLocation.query.filter_by(
+                    vehicle_id=vehicle_id,
+                    timestamp=timestamp
+                ).first()
+                if exists:
+                    continue  # Skip if record already exists
+                
                 # Create and add new VehicleLocation
                 loc = VehicleLocation(
                     vehicle_id=vehicle_id,
