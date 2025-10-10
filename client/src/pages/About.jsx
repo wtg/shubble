@@ -1,30 +1,23 @@
 import '../styles/About.css';
-import {
-  useState,
-  useEffect,
-} from 'react';
+import { } from 'react';
 import {
   Link
 } from 'react-router';
+import TextAnimation from '../components/TextAnimation';
 
 export default function About() {
-
-  const [wordIndex, setWordIndex] = useState(0);
   const words = ['Reliable', 'Predictable', 'Accountable'];
-
-  // Rotate words every 2 seconds
-  useEffect(() => {
-    setInterval(() => {
-      setWordIndex((prevIndex) => {
-        return (prevIndex + 1) % words.length;
-      });
-    }, 2000);
-  }, []);
 
   return (
     <div className='about'>
       <h1>Making Shuttles</h1>
-      <h1><span className='word-rotator'>{words[wordIndex]}</span></h1>
+      <h1>
+        <TextAnimation 
+        words={words}
+        height={40}
+        fontSize={30}
+         />
+      </h1>
       <p>
         Shubble is the latest shuttle tracker, which is built using Mapkit JS, React, and Flask.
       </p>

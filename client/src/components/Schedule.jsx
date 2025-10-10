@@ -46,11 +46,15 @@ export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop
         const firstStop = routeData[safeSelectedRoute].STOPS[0];
         const firstStopTime = offsetTime(time, routeData[safeSelectedRoute][firstStop].OFFSET);
         const isPastRoute = selectedDay === now.getDay() && firstStopTime < now;
+        const hasUpcomingSecondary = hasUpcomingSecondaryStops(index);
         
         // Only expand if:
-        // 1. defaultExpanded is true AND it's not a past route, OR
-        // 2. defaultExpanded is false but we want to show future routes
-        if (defaultExpanded && !isPastRoute) {
+        // 1. defaultExpanded is true AND (it's not a past route OR it has upcoming secondary stops), OR
+        // 2. It has upcoming secondary stops (keep open to show them)
+        if (defaultExpanded && (!isPastRoute || hasUpcomingSecondary)) {
+          newExpandedGroups.add(index);
+        } else if (hasUpcomingSecondary) {
+          // Always keep open if there are upcoming secondary stops
           newExpandedGroups.add(index);
         }
       });
@@ -150,6 +154,27 @@ export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop
     return null; // All stops have passed
   }
 
+  // Function to check if a route group has any upcoming secondary stops
+  const hasUpcomingSecondaryStops = (routeGroupIndex) => {
+    if (selectedDay !== now.getDay() || !schedule[safeSelectedRoute]) return false;
+    
+    const routeTimes = schedule[safeSelectedRoute];
+    const currentRouteTime = routeTimes[routeGroupIndex];
+    if (!currentRouteTime) return false;
+    
+    const stops = routeData[safeSelectedRoute].STOPS;
+    
+    // Check if any secondary stops (index > 0) haven't passed yet
+    for (let i = 1; i < stops.length; i++) {
+      const stopTime = offsetTime(currentRouteTime, routeData[safeSelectedRoute][stops[i]].OFFSET);
+      if (stopTime > now) {
+        return true; // Found an upcoming secondary stop
+      }
+    }
+    
+    return false; // No upcoming secondary stops
+  }
+
   // Update timeline line height to match content
   useEffect(() => {
     const updateTimelineLineHeight = () => {
@@ -181,37 +206,47 @@ export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop
 
     if (selectedDay !== now.getDay()) return; // only scroll if viewing today's schedule
     
-    // Find the first timeline item that represents current or future time
-    const currentTimeItem = Array.from(timelineContainer.querySelectorAll('.timeline-item')).find(item => {
-      const timeElement = item.querySelector('.timeline-time');
-      if (!timeElement) return false;
-      
-      const text = timeElement.textContent.trim();
-      const [timePart, meridian] = text.split(" ");
-      if (!timePart || !meridian) return false;
-
-      const [rawHours, rawMinutes] = timePart.split(":");
-      let hours = parseInt(rawHours, 10);
-      const minutes = parseInt(rawMinutes, 10);
-
-      // Convert to 24h
-      if (meridian.toUpperCase() === "PM" && hours < 12) {
-        hours += 12;
-      }
-      if (meridian.toUpperCase() === "AM" && hours === 12) {
-        hours = 0;
-      }
-
-      const timeDate = new Date();
-      timeDate.setHours(hours, minutes, 0, 0);
-
-      return timeDate >= now;
+    // First, try to find a highlighted item (current time)
+    let targetItem = Array.from(timelineContainer.querySelectorAll('.timeline-item.current-time, .secondary-timeline-item.current-time')).find(item => {
+      return item.offsetParent !== null; // Make sure it's visible
     });
 
-    if (currentTimeItem) {
-      currentTimeItem.scrollIntoView({ behavior: "smooth", block: "center" });
+    // If no highlighted item, find the first current or future time item
+    if (!targetItem) {
+      targetItem = Array.from(timelineContainer.querySelectorAll('.timeline-item, .secondary-timeline-item')).find(item => {
+        const timeElement = item.querySelector('.timeline-time, .secondary-timeline-time');
+        if (!timeElement) return false;
+        
+        const text = timeElement.textContent.trim();
+        const [timePart, meridian] = text.split(" ");
+        if (!timePart || !meridian) return false;
+
+        const [rawHours, rawMinutes] = timePart.split(":");
+        let hours = parseInt(rawHours, 10);
+        const minutes = parseInt(rawMinutes, 10);
+
+        // Convert to 24h
+        if (meridian.toUpperCase() === "PM" && hours < 12) {
+          hours += 12;
+        }
+        if (meridian.toUpperCase() === "AM" && hours === 12) {
+          hours = 0;
+        }
+
+        const timeDate = new Date();
+        timeDate.setHours(hours, minutes, 0, 0);
+
+        return timeDate >= now;
+      });
     }
-  }, [selectedRoute, selectedDay, selectedStop, schedule]);
+
+    if (targetItem) {
+      // Add a small delay to ensure the timeline line height has been updated
+      setTimeout(() => {
+        targetItem.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 150);
+    }
+  }, [selectedRoute, selectedDay, selectedStop, schedule, expandedGroups]);
 
 
   const daysOfTheWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -233,18 +268,20 @@ export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop
               }
             </select>
           </div>
-          <div className="control-group">
-            <label htmlFor='loop-dropdown'>Route:</label>
-            <select id='loop-dropdown' className="schedule-dropdown" value={safeSelectedRoute} onChange={(e) => setSelectedRoute(e.target.value)}>
-              {
-                routeNames.map((route, index) =>
-                  <option key={index} value={route}>
-                    {route}
-                  </option>
-                )
-              }
-            </select>
-          </div>
+           <div className="control-group">
+             <label>Route:</label>
+             <div className="route-toggle">
+               {routeNames.map((route, index) => (
+                 <button
+                   key={index}
+                   className={`route-toggle-button ${safeSelectedRoute === route ? 'active' : ''}`}
+                   onClick={() => setSelectedRoute(route)}
+                 >
+                   {route}
+                 </button>
+               ))}
+             </div>
+           </div>
           <div className="control-group">
             <label htmlFor='stop-dropdown'>Stop:</label>
             <select id='stop-dropdown' className="schedule-dropdown" value={safeSelectedStop} onChange={(e) => setSelectedStop(e.target.value)}>
@@ -283,7 +320,8 @@ export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop
                 const nextUpcomingStopIndex = getNextUpcomingStop(index);
                 const isFirstStopCurrentTime = selectedDay === now.getDay() && 
                   firstStopTime.getHours() === now.getHours() && 
-                  Math.abs(firstStopTime.getMinutes() - now.getMinutes()) <= 5;
+                  Math.abs(firstStopTime.getMinutes() - now.getMinutes()) <= 5 &&
+                  nextUpcomingStopIndex === 0; // Only highlight if first stop is actually the next upcoming
                 const isFirstStopPastTime = selectedDay === now.getDay() && firstStopTime < now;
                 
                 const isExpanded = expandedGroups.has(index);

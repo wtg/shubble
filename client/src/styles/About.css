@@ -19,7 +19,7 @@
 .about h1 {
     font-size: 2.5em;
     font-weight: 700;
-    text-align: center;
+    text-align: left;
     
 }
 .about p {
@@ -29,10 +29,26 @@
 
 }
 
+.about .current-word,
+.about .next-word {
+    /* text gradient */
+    background: linear-gradient(to right, var(--header-color), #206ef9);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-fill-color: transparent;
+    font-weight: bold;
+}
+
 @media (max-width: 1025px){
     /* Mobile View < 1025px */
+
+    .about {
+        padding: 20px;
+    }
     .about h1 {
-        font-size: 1.5em;
+        font-size: 30px;
+        margin:0;
     }
 
     .about p {

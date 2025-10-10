@@ -82,6 +82,45 @@
     box-shadow: 0 1px 4px rgba(52, 152, 219, 0.2);
 }
 
+/* Route Toggle Buttons */
+.route-toggle {
+    display: flex;
+    gap: 4px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 4px;
+    border: 1px solid #e1e8ed;
+}
+
+.route-toggle-button {
+    flex: 1;
+    padding: 8px 16px;
+    font-size: 14px;
+    font-weight: 500;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #6c757d;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-height: 36px;
+}
+
+.route-toggle-button:hover {
+    background: rgba(52, 152, 219, 0.1);
+    color: #3498db;
+}
+
+.route-toggle-button.active {
+    background: #3498db;
+    color: white;
+    box-shadow: 0 2px 4px rgba(52, 152, 219, 0.2);
+}
+
+.route-toggle-button.active:hover {
+    background: #2980b9;
+}
+
 /* Timeline Container */
 .timeline-container {
     position: relative;
@@ -126,6 +165,7 @@
 .timeline-content {
     position: relative;
     padding-left: 50px;
+    padding-right:20px;
 }
 
 /* Timeline Items */
@@ -184,7 +224,7 @@
 }
 
 .timeline-route-group .timeline-item.first-stop {
-    margin-bottom: 15px;
+    margin-bottom: 0px;
 }
 
 /* Collapsible Header Styling */
@@ -233,8 +273,21 @@
     position: relative;
     margin-left: 30px;
     padding-left: 20px;
-    border-left: 2px solid #e1e8ed;
-    margin-top: -10px;
+}
+
+.secondary-timeline::before {
+    content: '';
+    position: absolute;
+    left: -2px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: linear-gradient(to bottom, 
+        transparent 0%, 
+        #e1e8ed 20%, 
+        #e1e8ed 95%, 
+        transparent 100%
+    );
 }
 
 /* Collapsible Content */
@@ -254,7 +307,22 @@
     transition: max-height 0.3s ease-in, opacity 0.3s ease-in;
     margin-left: 30px;
     padding-left: 20px;
-    border-left: 2px solid #e1e8ed;
+    padding-top:10px;
+    padding-right:10px;
+}
+
+.secondary-timeline.collapsible-content.expanded::before {
+    content: '';
+    position: absolute;
+    left: -2px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: linear-gradient(to bottom, 
+        #e1e8ed 0%, 
+        #e1e8ed 90%, 
+        transparent 100%
+    );
 }
 
 .secondary-timeline-item {
@@ -532,6 +600,17 @@
         min-width: 100px;
         padding: 6px 12px;
         font-size: 13px;
+    }
+    
+    .route-toggle {
+        gap: 2px;
+        padding: 3px;
+    }
+    
+    .route-toggle-button {
+        padding: 6px 12px;
+        font-size: 13px;
+        min-height: 32px;
     }
     
     .timeline-content {
