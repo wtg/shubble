@@ -1,0 +1,42 @@
+{
+  "281474978235497": {
+    "address_id": "7249532",
+    "address_name": "RPI Student Union",
+    "asset_type": "vehicle",
+    "formatted_location": "1401 Sage Avenue, City of Troy, NY, 12180",
+    "gateway_model": "VG54NAH",
+    "gateway_serial": "GPCS-NWW-KRX",
+    "heading_degrees": 0.0,
+    "is_ecu_speed": false,
+    "latitude": 42.73069422,
+    "license_plate": "14552LY",
+    "longitude": -73.67674544,
+    "name": "406",
+    "polyline_index": null,
+    "route_name": "UNCLEAR",
+    "speed_mph": 0.0,
+    "timestamp": "2025-10-05T00:36:27.563000",
+    "vehicle_name": "406",
+    "vin": "1FDES8PM2KKA19255"
+  },
+  "281474978241891": {
+    "address_id": "7249532",
+    "address_name": "RPI Student Union",
+    "asset_type": "vehicle",
+    "formatted_location": "1401 Sage Avenue, City of Troy, NY, 12180",
+    "gateway_model": "VG54NAH",
+    "gateway_serial": "GDER-49D-MDW",
+    "heading_degrees": 0.0,
+    "is_ecu_speed": false,
+    "latitude": 42.73045232,
+    "license_plate": null,
+    "longitude": -73.67660777,
+    "name": "408",
+    "polyline_index": null,
+    "route_name": "UNCLEAR",
+    "speed_mph": 0.0,
+    "timestamp": "2025-10-05T00:38:07.514000",
+    "vehicle_name": "408",
+    "vin": "1FDES8PM8KKA16974"
+  }
+}

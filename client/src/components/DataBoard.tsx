@@ -1,6 +1,11 @@
 import "../styles/DataBoard.css"
 
-export default function DataBoard({ title, datatable }) {
+type DataBoardProps = {
+	title: string;
+	datatable: (string | number)[][];
+};
+
+export default function DataBoard({ title, datatable }: DataBoardProps) {
 	return (
 		<>
 			<div className="data-board-container">

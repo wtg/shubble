@@ -1,4 +1,4 @@
-import React, {
+import {
   useState,
   useEffect,
 } from 'react';
@@ -7,23 +7,26 @@ import MapKitMap from '../components/MapKitMap';
 import Schedule from '../components/Schedule';
 import "../styles/LiveLocation.css";
 import routeData from '../data/routes.json';
-import { aggregatedSchedule } from '../data/parseSchedule';
+import { aggregatedSchedule } from '../ts/parseSchedule';
+import type { VehicleInformationMap } from '../ts/types/vehicleLocation';
+import type { ShuttleRouteData } from '../ts/types/route';
 
 export default function LiveLocation() {
 
-  const [location, setLocation] = useState(null);
-  const [filteredRouteData, setFilteredRouteData] = useState({});
+  const [location, setLocation] = useState<VehicleInformationMap | null>(null);
+  const [filteredRouteData, setFilteredRouteData] = useState<ShuttleRouteData | null>(null);
 
   //New selection state for the schedule
-  const [selectedRoute, setSelectedRoute] = useState(null);
-  const [selectedStop, setSelectedStop] = useState('all');
+  const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
+  const [selectedStop, setSelectedStop] = useState<string>('all');
 
   // Filter routeData to only include routes present in aggregatedSchedule
   useEffect(() => {
+    // TODO: figure out how to make this type correct...
     setFilteredRouteData(
       Object.fromEntries(
         Object.entries(routeData).filter(([routeName]) => aggregatedSchedule.some(daySchedule => routeName in daySchedule))
-      )
+      ) as unknown as ShuttleRouteData
     );
   }, []);
 
@@ -55,7 +58,8 @@ export default function LiveLocation() {
 
   return (
     <div className="live-location-div">
-      <MapKitMap
+      { filteredRouteData && (
+        <MapKitMap
         routeData={filteredRouteData}
         vehicles={location}
         selectedRoute={selectedRoute}
@@ -63,6 +67,7 @@ export default function LiveLocation() {
         selectedStop={selectedStop}
         setSelectedStop={setSelectedStop}
       />
+      )}
       <div className="schedule-table">
         <Schedule
           selectedRoute={selectedRoute}
