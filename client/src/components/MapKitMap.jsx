@@ -372,9 +372,6 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         console.log(`Updating vehicle ${key} to ${vehicle.latitude}, ${vehicle.longitude}`);
         vehicleOverlays.current[key].coordinate = coordinate;
         vehicleOverlays.current[key].subtitle = `${vehicle.speed_mph} mph`;
-        if (vehicle.route_name !== "UNCLEAR") {
-          vehicleOverlays.current[key].color = vehicle.route_name ? routeData[vehicle.route_name].COLOR : '#444444';
-        }
       } else {
         // new vehicle: add to map
         console.log(`Adding vehicle ${key} to ${vehicle.latitude}, ${vehicle.longitude}`);
@@ -387,6 +384,10 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         });
         map.addAnnotation(annotation);
         vehicleOverlays.current[key] = annotation;
+      }
+
+      if (vehicle.route_name !== "UNCLEAR") {
+        vehicleOverlays.current[key].color = vehicle.route_name ? routeData[vehicle.route_name].COLOR : '#444444';
       }
     });
 
