@@ -1,6 +1,9 @@
 :root {
   --text-color: #141301;
   --header-color: #a1c3ff;
+  --accent-color: #206ef9;
+  --border-color: #e1e8ed;  
+  --shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
 }
 
 .App {
@@ -52,7 +55,7 @@ header {
   top: 0;
   width: 100%;
   box-sizing: border-box;
-  max-height: 100px;
+  max-height: 80px;
   background-color: var(--header-color);
   padding: 20px;
   margin: 0;
@@ -63,6 +66,10 @@ header {
   flex-direction: row;
   justify-content: space-between;
   gap: 10px;
+  color: #184b7f;
+  /* adding static height for full-screen content */
+  height:80px;
+  min-height: 80px;
 }
 
 @media (max-width: 1024px) {
@@ -95,6 +102,16 @@ header {
   }
 }
 
+@media (max-width: 768px) {
+  header {
+    height: 50px;
+    min-height: 50px;
+    max-height: 50px;
+    padding: 10px 20px;
+    font-size: 1.5em;
+  }
+}
+
 li a {
   display: flex;
   flex-direction: row;
@@ -108,17 +125,33 @@ li a {
 }
 
 .feedback-container {
-  border: 1px solid #444;
-  border-radius: 5px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
   padding: 10px;
   margin: 20px 20px 20px 20px;
+  box-shadow: var(--shadow);
+  position: relative;
+  overflow: hidden;
+}
+
+.feedback-container::before{
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 6px;
+    height: 100%;
+    background-color: var(--header-color);
 }
 
 footer {
-  padding: 20px;
+  padding: 10px;
   box-sizing: border-box;
   width: 100%;
-  background-color: #ddd;
+  background-color: white;
+  border-top: 1px solid var(--border-color);
+  border-radius: 0;
+
 }
 
 .big-footer {
