@@ -90,7 +90,7 @@ async function generateRoutePolylines(updatedRouteData: ShuttleRouteData) {
 }
 
 type MapKitMapProps = {
-  routeData: ShuttleRouteData;
+  routeData: ShuttleRouteData | null;
   vehicles: VehicleInformationMap | null;
   generateRoutes?: boolean;
   selectedRoute?: string | null;
@@ -386,8 +386,8 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         vehicleOverlays.current[key].coordinate = coordinate;
         vehicleOverlays.current[key].subtitle = `${vehicle.speed_mph} mph`;
         if (vehicle.route_name !== "UNCLEAR") {
-          if(vehicle.route_name)
-          vehicleOverlays.current[key].color = vehicle.route_name ? routeData[vehicle.route_name as Route].COLOR : '#444444';
+          if(vehicle.route_name && routeData && vehicle.route_name in routeData) 
+            vehicleOverlays.current[key].color = vehicle.route_name ? routeData[vehicle.route_name as Route].COLOR : '#444444';
         }
       } else {
         // new vehicle: add to map

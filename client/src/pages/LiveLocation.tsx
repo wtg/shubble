@@ -58,8 +58,7 @@ export default function LiveLocation() {
 
   return (
     <div className="live-location-div">
-      { filteredRouteData && (
-        <MapKitMap
+      <MapKitMap
         routeData={filteredRouteData}
         vehicles={location}
         selectedRoute={selectedRoute}
@@ -67,7 +66,6 @@ export default function LiveLocation() {
         selectedStop={selectedStop}
         setSelectedStop={setSelectedStop}
       />
-      )}
       <div className="schedule-table">
         <Schedule
           selectedRoute={selectedRoute}
