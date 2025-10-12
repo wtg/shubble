@@ -121,6 +121,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
       authorizationCallback: function(done) {
         done(token);
       },
+      libraries: ['map', 'annotations', 'overlays', 'services', 'user-location']
     })
 
     setMapLoaded(true);
