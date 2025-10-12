@@ -13,6 +13,7 @@ declare global {
         interface Map {
             _hoverCleanup?: () => void;
         }
+        const loadedLibraries: string[];
     }
     interface Window {
         // mapkit: typeof mapkit;

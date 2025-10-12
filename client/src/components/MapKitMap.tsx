@@ -112,24 +112,26 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
   const selectedMarkerRef = useRef<mapkit.MarkerAnnotation | null>(null);
   const overlays: mapkit.Overlay[] = [];
 
-
-  const loadMap = () => {
-    mapkit.init({
-      authorizationCallback: function(done) {
-        done(token);
-      }
-    });
-    setMapLoaded(true);
-  }
-  // source: https://developer.apple.com/documentation/mapkitjs/loading-the-latest-version-of-mapkit-js
-  window.initMapKit = function() {
-    if (!mapkit) return;
-
-    loadMap();
-  }
+  const setupMapKitJs = async () => {
+    if (!mapkit || mapkit.loadedLibraries.length === 0) {
+      await new Promise(resolve => { window.initMapKit = resolve });
+      delete window.initMapKit;
+    }
+  };
 
   useEffect(() => {
-    if (mapkit) loadMap();
+    // initialize mapkit
+    const mapkitScript = async () => {
+      // load the MapKit JS library
+      await setupMapKitJs();
+      mapkit.init({
+        authorizationCallback: (done) => {
+          done(token);
+        },
+      });
+      setMapLoaded(true);
+    };
+    mapkitScript();
   }, []);
 
   // create the map
