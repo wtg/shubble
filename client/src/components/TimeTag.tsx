@@ -1,6 +1,10 @@
 import '../styles/TimeTag.css';
 
-export default function TimeTag({ isAm }) {
+type TimeTagProps = {
+  isAm: boolean;
+};
+
+export default function TimeTag({ isAm }: TimeTagProps) {
   return (
     <>
       {isAm ? (
