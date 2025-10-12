@@ -113,24 +113,23 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
   const overlays: mapkit.Overlay[] = [];
 
 
+  const loadMap = () => {
+    mapkit.init({
+      authorizationCallback: function(done) {
+        done(token);
+      }
+    });
+    setMapLoaded(true);
+  }
   // source: https://developer.apple.com/documentation/mapkitjs/loading-the-latest-version-of-mapkit-js
   window.initMapKit = function() {
     if (!mapkit) return;
 
-    mapkit.init({
-      authorizationCallback: function(done) {
-        done(token);
-      },
-      libraries: ['map', 'annotations', 'overlays', 'services', 'user-location']
-    })
-
-    setMapLoaded(true);
+    loadMap();
   }
 
   useEffect(() => {
-    if (mapkit) {
-      setMapLoaded(true);
-    }
+    if (mapkit) loadMap();
   }, []);
 
   // create the map
