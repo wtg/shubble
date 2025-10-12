@@ -122,8 +122,15 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         done(token);
       },
     })
+
     setMapLoaded(true);
   }
+
+  useEffect(() => {
+    if (mapkit) {
+      setMapLoaded(true);
+    }
+  }, []);
 
   // create the map
   useEffect(() => {
