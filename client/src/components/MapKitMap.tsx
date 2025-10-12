@@ -115,8 +115,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
   // source: https://developer.apple.com/documentation/mapkitjs/loading-the-latest-version-of-mapkit-js
   const setupMapKitJs = async () => {
-    // @ts-expect-error loadedLibraries describes a list of loaded libraries
-    if (!mapkit || mapkit.loadedLibraries.length === 0) {
+    if (!mapkit) {
       await new Promise(resolve => { window.initMapKit = resolve });
       delete window.initMapKit;
     }
