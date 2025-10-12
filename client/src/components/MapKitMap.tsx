@@ -114,27 +114,16 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
 
   // source: https://developer.apple.com/documentation/mapkitjs/loading-the-latest-version-of-mapkit-js
-  const setupMapKitJs = async () => {
-    if (!mapkit) {
-      await new Promise(resolve => { window.initMapKit = resolve });
-      delete window.initMapKit;
-    }
-  };
+  window.initMapKit = function() {
+    if (!mapkit) return;
 
-  useEffect(() => {
-    // initialize mapkit
-    const mapkitScript = async () => {
-      // load the MapKit JS library
-      await setupMapKitJs();
-      mapkit.init({
-        authorizationCallback: (done: (token: string) => void) => {
-          done(token);
-        },
-      });
-      setMapLoaded(true);
-    };
-    mapkitScript();
-  }, []);
+    mapkit.init({
+      authorizationCallback: function(done) {
+        done(token);
+      },
+    })
+    setMapLoaded(true);
+  }
 
   // create the map
   useEffect(() => {
