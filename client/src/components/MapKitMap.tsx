@@ -113,7 +113,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
   const overlays: mapkit.Overlay[] = [];
 
   const setupMapKitJs = async () => {
-    if (!mapkit || mapkit.loadedLibraries.length === 0) {
+    if (!window.mapkit || window.mapkit.loadedLibraries.length === 0) {
       await new Promise(resolve => { window.initMapKit = resolve });
       delete window.initMapKit;
     }

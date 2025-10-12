@@ -1,3 +1,4 @@
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import * as mapkit from 'apple-mapkit-js-browser';
 
 export {};
@@ -23,10 +24,8 @@ declare global {
         readonly env: {
             [key: string]: string | boolean | undefined;
             VITE_MAPKIT_KEY?: string;
-            // GIT_REV?: string;
+            GIT_REV?: string;
         };
     }
 }
 
-const test = mapkit.CircleOverlay = new mapkit.CircleOverlay();
-test.routeKey = "test";
