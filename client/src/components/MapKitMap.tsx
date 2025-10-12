@@ -391,7 +391,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         const annotation = new mapkit.MarkerAnnotation(coordinate, {
           title: vehicle.name,
           subtitle: `${vehicle.speed_mph} mph`,
-          color: vehicle.route_name && vehicle.route_name !== "UNCLEAR" ? routeData[vehicle.route_name as Route].COLOR : '#444444',
+          color: vehicle.route_name && vehicle.route_name !== "UNCLEAR" && routeData ? routeData[vehicle.route_name as Route].COLOR : '#444444',
           glyphImage: { 1: 'shubble20.png' },
           selectedGlyphImage: { 1: 'shubble20.png', 2: 'shubble40.png' },
         });
@@ -400,7 +400,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
       }
 
       if (vehicle.route_name !== "UNCLEAR") {
-        vehicleOverlays.current[key].color = vehicle.route_name ? routeData[vehicle.route_name].COLOR : '#444444';
+        vehicleOverlays.current[key].color = vehicle.route_name && routeData ? routeData[vehicle.route_name as Route].COLOR : '#444444';
       }
     });
 

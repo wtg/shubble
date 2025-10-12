@@ -50,6 +50,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop
     if (selectedStop && !(selectedStop in routeData[safeSelectedRoute as keyof typeof routeData])) {
       setSelectedStop("all");
     }
+    console.log()
     setStopNames(routeData[safeSelectedRoute as keyof typeof routeData].STOPS);
   }, [selectedRoute]);
 
@@ -138,7 +139,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop
           {
             stopNames.map((stop, index) =>
               <option key={index} value={stop}>
-                {(routeData[safeSelectedRoute as keyof typeof routeData][stop] as ShuttleStopData).NAME}
+                {(routeData[safeSelectedRoute as keyof typeof routeData][stop] as ShuttleStopData)?.NAME}
               </option>
             )
           }
