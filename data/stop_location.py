@@ -43,6 +43,16 @@ def createETA(df):
    df['ETA'] = df['next_stop_timestamp'] - df['timestamp']
    df['ETA'] = df['ETA'].dt.total_seconds()
 
+def create_previous_locations(df):
+    df.sort_values(by=['vehicle_id', 'timestamp'], inplace=True)
+
+    df['prev_latitude_1'] = df.groupby('vehicle_id')['latitude'].shift(1)
+    df['prev_longitude_1'] = df.groupby('vehicle_id')['longitude'].shift(1)
+    df['prev_latitude_2'] = df.groupby('vehicle_id')['latitude'].shift(2)
+    df['prev_longitude_2'] = df.groupby('vehicle_id')['longitude'].shift(2)
+    
+    return df
+
 def main():
    with open('data/data.csv', 'r') as f:
       df = pd.read_csv(f)
@@ -52,6 +62,11 @@ def main():
    create_stop_data(df)
    createETA(df)
    print(df[['timestamp', 'vehicle_id', 'stop_name', 'route_name', 'ETA']])
+   
+   # Create p(t), p(t-1), p(t-2) locations
+   create_previous_locations(df)
+   
+   print(df[['timestamp', 'vehicle_id', 'latitude', 'longitude', 'prev_latitude_1', 'prev_longitude_1', 'prev_latitude_2', 'prev_longitude_2']])
 
 if __name__ == '__main__':
    main()
