@@ -1,7 +1,9 @@
 import pandas as pd
 import numpy as np
 from data.stops import Stops
-from datetime import datetime, timedelta
+from sklearn.model_selection import train_test_split
+from sklearn.neighbors import KNeighborsRegressor
+from sklearn.metrics import mean_squared_error
 
 def create_stop_data(df):
    """
@@ -50,11 +52,47 @@ def create_previous_locations(df):
     df['prev_longitude_1'] = df.groupby('vehicle_id')['longitude'].shift(1)
     df['prev_latitude_2'] = df.groupby('vehicle_id')['latitude'].shift(2)
     df['prev_longitude_2'] = df.groupby('vehicle_id')['longitude'].shift(2)
+    df['prev_latitude_3'] = df.groupby('vehicle_id')['latitude'].shift(3)
+    df['prev_longitude_3'] = df.groupby('vehicle_id')['longitude'].shift(3)
+    df['prev_latitude_4'] = df.groupby('vehicle_id')['latitude'].shift(4)
+    df['prev_longitude_4'] = df.groupby('vehicle_id')['longitude'].shift(4)
     
     return df
 
+def create_model(df):
+    df_clean = df.dropna()
+    
+    # Define features (X) and target (y)
+    features = [
+        'latitude', 'longitude', 
+        'prev_latitude_1', 'prev_longitude_1', 
+        'prev_latitude_2', 'prev_longitude_2', 
+        'prev_latitude_3', 'prev_longitude_3',
+        'prev_latitude_4', 'prev_longitude_4'
+    ]
+    X = df_clean[features]
+    y = df_clean['ETA'] # Make sure you are using the ETA in seconds
+    
+    # Split data
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+    
+    # --- FIX 1: Use the Regressor ---
+    model = KNeighborsRegressor(n_neighbors=3) # n_neighbors=1 can overfit; 5 is a common starting point
+    
+    # Fit the model
+    model.fit(X_train, y_train)
+    
+    # Make predictions
+    y_pred = model.predict(X_test)
+    
+    # --- FIX 2: Use a Regression Metric ---
+    mse = mean_squared_error(y_test, y_pred)
+    rmse = np.sqrt(mse)
+    
+    print(f"Model Root Mean Squared Error (RMSE): {rmse:.2f} seconds")
+
 def main():
-   with open('data/data.csv', 'r') as f:
+   with open('data/data2.csv', 'r') as f:
       df = pd.read_csv(f)
       
    print(df.columns)
@@ -67,6 +105,6 @@ def main():
    create_previous_locations(df)
    
    print(df[['timestamp', 'vehicle_id', 'latitude', 'longitude', 'prev_latitude_1', 'prev_longitude_1', 'prev_latitude_2', 'prev_longitude_2']])
-
+   create_model(df)
 if __name__ == '__main__':
    main()
