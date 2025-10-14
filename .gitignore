@@ -10,3 +10,5 @@ client/dist
 
 .venv/
 venv/
+
+**/data.csv

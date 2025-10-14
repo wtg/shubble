@@ -92,7 +92,7 @@ class Stops:
         for route_name, route in cls.routes_data.items():
             for stop in route.get('STOPS', []):
                 stop_point = np.array(route[stop]['COORDINATES'])
-                distance = haversine_vectorized(origin_point, stop_point)[0]
+                distance = haversine_vectorized(origin_point, [stop_point])[0]
                 if distance < threshold:
                     return route_name, stop
         return None, None
@@ -148,7 +148,6 @@ def haversine_vectorized(coords1, coords2):
 
     # Earth radius in kilometers
     R = 6371.0
-
     lat1 = np.radians(coords1[:, 0])
     lon1 = np.radians(coords1[:, 1])
     lat2 = np.radians(coords2[:, 0])
