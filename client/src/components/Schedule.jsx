@@ -43,8 +43,15 @@ export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop
     if (!(selectedStop in routeData[safeSelectedRoute])) {
       setSelectedStop("all");
     }
-    setStopNames(routeData[safeSelectedRoute].STOPS);
-  }, [selectedRoute]);
+    let stops = routeData[safeSelectedRoute].STOPS;
+
+    // Remove Chasan on Saturday/Sunday
+    if (selectedDay === 0 || selectedDay === 6) {
+      stops = stops.filter(stop => stop !== "CHASAN");
+    }
+
+    setStopNames(stops);
+  }, [selectedRoute, selectedDay]);
 
   // Handle day change from dropdown
   const handleDayChange = (e) => {
@@ -148,7 +155,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop
             {
               safeSelectedStop === "all" ?
                 schedule[safeSelectedRoute]?.map((time, index) => (
-                  routeData[safeSelectedRoute].STOPS.map((stop, sidx) => (
+                  stopNames.map((stop, sidx) => (
                     <tr key={`${index}-${sidx}`} className="">
                       <td className={sidx === 0 ? "outdented" : "indented-time"}>{offsetTime(time, routeData[safeSelectedRoute][stop].OFFSET).toLocaleTimeString(undefined, { timeStyle: 'short' })} {routeData[safeSelectedRoute][stop].NAME}</td>
                     </tr>

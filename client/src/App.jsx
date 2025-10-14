@@ -18,6 +18,8 @@ import WarningBanner from './components/WarningBanner';
 function App() {
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [selectedStop, setSelectedStop] = useState('all');
+  const now = new Date();
+  const [selectedDay, setSelectedDay] = useState(now.getDay());
   const staging = import.meta.env.VITE_DEPLOY_MODE !== 'production';
   const GIT_REV = import.meta.env.GIT_REV || 'unknown';
   return (
@@ -48,7 +50,7 @@ function App() {
       <div className="App">
         <Routes>
           <Route path='/' element={<LiveLocation />} />
-          <Route path='/schedule' element={<Schedule selectedRoute={selectedRoute} setSelectedRoute={setSelectedRoute} selectedStop={selectedStop} setSelectedStop={setSelectedStop}/>} />
+          <Route path='/schedule' element={<Schedule selectedRoute={selectedRoute} setSelectedRoute={setSelectedRoute} selectedStop={selectedStop} setSelectedStop={setSelectedStop} selectedDay={selectedDay} setSelectedDay={setSelectedDay}/>} />
           <Route path='/about' element={<About />} />
           <Route path='/data' element={<Data />} />
           <Route path='/generate-static-routes' element={<MapKitMap routeData={routeData} vehicles={null} generateRoutes={true} />} />
