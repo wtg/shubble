@@ -1,4 +1,8 @@
-import scheduleData from './schedule.json';
+const fs = require('fs');
+const path = require('path');
+
+const schedulePath = path.resolve(__dirname, './schedule.json');
+const scheduleData = JSON.parse(fs.readFileSync(schedulePath, 'utf-8'));
 
 function aggregateSchedule(scheduleData) {
     const aggregatedSchedule = [];
@@ -26,19 +30,21 @@ function aggregateSchedule(scheduleData) {
         });
         Object.values(aggregatedSchedule[i]).forEach((times) => {
             times.sort((a, b) => {
+                a = new Date(a);
+                b = new Date(b);
                 const isA12AM = a.getHours() === 0 && a.getMinutes() === 0;
                 const isB12AM = b.getHours() === 0 && b.getMinutes() === 0;
 
-                if (isA12AM && !isB12AM) return 1;   // a goes after b
-                if (!isA12AM && isB12AM) return -1;  // a goes before b
-                return a - b;                        // otherwise, normal sort
+                if (isA12AM && !isB12AM) return 1;
+                if (!isA12AM && isB12AM) return -1;
+                return a - b;
             });
         });
     }
     return aggregatedSchedule;
 }
 
-export function parseTimeString(timeStr) {
+function parseTimeString(timeStr) {
     const [time, modifier] = timeStr.trim().split(" ");
     let [hours, minutes] = time.split(":").map(Number);
 
@@ -53,7 +59,12 @@ export function parseTimeString(timeStr) {
     dateObj.setMinutes(minutes);
     dateObj.setSeconds(0);
     dateObj.setMilliseconds(0);
-    return dateObj;
+    return dateObj.toISOString();
 }
 
-export const aggregatedSchedule = aggregateSchedule(scheduleData);
+const aggregatedSchedule = aggregateSchedule(scheduleData);
+
+const outputPath = path.resolve(__dirname, './aggregated_schedule.json');
+fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+fs.writeFileSync(outputPath, JSON.stringify(aggregatedSchedule, null, 2));
+console.log(`aggregatedSchedule.json generated at ${outputPath}`);

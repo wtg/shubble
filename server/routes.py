@@ -263,3 +263,8 @@ def get_shuttle_routes():
 def get_shuttle_schedule():
     root_dir = Path(__file__).parent.parent
     return send_from_directory(root_dir / 'data', 'schedule.json')
+
+@bp.route('/api/aggregated-schedule', methods=['GET'])
+def get_aggregated_shuttle_schedule():
+    root_dir = Path(__file__).parent.parent
+    return send_from_directory(root_dir / 'data', 'aggregated_schedule.json')
