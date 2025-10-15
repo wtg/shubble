@@ -1,12 +1,13 @@
+from . import create_app, db, cache, Config
 from .time_utils import get_campus_start_of_day
-from . import create_app, db, Config
 from .models import VehicleLocation, GeofenceEvent
 from sqlalchemy import func, and_
 import time
 import requests
 import os
 import logging
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
+import math
 
 # Logging config
 numeric_level = logging._nameToLevel.get(Config.LOG_LEVEL.upper(), logging.INFO)
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 app = create_app()
 
+@cache.cached(timeout=300, key_prefix="vehicles_in_geofence")
 def get_vehicles_in_geofence():
     """
     Returns a set of vehicle_ids where the latest geofence event from today
@@ -84,6 +86,7 @@ def update_locations(after_token, previous_vehicle_ids, app):
 
     try:
         has_next_page = True
+        new_records_added = 0
         while has_next_page:
             # Add pagination token if present
             if after_token:
@@ -121,15 +124,17 @@ def update_locations(after_token, previous_vehicle_ids, app):
                     continue
                 # Convert ISO 8601 string to datetime
                 timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
-
-                # Check if this location already exists
-                exists = VehicleLocation.query.filter_by(
-                    vehicle_id=vehicle_id,
-                    timestamp=timestamp
-                ).first()
-                if exists:
+                
+                # Check if we have a very recent location for this vehicle (within last 10 seconds)
+                recent_location = VehicleLocation.query.filter(
+                    VehicleLocation.vehicle_id == vehicle_id,
+                    VehicleLocation.timestamp >= timestamp - timedelta(seconds=10)
+                ).order_by(VehicleLocation.timestamp.desc()).first()
+                
+                if recent_location and haversine((gps['latitude'], gps['longitude']), (recent_location.latitude, recent_location.longitude)) < 0.01:
                     continue
-
+                
+                
                 # Create and add new VehicleLocation
                 loc = VehicleLocation(
                     vehicle_id=vehicle_id,
@@ -145,14 +150,50 @@ def update_locations(after_token, previous_vehicle_ids, app):
                     address_name=gps.get('address', {}).get('name'),
                 )
                 db.session.add(loc)
+                new_records_added += 1
 
-            db.session.commit()
-            logger.info(f'Updated locations for {len(current_vehicle_ids)} vehicles')
+            # Only commit and invalidate cache if we actually added new records
+            if new_records_added > 0:
+                db.session.commit()
+                cache.delete('vehicle_locations')
+                logger.info(f'Updated locations for {len(current_vehicle_ids)} vehicles - {new_records_added} new records')
+            else:
+                logger.info(f'No new location data for {len(current_vehicle_ids)} vehicles')
 
     except requests.RequestException as e:
         logger.error(f'Failed to fetch locations: {e}')
 
     return after_token, current_vehicle_ids
+
+def haversine(coord1, coord2):
+    """
+    Calculate the great-circle distance between two points on the Earth
+    using the Haversine formula.
+
+    Parameters:
+        coord1: (lat1, lon1) in decimal degrees
+        coord2: (lat2, lon2) in decimal degrees
+
+    Returns:
+        Distance in kilometers.
+    """
+    # Earth radius in kilometers
+    R = 6371.0
+
+    lat1, lon1 = coord1
+    lat2, lon2 = coord2
+
+    # Convert degrees to radians
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+
+    # Haversine formula
+    a = math.sin(dphi / 2)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    return R * c
 
 def run_worker():
     logger.info('Worker started...')
