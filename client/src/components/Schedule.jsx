@@ -1,8 +1,7 @@
-import { useState, useEffect, useLayoutEffect } from 'react';
+import { useState, useEffect } from 'react';
 import '../styles/Schedule.css';
-import scheduleData from '../data/schedule.json';
 import routeData from '../data/routes.json';
-import { aggregatedSchedule } from '../data/parseSchedule';
+import aggregatedSchedule from '../data/aggregated_schedule.json';
 
 export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop, setSelectedStop }) {
   // Validate props once at the top

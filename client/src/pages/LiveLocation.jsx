@@ -7,7 +7,7 @@ import MapKitMap from '../components/MapKitMap';
 import Schedule from '../components/Schedule';
 import "../styles/LiveLocation.css";
 import routeData from '../data/routes.json';
-import { aggregatedSchedule } from '../data/parseSchedule';
+import aggregatedSchedule from '../data/aggregated_schedule.json';
 
 export default function LiveLocation() {
 
