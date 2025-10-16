@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import '../styles/Schedule.css';
 import routeData from '../data/routes.json';
 import aggregatedSchedule from '../data/aggregated_schedule.json';
+import { timeToDate } from '../data/timeUtils.js';
 
 export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop, setSelectedStop }) {
   // Validate props once at the top

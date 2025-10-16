@@ -2,6 +2,7 @@
   "name": "client",
   "private": true,
   "version": "0.0.0",
+  "type": "module",
   "scripts": {
     "dev": "node data/parseSchedule.js && shx cp -r data/ client/src/ && vite",
     "build": "node data/parseSchedule.js && shx cp -r data/ client/src/ && vite build",
