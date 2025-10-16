@@ -20,11 +20,10 @@ function aggregateSchedule(scheduleData) {
         aggregatedSchedule.push({});
         Object.values(weeklySchedule[i]).forEach((busSchedule) => {
             busSchedule.forEach(([time, loop]) => {
-                const timeObj = parseTimeString(time);
                 if (loop in aggregatedSchedule[i]) {
-                    aggregatedSchedule[i][loop].push(timeObj);
+                    aggregatedSchedule[i][loop].push(time);
                 } else {
-                    aggregatedSchedule[i][loop] = [timeObj];
+                    aggregatedSchedule[i][loop] = [time];
                 }
             });
         });
@@ -42,25 +41,6 @@ function aggregateSchedule(scheduleData) {
         });
     }
     return aggregatedSchedule;
-}
-
-function parseTimeString(timeStr) {
-    const [time, modifier] = timeStr.trim().split(" ");
-    let [hours, minutes] = time.split(":").map(Number);
-
-    if (modifier.toUpperCase() === "PM" && hours !== 12) {
-        hours += 12;
-    } else if (modifier.toUpperCase() === "AM" && hours === 12) {
-        hours = 0;
-    }
-
-    const dateObj = new Date();
-    dateObj.setHours(hours);
-    dateObj.setMinutes(minutes);
-    dateObj.setSeconds(0);
-    dateObj.setMilliseconds(0);
-    const timezone = process.env.VITE_TIMEZONE || 'America/New_York';
-    return dateObj.toLocaleTimeString('en-US', { timeZone: timezone, hour12: true, hour: 'numeric', minute: '2-digit' });
 }
 
 const aggregatedSchedule = aggregateSchedule(scheduleData);
