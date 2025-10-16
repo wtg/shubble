@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import '../styles/Schedule.css';
 import routeData from '../data/routes.json';
 import aggregatedSchedule from '../data/aggregated_schedule.json';
+import { timeToDate } from '../data/timeUtils.js';
 
 export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop, setSelectedStop }) {
   // Validate props once at the top
@@ -45,22 +46,6 @@ export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop
   // Handle day change from dropdown
   const handleDayChange = (e) => {
     setSelectedDay(parseInt(e.target.value));
-  }
-
-  const timeToDate = (timeStr) => {
-    const [time, modifier] = timeStr.trim().split(" ");
-    let [hours, minutes] = time.split(":").map(Number);
-    if (modifier.toUpperCase() === "PM" && hours !== 12) {
-      hours += 12;
-    }
-    else if (modifier.toUpperCase() === "AM" && hours === 12) {
-      hours = 0;
-    }
-    const dateObj = new Date();
-    dateObj.setHours(hours);
-    dateObj.setMinutes(minutes);
-    dateObj.setSeconds(0);
-    return dateObj;
   }
 
   // Function to offset schedule time by given minutes

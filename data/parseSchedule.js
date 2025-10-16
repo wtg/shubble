@@ -1,8 +1,7 @@
-const fs = require('fs');
-const path = require('path');
-
-const schedulePath = path.resolve(__dirname, './schedule.json');
-const scheduleData = JSON.parse(fs.readFileSync(schedulePath, 'utf-8'));
+import { timeToDate } from './timeUtils.js';
+import fs from 'fs';
+import path from 'path';
+import scheduleData from './schedule.json' with { type: 'json' };
 
 function aggregateSchedule(scheduleData) {
     const aggregatedSchedule = [];
@@ -29,8 +28,8 @@ function aggregateSchedule(scheduleData) {
         });
         Object.values(aggregatedSchedule[i]).forEach((times) => {
             times.sort((a, b) => {
-                a = new Date(a);
-                b = new Date(b);
+                a = timeToDate(a);
+                b = timeToDate(b);
                 const isA12AM = a.getHours() === 0 && a.getMinutes() === 0;
                 const isB12AM = b.getHours() === 0 && b.getMinutes() === 0;
 
@@ -45,7 +44,7 @@ function aggregateSchedule(scheduleData) {
 
 const aggregatedSchedule = aggregateSchedule(scheduleData);
 
-const outputPath = path.resolve(__dirname, './aggregated_schedule.json');
+const outputPath = path.join(process.cwd(), 'data', 'aggregated_schedule.json');
 fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 fs.writeFileSync(outputPath, JSON.stringify(aggregatedSchedule, null, 2));
 console.log(`aggregatedSchedule.json generated at ${outputPath}`);
