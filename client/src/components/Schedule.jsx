@@ -60,7 +60,6 @@ export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop
     dateObj.setHours(hours);
     dateObj.setMinutes(minutes);
     dateObj.setSeconds(0);
-    console.log(dateObj);
     return dateObj;
   }
 
