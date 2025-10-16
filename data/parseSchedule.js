@@ -59,7 +59,8 @@ function parseTimeString(timeStr) {
     dateObj.setMinutes(minutes);
     dateObj.setSeconds(0);
     dateObj.setMilliseconds(0);
-    return dateObj.toISOString();
+    const timezone = process.env.VITE_TIMEZONE || 'America/New_York';
+    return dateObj.toLocaleTimeString('en-US', { timeZone: timezone, hour12: true, hour: 'numeric', minute: '2-digit' });
 }
 
 const aggregatedSchedule = aggregateSchedule(scheduleData);
