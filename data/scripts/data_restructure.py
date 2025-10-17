@@ -121,3 +121,67 @@ def load_and_prepare(input_path,
     df = df.sort_values(sort_keys).reset_index(drop=True)
     return df, veh_col
 
+def build_windows(df, veh_col, L, T_sec):
+    rows = []
+
+    def process_group(g):
+        times = g["_time_s"].to_numpy()
+        dists = g["_distance_km"].to_numpy()
+        n = len(g)
+        for start in range(0, n - L + 1):
+            end = start + L
+            tw = times[start:end]
+            dw = dists[start:end]
+            dt = np.diff(tw)
+            if (dt <= 0).any():
+                continue
+            if np.max(dt) > T_sec:
+                continue
+            # normalize to first point
+            t0, d0 = tw[0], dw[0]
+            t_rel = tw - t0
+            d_rel = dw - d0
+            row = []
+            for i in range(L):
+                row.extend([float(t_rel[i]), float(d_rel[i])])
+            rows.append(row)
+
+    if veh_col and veh_col in df.columns:
+        for _, g in df.groupby(veh_col, sort=False):
+            process_group(g)
+    else:
+        process_group(df)
+
+    # headers
+    cols = []
+    for i in range(1, L+1):
+        cols += [f"Timedelta{i}", f"Distance{i}"]
+    out = pd.DataFrame(rows, columns=cols)
+    if not out.empty:
+        out["Timedelta1"] = 0.0
+        out["Distance1"] = 0.0
+    return out
+
+def plot_first_five(dataset, L):
+    k = min(4, len(dataset))
+    for r in range(k):
+        row = dataset.iloc[r]
+        times = [row[f"Timedelta{i}"] for i in range(1, L+1)]
+        dists = [row[f"Distance{i}"] for i in range(1, L+1)]
+        plt.figure()
+        plt.plot(times, dists, marker="o")
+        plt.title(f"Row {r+1}: Distance vs Time")
+        plt.xlabel("Time (s)")
+        plt.ylabel("Distance from start (km)")
+        plt.grid(True)
+        plt.show()
+
+# %% Run
+df, veh = load_and_prepare(INPUT_PATH, TIME_COL, SECONDS_COL, DIST_COL, LAT_COL, LON_COL, VEH_COL)
+seq = build_windows(df, veh, L=L, T_sec=T)
+seq.to_csv(OUTPUT_PATH, index=False)
+print(f"Saved: {OUTPUT_PATH}")
+print(seq.head(PREVIEW_ROWS).to_string(index=False))
+
+if SHOW_PLOTS and len(seq) > 0:
+    plot_first_five(seq, L)
