@@ -3,7 +3,7 @@ import '../styles/Schedule.css';
 import scheduleData from '../data/schedule.json';
 import routeData from '../data/routes.json';
 import { aggregatedSchedule } from '../data/parseSchedule';
-import LoopToggle from './LoopToggle';
+import RouteToggle from './RouteToggle';
 
 export default function Schedule() {
   const now = new Date();
@@ -45,7 +45,7 @@ export default function Schedule() {
     const scheduleDiv = document.querySelector('.schedule-scroll');
     if (!scheduleDiv) return;
 
-    if (selectedDay !== now.getDay()) return; // only scroll if viewing today's schedule
+    // if (selectedDay !== now.getDay()) return; // only scroll if viewing today's schedule
     const currentTimeRow = Array.from(scheduleDiv.querySelectorAll('td.outdented')).find(td => {
       const text = td.textContent.trim();
 
@@ -72,43 +72,24 @@ export default function Schedule() {
     });
 
     if (currentTimeRow) {
-      currentTimeRow.scrollIntoView({ behavior: "auto" });
+      currentTimeRow.scrollIntoView({
+        block: 'nearest',
+        inline: 'nearest',
+        behavior: 'smooth'
+      });
     }
   }, [selectedRoute, selectedDay, selectedStop, schedule]);
 
 
-  const daysOfTheWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  // const daysOfTheWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
   return (
     <div className="p-4">
       <h2>Today's schedule</h2>
-      <LoopToggle />
+      <RouteToggle selectedRoute={selectedRoute} setSelectedRoute={setSelectedRoute} />
+      
       <div>
-        <label for='weekday-dropdown'>Weekday:</label>
-        <select id='weekday-dropdown' className="schedule-dropdown-style" value={selectedDay} onChange={handleDayChange}>
-          {
-            daysOfTheWeek.map((day, index) =>
-              <option key={index} value={index}>
-                {day}
-              </option>
-            )
-          }
-        </select>
-      </div>
-      <div>
-        <label for='loop-dropdown'>Loop:</label>
-        <select id='loop-dropdown' className="schedule-dropdown-style" value={selectedRoute} onChange={(e) => setSelectedRoute(e.target.value)}>
-          {
-            routeNames.map((route, index) =>
-              <option key={index} value={route}>
-                {route}
-              </option>
-            )
-          }
-        </select>
-      </div>
-      <div>
-        <label for='stop-dropdown'>Stop:</label>
+        <label for='stop-dropdown'>Filter stops: </label>
         <select id='stop-dropdown' className="schedule-dropdown-style" value={selectedStop} onChange={(e) => setSelectedStop(e.target.value)}>
           <option value="all">All Stops</option>
           {

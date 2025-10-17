@@ -40,3 +40,8 @@ h2 {
     margin-bottom: 10px;
     margin-top:10px
 }
+
+label {
+    font-family: "Karla", sans-serif;
+    font-size: 20px;
+}

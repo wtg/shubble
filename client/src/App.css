@@ -122,14 +122,20 @@ footer {
   padding: 20px;
   box-sizing: border-box;
   width: 100%;
-  background-color: #ddd;
+  background-color: #ffffff;
+  justify-content: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
 }
 
 .big-footer {
   display: flex;
-  flex-direction: row;
-  justify-content: space-between;
+  flex-direction: column;
+  justify-content: center;
   align-items: center;
+  font-family: "Karla", sans-serif;
 }
 
 .git-copy {
@@ -139,4 +145,10 @@ footer {
   gap: 10px;
   align-items: center;
   padding: 0 20px;
+}
+
+.line {
+  height: 1px;
+  background-color: #d9d9d9;
+  width: 1200px;
 }
