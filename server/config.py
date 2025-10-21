@@ -1,6 +1,9 @@
 import base64
+from dotenv import load_dotenv
 import os
 from zoneinfo import ZoneInfo
+
+load_dotenv()
 
 
 class Config:

@@ -1,8 +1,8 @@
-import { useState, useEffect, useLayoutEffect } from 'react';
+import { useState, useEffect } from 'react';
 import '../styles/Schedule.css';
-import scheduleData from '../data/schedule.json';
 import routeData from '../data/routes.json';
-import { aggregatedSchedule } from '../data/parseSchedule';
+import aggregatedSchedule from '../data/aggregated_schedule.json';
+import { timeToDate } from '../data/timeUtils.js';
 
 export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop, setSelectedStop, selectedDay, setSelectedDay }) {
   // Validate props once at the top
@@ -58,9 +58,25 @@ export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop
     setSelectedDay(parseInt(e.target.value));
   }
 
+  const timeToDate = (timeStr) => {
+    const [time, modifier] = timeStr.trim().split(" ");
+    let [hours, minutes] = time.split(":").map(Number);
+    if (modifier.toUpperCase() === "PM" && hours !== 12) {
+      hours += 12;
+    }
+    else if (modifier.toUpperCase() === "AM" && hours === 12) {
+      hours = 0;
+    }
+    const dateObj = new Date();
+    dateObj.setHours(hours);
+    dateObj.setMinutes(minutes);
+    dateObj.setSeconds(0);
+    return dateObj;
+  }
+
   // Function to offset schedule time by given minutes
   const offsetTime = (time, offset) => {
-    const date = new Date(time);
+    const date = timeToDate(time);
     date.setMinutes(date.getMinutes() + offset);
     return date;
   }
@@ -72,26 +88,10 @@ export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop
 
     if (selectedDay !== now.getDay()) return; // only scroll if viewing today's schedule
     const currentTimeRow = Array.from(scheduleDiv.querySelectorAll('td.outdented')).find(td => {
-      const text = td.textContent.trim();
+      const timeStr = td.textContent.trim();
 
-      // Expect "H:MM AM/PM ..." → split at the first space
-      const [timePart, meridian] = text.split(" ");
-      if (!timePart || !meridian) return false;
-
-      const [rawHours, rawMinutes] = timePart.split(":");
-      let hours = parseInt(rawHours, 10);
-      const minutes = parseInt(rawMinutes, 10);
-
-      // Convert to 24h
-      if (meridian.toUpperCase() === "PM" && hours < 12) {
-        hours += 12;
-      }
-      if (meridian.toUpperCase() === "AM" && hours === 12) {
-        hours = 0;
-      }
-
-      const timeDate = new Date();
-      timeDate.setHours(hours, minutes, 0, 0);
+      // Expect "H:MM AM/PM" → split at the first space
+      const timeDate = timeToDate(timeStr);
 
       return timeDate >= now;
     });
