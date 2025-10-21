@@ -7,9 +7,9 @@ import MapKitMap from '../components/MapKitMap';
 import Schedule from '../components/Schedule';
 import "../styles/LiveLocation.css";
 import routeData from '../data/routes.json';
-import { aggregatedSchedule } from '../ts/parseSchedule';
 import type { VehicleInformationMap } from '../ts/types/vehicleLocation';
 import type { ShuttleRouteData } from '../ts/types/route';
+import { aggregatedSchedule } from '../ts/parseSchedule';
 
 export default function LiveLocation() {
 

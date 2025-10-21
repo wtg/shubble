@@ -1,24 +1,11 @@
-<<<<<<< HEAD:client/src/ts/parseSchedule.ts
-import rawScheduleData from '../data/schedule.json';
-import type { AggregatedScheduleType, Route, ShuttleScheduleData } from './types/schedule';
-=======
 const fs = require('fs');
 const path = require('path');
 
 const schedulePath = path.resolve(__dirname, './schedule.json');
 const scheduleData = JSON.parse(fs.readFileSync(schedulePath, 'utf-8'));
->>>>>>> main:data/parseSchedule.js
 
-function aggregateSchedule(scheduleData: ShuttleScheduleData) {
-    const aggregatedSchedule: AggregatedScheduleType = [
-        { 'WEST': [], 'NORTH': [] }, // SUNDAY
-        { 'WEST': [], 'NORTH': [] }, // MONDAY
-        { 'WEST': [], 'NORTH': [] }, // TUESDAY
-        { 'WEST': [], 'NORTH': [] }, // WEDNESDAY
-        { 'WEST': [], 'NORTH': [] }, // THURSDAY
-        { 'WEST': [], 'NORTH': [] }, // FRIDAY
-        { 'WEST': [], 'NORTH': [] }, // SATURDAY
-    ];
+function aggregateSchedule(scheduleData) {
+    const aggregatedSchedule = [];
     const weeklySchedule = [
         'SUNDAY',
         'MONDAY',
@@ -27,13 +14,18 @@ function aggregateSchedule(scheduleData: ShuttleScheduleData) {
         'THURSDAY',
         'FRIDAY',
         'SATURDAY',
-    ].map((day: string) => scheduleData[scheduleData[day as keyof ShuttleScheduleData] as keyof ShuttleScheduleData] || []);
+    ].map((day) => scheduleData[scheduleData[day]] || []);
 
     for (let i = 0; i < weeklySchedule.length; i++) {
+        aggregatedSchedule.push({});
         Object.values(weeklySchedule[i]).forEach((busSchedule) => {
-            busSchedule.forEach(([time, loop]: [string, Route]) => {
+            busSchedule.forEach(([time, loop]) => {
                 const timeObj = parseTimeString(time);
-                aggregatedSchedule[i][loop].push(timeObj);
+                if (loop in aggregatedSchedule[i]) {
+                    aggregatedSchedule[i][loop].push(timeObj);
+                } else {
+                    aggregatedSchedule[i][loop] = [timeObj];
+                }
             });
         });
         Object.values(aggregatedSchedule[i]).forEach((times) => {
@@ -43,30 +35,17 @@ function aggregateSchedule(scheduleData: ShuttleScheduleData) {
                 const isA12AM = a.getHours() === 0 && a.getMinutes() === 0;
                 const isB12AM = b.getHours() === 0 && b.getMinutes() === 0;
 
-<<<<<<< HEAD:client/src/ts/parseSchedule.ts
-                if (isA12AM && !isB12AM) return 1;   // a goes after b
-                if (!isA12AM && isB12AM) return -1;  // a goes before b
-                return a.getTime() - b.getTime();                        // otherwise, normal sort
-=======
                 if (isA12AM && !isB12AM) return 1;
                 if (!isA12AM && isB12AM) return -1;
                 return a - b;
->>>>>>> main:data/parseSchedule.js
             });
         });
     }
     return aggregatedSchedule;
 }
 
-<<<<<<< HEAD:client/src/ts/parseSchedule.ts
-function parseTimeString(timeStr: string): Date {
-=======
 function parseTimeString(timeStr) {
->>>>>>> main:data/parseSchedule.js
     const [time, modifier] = timeStr.trim().split(" ");
-
-    // hour changes but minutes stay the same
-    // eslint-disable-next-line prefer-const
     let [hours, minutes] = time.split(":").map(Number);
 
     if (modifier.toUpperCase() === "PM" && hours !== 12) {
@@ -83,14 +62,9 @@ function parseTimeString(timeStr) {
     return dateObj.toISOString();
 }
 
-<<<<<<< HEAD:client/src/ts/parseSchedule.ts
-// We should really trust our JSON data at this point
-export const aggregatedSchedule: AggregatedScheduleType = aggregateSchedule(rawScheduleData as unknown as ShuttleScheduleData);
-=======
 const aggregatedSchedule = aggregateSchedule(scheduleData);
 
 const outputPath = path.resolve(__dirname, './aggregated_schedule.json');
 fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 fs.writeFileSync(outputPath, JSON.stringify(aggregatedSchedule, null, 2));
 console.log(`aggregatedSchedule.json generated at ${outputPath}`);
->>>>>>> main:data/parseSchedule.js

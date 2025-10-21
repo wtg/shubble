@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import '../styles/Schedule.css';
 import rawRouteData from '../data/routes.json';
-import { aggregatedSchedule } from '../ts/parseSchedule';
-import type  { AggregatedDaySchedule } from '../ts/types/schedule';
+import { aggregatedSchedule as rawAggregatedSchedule } from '../ts/parseSchedule';
+import type { AggregatedDaySchedule, AggregatedScheduleType } from '../ts/types/schedule';
 import type { ShuttleRouteData, ShuttleStopData } from '../ts/types/route';
+
+const aggregatedSchedule: AggregatedScheduleType = rawAggregatedSchedule as unknown as AggregatedScheduleType;
 
 
 const routeData = rawRouteData as unknown as ShuttleRouteData;
