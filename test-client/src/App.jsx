@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import "./App.css";
+import {executeTest, stopCurrentTest} from "./AutoTest.js";
 
 const NEXT_STATES = ["waiting", "entering", "looping", "on_break", "exiting"];
 
@@ -40,7 +41,7 @@ function App() {
     const data = await res.json();
     setLocationCount(data.locationCount);
     setGeofenceCount(data.geofenceCount);
-  }
+  };
 
   const clearEvents = async () => {
     await fetch(`/api/events/today?keepShuttles=${keepShuttles}`, {method: "DELETE"});
@@ -48,6 +49,25 @@ function App() {
       setSelectedId(null);
     }
     console.log("Cleared events for today");
+  };
+
+  const uploadTest = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    await clearEvents();
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      let test;
+      try {
+        test = JSON.parse(e.target.result);
+      } catch (err) {
+        console.error(err.message);
+        return;
+      }
+      executeTest(test);
+    }
+    reader.readAsText(file);
   };
 
   useEffect(() => {
@@ -134,6 +154,14 @@ function App() {
           />
           Keep Shuttles
         </label>
+      </div>
+
+      <div>
+        <p>JSON Test Case Executor</p>
+        <input type="file" accept=".json" onChange={uploadTest}></input>
+        <button onClick={stopCurrentTest}>
+          Stop Test
+        </button>
       </div>
     </div>
   );
