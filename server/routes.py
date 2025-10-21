@@ -251,32 +251,58 @@ def data_today():
                 "loops": [],
                 "breaks": []
             }
-    # for location in locations_today:
-    #     vehicle_location = {
-    #         "latitude": location.latitude,
-    #         "longitude": location.longitude,
-    #         "timestamp": location.timestamp,
-    #         "speed_mph": location.speed_mph,
-    #         "heading_degrees": location.heading_degrees,
-    #         "address_id": location.address_id
-    #     }
-    #     if location.vehicle_id in locations_today_dict:
-    #         locations_today_dict[location.vehicle_id]["data"].append(vehicle_location)
-    #     else:
-    #         locations_today_dict[location.vehicle_id] = {
-    #             "entry": None,
-    #             "exit": None,
-    #             "data": [vehicle_location]
-    #         }
+    
+    # shuttles start in break state
+    shuttle_state = {vehicle_id: "break" for vehicle_id in locations_today_dict.keys()}
 
-    # loops and breaks
-    for e, geofence_event in enumerate(events_today):
-        if geofence_event.event_type == "geofenceEntry":
-            if "entry" not in locations_today_dict[geofence_event.vehicle_id]: # first entry
-                locations_today_dict[geofence_event.vehicle_id]["entry"] = geofence_event.event_time
-        elif geofence_event.event_type == "geofenceExit":
-            if "entry" in locations_today_dict[geofence_event.vehicle_id]: # makes sure that the vehicle already entered
-                locations_today_dict[geofence_event.vehicle_id]["exit"] = geofence_event.event_time
+    # geofence events to track loops and breaks
+    for geoEvent in events_today:
+        vehicle_id = geoEvent.vehicle_id
+
+        # entering and leaving union conditionals
+        if geoEvent.event_type == "geofenceEntry" and geoEvent.address_name == "STUDENT_UNION":
+            # if entering union and ending loop, start break
+            if shuttle_state[vehicle_id] == "loop":
+                shuttle_state[vehicle_id] = "break"
+                # set end time for previous loop
+                if locations_today_dict[vehicle_id]["loops"]:
+                    locations_today_dict[vehicle_id]["loops"][-1]["end"] = geoEvent.event_time
+                # start new break
+                locations_today_dict[vehicle_id]["breaks"].append({
+                    "start": geoEvent.event_time,
+                    "end": None,
+                    "locations": []
+                })
+        elif geoEvent.event_type == "geofenceExit" and geoEvent.address_name == "STUDENT_UNION":
+            # if exiting union and ending break, start loop
+            if shuttle_state[vehicle_id] == "break":
+                shuttle_state[vehicle_id] = "loop"
+                # set end time for previous break
+                if locations_today_dict[vehicle_id]["breaks"]:
+                    locations_today_dict[vehicle_id]["breaks"][-1]["end"] = geoEvent.event_time
+                # start new loop
+                locations_today_dict[vehicle_id]["loops"].append({
+                    "start": geoEvent.event_time,
+                    "end": None,
+                    "locations": []
+                })
+        
+        # add current location to updatedloop or break
+        locations_today_dict[vehicle_id][shuttle_state[vehicle_id]]["locations"].append(geoEvent.event_time)
+        if shuttle_state[vehicle_id] == "break": continue
+        # un-routed and stopped conditionals
+        coords = (geoEvent.latitude, geoEvent.longitude)
+        closest_polyline = Stops.get_closest_point(coords)
+        if (closest_polyline[0]**2 + closest_polyline[1]**2)**0.5 > 0.0002:
+            # unrouted
+            if shuttle_state[vehicle_id] == "loop":
+                shuttle_state[vehicle_id] = "break"
+            elif shuttle_state[vehicle_id] == "break":
+                shuttle_state[vehicle_id] = "loop"
+        else:
+            # stopped
+            if shuttle_state[vehicle_id] == "loop":
+
 
     return jsonify(locations_today_dict)
 
