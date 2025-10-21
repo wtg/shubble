@@ -1,9 +1,42 @@
+/* Regular view > 1025px */
 .word-rotator {
     color: #206ef9;
     font-weight: bold;
+    text-decoration: underline;
+    text-decoration-color: #206ef9;
 }
 
+
+
 .about {
-    font-size: 1.2rem;
-    padding: 20px;
+    padding: 10px;
 }
+
+.link1{
+    margin-left: .6ch;
+}
+
+.about h1 {
+    font-size: 2.5em;
+    font-weight: 700;
+    text-align: center;
+    
+}
+.about p {
+    font-size: 1.3em;
+    text-align: left;
+    padding: 5px;
+
+}
+
+@media (max-width: 1025px){
+    /* Mobile View < 1025px */
+    .about h1 {
+        font-size: 1.5em;
+    }
+
+    .about p {
+        font-size: 1em;
+    }
+}
+

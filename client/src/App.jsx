@@ -12,8 +12,14 @@ import Feedback from './components/Feedback';
 import Data from './pages/Data';
 import MapKitMap from './components/MapKitMap';
 import routeData from './data/routes.json';
+import { useState } from "react";
+import WarningBanner from './components/WarningBanner';
 
 function App() {
+  const [selectedRoute, setSelectedRoute] = useState(null);
+  const [selectedStop, setSelectedStop] = useState('all');
+  const staging = import.meta.env.VITE_DEPLOY_MODE !== 'production';
+  const GIT_REV = import.meta.env.GIT_REV || 'unknown';
   return (
     <Router>
       <header>
@@ -38,10 +44,11 @@ function App() {
           </ul>
         </nav>
       </header>
+      {staging && <WarningBanner bannerText="This is a staging domain. Please visit our official website!" bannerLink="https://shuttles.rpi.edu" gitRev={GIT_REV} />}
       <div className="App">
         <Routes>
           <Route path='/' element={<LiveLocation />} />
-          <Route path='/schedule' element={<Schedule />} />
+          <Route path='/schedule' element={<Schedule selectedRoute={selectedRoute} setSelectedRoute={setSelectedRoute} selectedStop={selectedStop} setSelectedStop={setSelectedStop}/>} />
           <Route path='/about' element={<About />} />
           <Route path='/data' element={<Data />} />
           <Route path='/generate-static-routes' element={<MapKitMap routeData={routeData} vehicles={null} generateRoutes={true} />} />

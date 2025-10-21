@@ -86,7 +86,7 @@ async function generateRoutePolylines(updatedRouteData) {
   return updatedRouteData;
 }
 
-export default function MapKitMap({ routeData, vehicles, generateRoutes = false }) {
+export default function MapKitMap({ routeData, vehicles, generateRoutes = false, selectedRoute, setSelectedRoute, selectedStop, setSelectedStop }) {
 
   const mapRef = useRef(null);
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -94,7 +94,8 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false 
   const [map, setMap] = useState(null);
   const vehicleOverlays = useRef({});
   const circleWidth = 15;
-  const selectedRoute = useRef(null);
+  const selectedMarkerRef = useRef(null);
+
 
   // source: https://developer.apple.com/documentation/mapkitjs/loading-the-latest-version-of-mapkit-js
   const setupMapKitJs = async () => {
@@ -136,7 +137,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false 
         showsZoomControl: true,
         isRotationEnabled: false,
         showsPointsOfInterest: false,
-        showsUserLocation: true
+        showsUserLocation: true,
       };
 
       // create the map
@@ -154,31 +155,134 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false 
         false,
       );
       thisMap.setCameraDistanceAnimated(2500);
+      // Helper function to create and add stop marker
+      const createStopMarker = (overlay) => {
+        if (selectedMarkerRef.current) {
+          thisMap.removeAnnotation(selectedMarkerRef.current);
+          selectedMarkerRef.current = null;
+        }
+        const marker = new window.mapkit.MarkerAnnotation(overlay.coordinate, {
+          title: overlay.stopName,
+          glyphImage: { 1: "map-marker.png" },
+        });
+        thisMap.addAnnotation(marker);
+        selectedMarkerRef.current = marker;
+        return marker;
+      };
+
       thisMap.addEventListener("select", (e) => {
-        if (e.overlay && e.overlay.stopName) {
-          if (selectedRoute.current) {
-            thisMap.removeAnnotation(selectedRoute.current);
-            selectedRoute.current = null;
+        if (!e.overlay) return;
+
+        // Only change schedule selection on desktop-sized screens
+        const isDesktop = window.matchMedia('(min-width: 800px)').matches;
+
+        if (e.overlay.stopKey) {
+          // Create marker for both mobile and desktop
+          createStopMarker(e.overlay);
+
+          if (isDesktop) {
+            // Desktop: handle schedule change
+            const routeKey = e.overlay.routeKey;
+            const stopKey = e.overlay.stopKey;
+            if (setSelectedRoute && routeKey) setSelectedRoute(routeKey);
+            if (setSelectedStop && stopKey) setSelectedStop(stopKey);
           }
-
-          // temp marker
-          const marker = new window.mapkit.MarkerAnnotation(e.overlay.coordinate, {
-            title: e.overlay.stopName,
-            glyphImage: {
-              1: "map-marker.png",
-            },
-          });
-
-          thisMap.addAnnotation(marker);
-          selectedRoute.current = marker;
         }
       });
       thisMap.addEventListener("deselect", () => {
-        thisMap.removeAnnotation(selectedRoute.current);
-        selectedRoute.current = null;
+        // remove any selected stop/marker annotation on when deselected
+        if (selectedMarkerRef.current) {
+         thisMap.removeAnnotation(selectedMarkerRef.current);
+         selectedMarkerRef.current = null;
+        }
       });
+
+      // Detect hover on stop overlays
+      let currentHoveredOverlay = null;
+
+      thisMap.addEventListener("region-change-start", () => {
+        thisMap.element.style.cursor = "grab";
+      });
+
+      thisMap.addEventListener("region-change-end", () => {
+        thisMap.element.style.cursor = "default";
+      });
+
+      // Working hover detection
+      let currentHover = null;
+
+      thisMap.element.addEventListener('mousemove', (e) => {
+        const rect = thisMap.element.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        let foundOverlay = null;
+
+        // Check overlays for mouse position
+        thisMap.overlays.forEach(overlay => {
+          if (overlay.stopKey) {
+            // Calculate overlay screen position
+            const mapRect = thisMap.element.getBoundingClientRect();
+            const centerLat = overlay.coordinate.latitude;
+            const centerLng = overlay.coordinate.longitude;
+
+            // Check if mouse is within overlay radius
+            const region = thisMap.region;
+            if (region) {
+              const pixelPerDegree = mapRect.width / region.span.longitudeDelta;
+              const centerX = mapRect.width * (centerLng - region.center.longitude + region.span.longitudeDelta/2) / region.span.longitudeDelta;
+              const centerY = mapRect.height * (region.center.latitude - centerLat + region.span.latitudeDelta/2) / region.span.latitudeDelta;
+
+              const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+              if (distance < circleWidth) { // Within hover radius
+                foundOverlay = overlay;
+              }
+            }
+          }
+        });
+
+        if (foundOverlay !== currentHover) {
+          // Clear previous hover style
+          if (currentHover) {
+            currentHover.style = new window.mapkit.Style({
+              strokeColor: '#000000',
+              fillColor: '#FFFFFF',
+              fillOpacity: 0.1,
+              lineWidth: 2,
+            });
+          }
+
+          // Apply hover style
+          if (foundOverlay) {
+            foundOverlay.style = new window.mapkit.Style({
+              strokeColor: '#6699ff',
+              fillColor: '#a1c3ff',
+              fillOpacity: 0.3,
+              lineWidth: 2.5,
+            });
+            thisMap.element.style.cursor = "pointer";
+          } else {
+            thisMap.element.style.cursor = "default";
+          }
+
+          currentHover = foundOverlay;
+        }
+      });
+
+      // Store reference to cleanup function
+      thisMap._hoverCleanup = () => {
+        thisMap.element.removeEventListener('mousemove', handleMouseMove);
+      };
+
       setMap(thisMap);
     }
+
+    // Cleanup on component unmount
+    return () => {
+      if (map && map._hoverCleanup) {
+        map._hoverCleanup();
+      }
+    };
   }, [mapLoaded]);
 
   // add fixed details to the map
@@ -188,10 +292,11 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false 
 
     var overlays = [];
 
+
     // display stop overlays
     for (const [route, thisRouteData] of Object.entries(routeData)) {
-      for (const stopName of thisRouteData.STOPS) {
-        const stopCoordinate = new window.mapkit.Coordinate(...thisRouteData[stopName].COORDINATES);
+      for (const stopKey of thisRouteData.STOPS) {
+        const stopCoordinate = new window.mapkit.Coordinate(...thisRouteData[stopKey].COORDINATES);
         // add stop overlay (circle)
         const stopOverlay = new window.mapkit.CircleOverlay(
           stopCoordinate,
@@ -200,31 +305,43 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false 
             style: new window.mapkit.Style(
               {
                 strokeColor: '#000000',
+                fillColor: '#FFFFFF', // White fill by default
+                fillOpacity: 0.1,
                 lineWidth: 2,
               }
             )
           }
         );
-        stopOverlay.stopName = thisRouteData[stopName].NAME
+        // attach exact identifiers so the select handler can update selection precisely
+        stopOverlay.routeKey = route;
+        stopOverlay.stopKey = stopKey;
+        stopOverlay.stopName = thisRouteData[stopKey].NAME;
         overlays.push(stopOverlay);
+
+
       }
     }
 
     function displayRouteOverlays(routeData) {
       // display route overlays
       for (const [route, thisRouteData] of Object.entries(routeData)) {
-        const routeCoordinates = thisRouteData.ROUTES?.map(
-          (route) => route.map(([lat, lon]) => new window.mapkit.Coordinate(lat, lon))
-        ).flat();
-        if (!routeCoordinates || routeCoordinates.length === 0) continue;
-        // add route overlay (polyline)
-        const routePolyline = new mapkit.PolylineOverlay(routeCoordinates, {
-          style: new mapkit.Style({
-            strokeColor: thisRouteData.COLOR,
-            lineWidth: 2
-          })
-        });
-        overlays.push(routePolyline);
+        // for route (WEST, NORTH)
+        const routePolylines = thisRouteData.ROUTES?.map(
+          // for segment (STOP1 -> STOP2, STOP2 -> STOP3, ...)
+          (route) => {
+            const coords = route.map(([lat, lon]) => new window.mapkit.Coordinate(lat, lon));
+            if (coords.length === 0) return null;
+            const polyline = new window.mapkit.PolylineOverlay(coords, {
+              // for coordinate ([lat, lon], ...)
+              style: new window.mapkit.Style({
+                strokeColor: thisRouteData.COLOR,
+                lineWidth: 2
+              })
+            });
+            return polyline;
+          }
+        ).filter(p => p !== null);
+        overlays.push(...routePolylines);
       }
     }
 
@@ -255,14 +372,11 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false 
         console.log(`Updating vehicle ${key} to ${vehicle.latitude}, ${vehicle.longitude}`);
         vehicleOverlays.current[key].coordinate = coordinate;
         vehicleOverlays.current[key].subtitle = `${vehicle.speed_mph} mph`;
-        if (vehicle.route_name !== "UNCLEAR") {
-          vehicleOverlays.current[key].color = vehicle.route_name ? routeData[vehicle.route_name].COLOR : '#444444';
-        }
       } else {
         // new vehicle: add to map
         console.log(`Adding vehicle ${key} to ${vehicle.latitude}, ${vehicle.longitude}`);
         const annotation = new window.mapkit.MarkerAnnotation(coordinate, {
-          title: vehicle.vehicle_name,
+          title: vehicle.name,
           subtitle: `${vehicle.speed_mph} mph`,
           color: vehicle.route_name && vehicle.route_name !== "UNCLEAR" ? routeData[vehicle.route_name].COLOR : '#444444',
           glyphImage: { 1: 'shubble20.png' },
@@ -270,6 +384,10 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false 
         });
         map.addAnnotation(annotation);
         vehicleOverlays.current[key] = annotation;
+      }
+
+      if (vehicle.route_name !== "UNCLEAR") {
+        vehicleOverlays.current[key].color = vehicle.route_name ? routeData[vehicle.route_name].COLOR : '#444444';
       }
     });
 

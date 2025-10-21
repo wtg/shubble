@@ -3,17 +3,78 @@ from threading import Thread, Lock
 import time
 import os
 import logging
+
+from server.time_utils import get_campus_start_of_day
 from .shuttle import Shuttle, ShuttleState
-from datetime import datetime
+from datetime import datetime, date
+from server.models import Vehicle, GeofenceEvent, VehicleLocation
+from server.config import Config
+from sqlalchemy import func, and_
+from flask_sqlalchemy import SQLAlchemy
 import numpy as np
-
-logger = logging.getLogger(__name__)
-
-app = Flask(__name__, static_folder="../test-client/dist", static_url_path="")
 
 shuttles = {}
 shuttle_counter = 1
 shuttle_lock = Lock()
+
+logger = logging.getLogger(__name__)
+
+app = Flask(__name__, static_folder="../test-client/dist", static_url_path="")
+app.config.from_object(Config)
+
+db = SQLAlchemy()
+db.init_app(app)
+
+# setup function to populate the shuttles dict, same as in server/routes
+def setup():
+    # Start of today for filtering today's geofence events
+    start_of_today = get_campus_start_of_day()
+
+    # Subquery: latest geofence event today per vehicle
+    # Returns a query result of (vehicle_id, event_time)
+    latest_geofence_events = db.session.query(
+        GeofenceEvent.vehicle_id,
+        func.max(GeofenceEvent.event_time).label('latest_time')
+    ).filter(
+        GeofenceEvent.event_time >= start_of_today
+    ).group_by(GeofenceEvent.vehicle_id).subquery()
+
+    # Join to get full geofence event rows where event is geofenceEntry
+    # Returns a query result of (vehicle_id, event_time, ...geofence fields including event_type)
+    geofence_entries = db.session.query(GeofenceEvent.vehicle_id).join(
+        latest_geofence_events,
+        and_(
+            GeofenceEvent.vehicle_id == latest_geofence_events.c.vehicle_id,
+            GeofenceEvent.event_time == latest_geofence_events.c.latest_time
+        )
+    ).filter(GeofenceEvent.event_type == 'geofenceEntry').subquery()
+
+    # Subquery: latest vehicle location per vehicle
+    # Returns a query result of (vehicle_id, location_time)
+    latest_locations = db.session.query(
+        VehicleLocation.vehicle_id,
+        func.max(VehicleLocation.timestamp).label('latest_time')
+    ).filter(
+        VehicleLocation.vehicle_id.in_(db.session.query(geofence_entries.c.vehicle_id))
+    ).group_by(VehicleLocation.vehicle_id).subquery()
+
+    # Join to get full location and vehicle info for vehicles in geofence
+    results = db.session.query(VehicleLocation, Vehicle).join(
+        latest_locations,
+        and_(
+            VehicleLocation.vehicle_id == latest_locations.c.vehicle_id,
+            VehicleLocation.timestamp == latest_locations.c.latest_time
+        )
+    ).join(
+        Vehicle, VehicleLocation.vehicle_id == Vehicle.id
+    ).all()
+
+    # extract vehicle information
+    for loc, vehicle in results:
+        shuttles[vehicle.id] = Shuttle(vehicle.id, loc.latitude, loc.longitude)
+
+with app.app_context():
+    setup()
 
 # --- Background Thread ---
 def update_loop():
@@ -60,6 +121,69 @@ def trigger_action(shuttle_id):
         shuttle.set_next_state(desired_state)
         logger.info(f"Set shuttle {shuttle_id} next state to {next_state}")
         return jsonify(shuttle.to_dict())
+
+@app.route("/api/events/today", methods=["GET"])
+def get_events_today():
+    start_of_today = get_campus_start_of_day()
+    loc_count = db.session.query(VehicleLocation).filter(VehicleLocation.timestamp >= start_of_today).count()
+    geo_count = db.session.query(GeofenceEvent).filter(GeofenceEvent.event_time >= start_of_today).count()
+    return jsonify({
+        'locationCount': loc_count,
+        'geofenceCount': geo_count
+    })
+
+@app.route("/api/events/today", methods=["DELETE"])
+def clear_events_today():
+    keep_shuttles = request.args.get("keepShuttles", "false").lower() == "true"
+    start_of_today = get_campus_start_of_day()
+
+    db.session.query(VehicleLocation).filter(VehicleLocation.timestamp >= start_of_today).delete()
+    logger.info(f"Deleted vehicle location events past {start_of_today}")
+
+    if not keep_shuttles:
+        db.session.query(GeofenceEvent).filter(GeofenceEvent.event_time >= start_of_today).delete()
+        logger.info(f"Deleted geofence events past {start_of_today}")
+
+        global shuttle_counter
+        with shuttle_lock:
+            shuttles.clear()
+            shuttle_counter = 1
+        logger.info(f"Deleted all shuttles")
+    else:
+        '''
+        Delete all geofence events >= start_of_today except for: each vehicle's latest one (if it
+        is a geofenceEntry. geofenceExits are still deleted). This allows all currently running
+        shuttles to keep running in the test suite.
+        '''
+
+        # Get today's geofence events
+        today_events = db.session.query(GeofenceEvent).filter(
+            GeofenceEvent.event_time >= start_of_today
+        ).subquery()
+        # Get latest event per vehicle from today's geofence events
+        latest_times = db.session.query(
+            today_events.c.vehicle_id,
+            func.max(today_events.c.event_time).label("latest_time")
+        ).group_by(today_events.c.vehicle_id).subquery()
+        # Join back to get the full event row, select to keep only geofenceEntry, project on id
+        latest_entries = db.session.query(today_events.c.id).join(
+            latest_times,
+            and_(
+                today_events.c.vehicle_id == latest_times.c.vehicle_id,
+                today_events.c.event_time == latest_times.c.latest_time
+            )
+        ).filter(today_events.c.event_type == 'geofenceEntry').subquery()
+        # Delete all in today_events that aren't in latest_entries
+        db.session.query(GeofenceEvent).filter(
+            GeofenceEvent.id.in_(db.session.query(today_events.c.id))
+        ).filter(
+            ~GeofenceEvent.id.in_(db.session.query(latest_entries.c.id))
+        ).delete()
+
+        logger.info(f"Deleted geofence events past {start_of_today} except for currently running shuttles")
+
+    db.session.commit()
+    return "", 204
 
 # --- Frontend Serving ---
 @app.route("/")

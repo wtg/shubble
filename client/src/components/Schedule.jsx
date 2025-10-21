@@ -1,30 +1,46 @@
-import { useState, useEffect, useLayoutEffect } from 'react';
+import { useState, useEffect } from 'react';
 import '../styles/Schedule.css';
-import scheduleData from '../data/schedule.json';
 import routeData from '../data/routes.json';
-import { aggregatedSchedule } from '../data/parseSchedule';
+import aggregatedSchedule from '../data/aggregated_schedule.json';
+import { timeToDate } from '../data/timeUtils.js';
 
-export default function Schedule() {
+export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop, setSelectedStop }) {
+  // Validate props once at the top
+  if (typeof setSelectedRoute !== 'function') {
+    throw new Error('setSelectedRoute must be a function');
+  }
+  if (typeof setSelectedStop !== 'function') {
+    throw new Error('setSelectedStop must be a function');
+  }
+
   const now = new Date();
   const [selectedDay, setSelectedDay] = useState(now.getDay());
   const [routeNames, setRouteNames] = useState(Object.keys(aggregatedSchedule[selectedDay]));
-  const [selectedRoute, setSelectedRoute] = useState(routeNames[0]);
-  const [selectedStop, setSelectedStop] = useState("all");
   const [stopNames, setStopNames] = useState([]);
   const [schedule, setSchedule] = useState([]);
+
+  // Define safe values to avoid repeated null checks
+  const safeSelectedStop = selectedStop || "all";
+  const safeSelectedRoute = selectedRoute || routeNames[0];
 
   // Update schedule and routeNames when selectedDay changes
   useEffect(() => {
     setSchedule(aggregatedSchedule[selectedDay]);
     setRouteNames(Object.keys(aggregatedSchedule[selectedDay]));
-  }, [selectedDay]);
+    // If parent hasn't provided a selectedRoute yet, pick the first available one
+    const firstRoute = Object.keys(aggregatedSchedule[selectedDay])[0];
+    if (!selectedRoute || !(selectedRoute in aggregatedSchedule[selectedDay])) {
+      setSelectedRoute(firstRoute);
+    }
+  }, [selectedDay, selectedRoute, setSelectedRoute]);
 
   // Update stopNames and selectedStop when selectedRoute changes
   useEffect(() => {
-    if (!(selectedStop in routeData[selectedRoute])) {
+    if (!safeSelectedRoute || !(safeSelectedRoute in routeData)) return;
+    if (!(selectedStop in routeData[safeSelectedRoute])) {
       setSelectedStop("all");
     }
-    setStopNames(routeData[selectedRoute].STOPS);
+    setStopNames(routeData[safeSelectedRoute].STOPS);
   }, [selectedRoute]);
 
   // Handle day change from dropdown
@@ -32,9 +48,25 @@ export default function Schedule() {
     setSelectedDay(parseInt(e.target.value));
   }
 
+  const timeToDate = (timeStr) => {
+    const [time, modifier] = timeStr.trim().split(" ");
+    let [hours, minutes] = time.split(":").map(Number);
+    if (modifier.toUpperCase() === "PM" && hours !== 12) {
+      hours += 12;
+    }
+    else if (modifier.toUpperCase() === "AM" && hours === 12) {
+      hours = 0;
+    }
+    const dateObj = new Date();
+    dateObj.setHours(hours);
+    dateObj.setMinutes(minutes);
+    dateObj.setSeconds(0);
+    return dateObj;
+  }
+
   // Function to offset schedule time by given minutes
   const offsetTime = (time, offset) => {
-    const date = new Date(time);
+    const date = timeToDate(time);
     date.setMinutes(date.getMinutes() + offset);
     return date;
   }
@@ -46,26 +78,10 @@ export default function Schedule() {
 
     if (selectedDay !== now.getDay()) return; // only scroll if viewing today's schedule
     const currentTimeRow = Array.from(scheduleDiv.querySelectorAll('td.outdented')).find(td => {
-      const text = td.textContent.trim();
+      const timeStr = td.textContent.trim();
 
-      // Expect "H:MM AM/PM ..." → split at the first space
-      const [timePart, meridian] = text.split(" ");
-      if (!timePart || !meridian) return false;
-
-      const [rawHours, rawMinutes] = timePart.split(":");
-      let hours = parseInt(rawHours, 10);
-      const minutes = parseInt(rawMinutes, 10);
-
-      // Convert to 24h
-      if (meridian.toUpperCase() === "PM" && hours < 12) {
-        hours += 12;
-      }
-      if (meridian.toUpperCase() === "AM" && hours === 12) {
-        hours = 0;
-      }
-
-      const timeDate = new Date();
-      timeDate.setHours(hours, minutes, 0, 0);
+      // Expect "H:MM AM/PM" → split at the first space
+      const timeDate = timeToDate(timeStr);
 
       return timeDate >= now;
     });
@@ -95,7 +111,7 @@ export default function Schedule() {
       </div>
       <div>
         <label for='loop-dropdown'>Loop:</label>
-        <select id='loop-dropdown' className="schedule-dropdown-style" value={selectedRoute} onChange={(e) => setSelectedRoute(e.target.value)}>
+        <select id='loop-dropdown' className="schedule-dropdown-style" value={safeSelectedRoute} onChange={(e) => setSelectedRoute(e.target.value)}>
           {
             routeNames.map((route, index) =>
               <option key={index} value={route}>
@@ -107,12 +123,12 @@ export default function Schedule() {
       </div>
       <div>
         <label for='stop-dropdown'>Stop:</label>
-        <select id='stop-dropdown' className="schedule-dropdown-style" value={selectedStop} onChange={(e) => setSelectedStop(e.target.value)}>
+        <select id='stop-dropdown' className="schedule-dropdown-style" value={safeSelectedStop} onChange={(e) => setSelectedStop(e.target.value)}>
           <option value="all">All Stops</option>
           {
             stopNames.map((stop, index) =>
               <option key={index} value={stop}>
-                {routeData[selectedRoute][stop]?.NAME}
+                {routeData[safeSelectedRoute][stop]?.NAME}
               </option>
             )
           }
@@ -127,17 +143,17 @@ export default function Schedule() {
           </thead>
           <tbody>
             {
-              selectedStop === "all" ?
-                schedule[selectedRoute]?.map((time, index) => (
-                  routeData[selectedRoute].STOPS.map((stop, index) => (
-                    <tr key={index} className="">
-                      <td className={index === 0 ? "outdented" : "indented-time"}>{offsetTime(time, routeData[selectedRoute][stop].OFFSET).toLocaleTimeString(undefined, { timeStyle: 'short' })} {routeData[selectedRoute][stop].NAME}</td>
+              safeSelectedStop === "all" ?
+                schedule[safeSelectedRoute]?.map((time, index) => (
+                  routeData[safeSelectedRoute].STOPS.map((stop, sidx) => (
+                    <tr key={`${index}-${sidx}`} className="">
+                      <td className={sidx === 0 ? "outdented" : "indented-time"}>{offsetTime(time, routeData[safeSelectedRoute][stop].OFFSET).toLocaleTimeString(undefined, { timeStyle: 'short' })} {routeData[safeSelectedRoute][stop].NAME}</td>
                     </tr>
                   ))
                 )) :
-                schedule[selectedRoute]?.map((time, index) => (
+                schedule[safeSelectedRoute]?.map((time, index) => (
                   <tr key={index} className="">
-                    <td className="outdented">{offsetTime(time, routeData[selectedRoute][selectedStop]?.OFFSET).toLocaleTimeString(undefined, { timeStyle: 'short' })}</td>
+                    <td className="outdented">{offsetTime(time, routeData[safeSelectedRoute][selectedStop]?.OFFSET).toLocaleTimeString(undefined, { timeStyle: 'short' })}</td>
                   </tr>
                 ))
             }
