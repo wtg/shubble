@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import '../styles/Schedule.css';
 import rawRouteData from '../data/routes.json';
-import { aggregatedSchedule as rawAggregatedSchedule } from '../ts/parseSchedule';
+import rawAggregatedSchedule from '../data/aggregated_schedule.json';
 import type { AggregatedDaySchedule, AggregatedScheduleType } from '../ts/types/schedule';
 import type { ShuttleRouteData, ShuttleStopData } from '../ts/types/route';
 

@@ -9,7 +9,7 @@ import "../styles/LiveLocation.css";
 import routeData from '../data/routes.json';
 import type { VehicleInformationMap } from '../ts/types/vehicleLocation';
 import type { ShuttleRouteData } from '../ts/types/route';
-import { aggregatedSchedule } from '../ts/parseSchedule';
+import aggregatedSchedule from '../data/aggregated_schedule.json';
 
 export default function LiveLocation() {
 

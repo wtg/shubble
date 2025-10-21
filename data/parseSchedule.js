@@ -1,7 +1,7 @@
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
 
-const schedulePath = path.resolve(__dirname, './schedule.json');
+const schedulePath = path.resolve(import.meta.dirname, 'schedule.json');
 const scheduleData = JSON.parse(fs.readFileSync(schedulePath, 'utf-8'));
 
 function aggregateSchedule(scheduleData) {
@@ -62,9 +62,9 @@ function parseTimeString(timeStr) {
     return dateObj.toISOString();
 }
 
-const aggregatedSchedule = aggregateSchedule(scheduleData);
+export const aggregatedSchedule = aggregateSchedule(scheduleData);
 
-const outputPath = path.resolve(__dirname, './aggregated_schedule.json');
+const outputPath = path.resolve(import.meta.dirname, 'aggregated_schedule.json');
 fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 fs.writeFileSync(outputPath, JSON.stringify(aggregatedSchedule, null, 2));
 console.log(`aggregatedSchedule.json generated at ${outputPath}`);
