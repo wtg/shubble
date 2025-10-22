@@ -367,6 +367,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
     Object.keys(vehicles).map((key) => {
       const vehicle = vehicles[key];
       const coordinate = new window.mapkit.Coordinate(vehicle.latitude, vehicle.longitude);
+
       if (key in vehicleOverlays.current) {
         // old vehicle: update coordinate
         console.log(`Updating vehicle ${key} to ${vehicle.latitude}, ${vehicle.longitude}`);
@@ -375,19 +376,33 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
       } else {
         // new vehicle: add to map
         console.log(`Adding vehicle ${key} to ${vehicle.latitude}, ${vehicle.longitude}`);
-        const annotation = new window.mapkit.MarkerAnnotation(coordinate, {
+
+        const annotationOptions = {
           title: vehicle.name,
           subtitle: `${vehicle.speed_mph} mph`,
-          color: vehicle.route_name && vehicle.route_name !== "UNCLEAR" ? routeData[vehicle.route_name].COLOR : '#444444',
-          glyphImage: { 1: 'shubble20.png' },
-          selectedGlyphImage: { 1: 'shubble20.png', 2: 'shubble40.png' },
-        });
+          url: {
+            1: "/shubble_Default.png"
+          },
+          // WORK: cases that search the vehicle route name
+          // per case select the matching shubble
+          // dynmaic, based on routename search shubble_xxx
+          // xxx will be routename and so only image needs to be added and no need to create new case
+          // else behavior revert to def
+          // if spawned in on both paths use def until definite path
+          // if definite path keep it even if we run over intersecting paths
+          anchorOffset: new DOMPoint(0, -16),
+          size: {width: 25, height: 25}
+        };
+
+        const annotation = new window.mapkit.ImageAnnotation(coordinate, annotationOptions);
         map.addAnnotation(annotation);
         vehicleOverlays.current[key] = annotation;
       }
 
       if (vehicle.route_name !== "UNCLEAR") {
-        vehicleOverlays.current[key].color = vehicle.route_name ? routeData[vehicle.route_name].COLOR : '#444444';
+        vehicleOverlays.current[key].color = vehicle.route_name
+          ? routeData[vehicle.route_name].COLOR
+          : "#444444";
       }
     });
 
@@ -401,8 +416,8 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         delete vehicleOverlays.current[key];
       }
     });
-
   }, [map, vehicles]);
+
 
   return (
     <div
