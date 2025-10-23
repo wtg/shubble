@@ -154,21 +154,43 @@ export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop
             </tr>
           </thead>
           <tbody>
-            {
-              safeSelectedStop === "all" ?
-                schedule[safeSelectedRoute as keyof typeof schedule].map((time, index) => (
-                  routeData[safeSelectedRoute as keyof typeof routeData].STOPS.map((stop, sidx) => (
-                    <tr key={`${index}-${sidx}`} className="">
-                      <td className={sidx === 0 ? "outdented" : "indented-time"}>{offsetTime(time, (routeData[safeSelectedRoute as keyof typeof routeData][stop] as ShuttleStopData).OFFSET).toLocaleTimeString(undefined, { timeStyle: 'short' })} {(routeData[safeSelectedRoute as keyof typeof routeData][stop as keyof ShuttleStopData] as ShuttleStopData).NAME}</td>
+            {(() => {
+              const routeKey = safeSelectedRoute as keyof typeof routeData;
+              const route = routeData[routeKey];
+              const times = schedule[routeKey];
+
+              if (safeSelectedStop === "all") {
+                return times.map((time, index) =>
+                  route.STOPS.map((stop, sidx) => {
+                    const stopData = route[stop] as ShuttleStopData;
+                    const displayTime = offsetTime(time, stopData.OFFSET).toLocaleTimeString(
+                      undefined,
+                      { timeStyle: "short" }
+                    );
+                    return (
+                      <tr key={`${index}-${sidx}`}>
+                        <td className={sidx === 0 ? "outdented" : "indented-time"}>
+                          {displayTime} {stopData.NAME}
+                        </td>
+                      </tr>
+                    );
+                  })
+                );
+              } else {
+                const stopData = route[safeSelectedStop] as ShuttleStopData;
+                return times.map((time, index) => {
+                  const displayTime = offsetTime(time, stopData.OFFSET).toLocaleTimeString(
+                    undefined,
+                    { timeStyle: "short" }
+                  );
+                  return (
+                    <tr key={index}>
+                      <td className="outdented">{displayTime}</td>
                     </tr>
-                  ))
-                )) :
-                schedule[safeSelectedRoute as keyof typeof schedule].map((time, index) => (
-                  <tr key={index} className="">
-                    <td className="outdented">{offsetTime(time, (routeData[safeSelectedRoute as keyof typeof routeData][selectedStop] as ShuttleStopData).OFFSET).toLocaleTimeString(undefined, { timeStyle: 'short' })}</td>
-                  </tr>
-                ))
-            }
+                  );
+                });
+              }
+            })()}
           </tbody>
         </table>
       </div>
