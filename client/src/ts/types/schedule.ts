@@ -18,7 +18,7 @@ export type ShuttleScheduleData = {
 };
 
 export type AggregatedDaySchedule = {
-  [route in Route]: Date[];
+  [route in Route]: string[];
 }
 
 // data type after getting exported from parseSchedule.ts
