@@ -62,7 +62,7 @@ function parseTimeString(timeStr) {
     return dateObj.toISOString();
 }
 
-export const aggregatedSchedule = aggregateSchedule(scheduleData);
+const aggregatedSchedule = aggregateSchedule(scheduleData);
 
 const outputPath = path.resolve(import.meta.dirname, 'aggregated_schedule.json');
 fs.mkdirSync(path.dirname(outputPath), { recursive: true });
