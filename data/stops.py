@@ -33,6 +33,7 @@ class Stops:
         :return: A tuple with the closest point (latitude, longitude), distance to that point,
                 route name, and polyline index.
         """
+        # print(origin_point)
         point = np.array(origin_point)
 
         closest_data = []
@@ -69,10 +70,10 @@ class Stops:
 
                 min_index = np.argmin(distances)
                 closest_data.append((distances[min_index], closest_points[min_index], route_name, index))
-
         # Find the overall closest point
         if closest_data:
             closest_routes = sorted(closest_data, key=lambda x: x[0])
+            # print(closest_routes)
             # Check if closest route is significantly closer than others
             if len(closest_routes) > 1 and haversine(closest_routes[0][1], closest_routes[1][1]) < 0.020:
                 # If not significantly closer, return None to indicate ambiguity
