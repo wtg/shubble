@@ -1,9 +1,9 @@
 let isRunning = false;
 let controller = null;
+let getShuttles = null;
 
-// TODO: replace console errors with UI alerts in App.jsx
-function warnUser(e) {
-    console.error(e);
+export function setGetShuttles(func) {
+    getShuttles = func;
 }
 
 // expects a parsed json object with events array as testData
@@ -13,7 +13,7 @@ export async function executeTest(testData) {
         return;
     }
     if (!testData || !Array.isArray(testData.events)) {
-        warnUser("Missing test data events array");
+        warnUser("Missing test case events array");
         return;
     }
 
@@ -40,19 +40,37 @@ async function executeEvent(evt, signal) {
     if (evt.type === "AddShuttle") {
         await addShuttles(evt.count, signal);
     } else if (evt.type === "SetState") {
-        await setState(evt.shuttleId, evt.state, signal);
+        await handleStateChange(evt, signal);
     } else if (evt.type === "ClearData") {
-        await clearData(signal);
+        await clearData(evt.keepShuttles, signal);
     } else {
         throw new Error(`Unexpected event type ${evt.type} in test case`);
     }
 }
 
-export function stopCurrentTest() {
+function handleStateChange(evt, signal) {
+    // any errors in getting the correct shuttle states will bubble up to executeTest
+    const shuttles = getShuttles();
+    const currentState = shuttles[evt.shuttleId].state;
+    const nextState = shuttles[evt.shuttleId].next_state;
+
+    // asynchronously decide what to apply
+    // setState(shuttleId, state, signal);
+    if (evt.state === "") {
+        //
+    }
+}
+
+export function stopTest() {
     isRunning = false;
     if (controller) {
         controller.abort();
     }
+}
+
+// TODO: replace console errors with UI alerts in App.jsx
+function warnUser(e) {
+    console.error(e);
 }
 
 // api call wrappers

@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { executeTest, stopTest, setGetShuttles } from "./AutoTest.js";
 import "./App.css";
-import {executeTest, stopCurrentTest} from "./AutoTest.js";
 
 const NEXT_STATES = ["waiting", "entering", "looping", "on_break", "exiting"];
 
@@ -69,6 +69,12 @@ function App() {
     }
     reader.readAsText(file);
   };
+
+  // this passes getShuttles as a stable function to the automatic testing module
+  const shuttlesRef = useRef([]);
+  const getShuttles = useCallback(() => shuttlesRef.current, []);
+  useEffect(() => { shuttlesRef.current = shuttles; }, [shuttles]);
+  useEffect(() => { setGetShuttles(getShuttles); }, []);
 
   useEffect(() => {
     fetchEvents();
@@ -159,7 +165,7 @@ function App() {
       <div>
         <p>JSON Test Case Executor</p>
         <input type="file" accept=".json" onChange={uploadTest}></input>
-        <button onClick={stopCurrentTest}>
+        <button onClick={stopTest}>
           Stop Test
         </button>
       </div>
