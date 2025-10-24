@@ -364,54 +364,86 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
   useEffect(() => {
     if (!map || !vehicles) return;
 
-    Object.keys(vehicles).map((key) => {
+    Object.keys(vehicles).forEach((key) => {
       const vehicle = vehicles[key];
       const coordinate = new window.mapkit.Coordinate(vehicle.latitude, vehicle.longitude);
 
-      if (key in vehicleOverlays.current) {
-        // old vehicle: update coordinate
-        console.log(`Updating vehicle ${key} to ${vehicle.latitude}, ${vehicle.longitude}`);
-        vehicleOverlays.current[key].coordinate = coordinate;
-        vehicleOverlays.current[key].subtitle = `${vehicle.speed_mph} mph`;
+      const existingAnnotation = vehicleOverlays.current[key];
+
+      // Determine which route to use (locked vs. current)
+      let currentRoute = vehicle.route_name;
+
+      // If route is unclear but we already have a locked one, keep it (two paths overlap)
+      if (currentRoute === "UNCLEAR" && existingAnnotation?.lockedRoute) {
+        currentRoute = existingAnnotation.lockedRoute;
+      }
+
+      // Select image based on route name
+      let imageUrl;
+      switch (currentRoute) {
+        case "WEST":
+          imageUrl = "/shubble_West.png";
+          break;
+        case "NORTH":
+          imageUrl = "/shubble_North.png";
+          break;
+        default:
+          imageUrl = "/shubble_Default.png";
+          break;
+        // future case "extra":
+        // OR imageURL = "/shubble_" + routename + ".svg"
+        // have svg use variables for colors in here?
+        // else default 
+      }
+
+
+      if (existingAnnotation) {
+        // existing vehicle — update position and subtitle
+        existingAnnotation.coordinate = coordinate;
+        existingAnnotation.subtitle = `${vehicle.speed_mph.toFixed(1)} mph`;
+
+        // Handle route status updates
+        // If shuttle does not have a route null 
+        if (vehicle.route_name === null) {
+          // shuttle off-route (exiting)
+          if (existingAnnotation.lockedRoute) {
+            existingAnnotation.lockedRoute = null;
+            existingAnnotation.url = { 1: "/shubble_Default.png" };
+          }
+        } else if (vehicle.route_name !== "UNCLEAR" && vehicle.route_name !== existingAnnotation.lockedRoute) {
+          // shuttle found a new valid route (update and lock)
+          existingAnnotation.lockedRoute = vehicle.route_name;
+          existingAnnotation.url = { 1: imageUrl };
+        }
       } else {
-        // new vehicle: add to map
-        console.log(`Adding vehicle ${key} to ${vehicle.latitude}, ${vehicle.longitude}`);
+        // new vehicle (create annotation)
 
         const annotationOptions = {
           title: vehicle.name,
-          subtitle: `${vehicle.speed_mph} mph`,
-          url: {
-            1: "/shubble_Default.png"
-          },
-          // WORK: cases that search the vehicle route name
-          // per case select the matching shubble
-          // dynmaic, based on routename search shubble_xxx
-          // xxx will be routename and so only image needs to be added and no need to create new case
-          // else behavior revert to def
-          // if spawned in on both paths use def until definite path
-          // if definite path keep it even if we run over intersecting paths
-          anchorOffset: new DOMPoint(0, -16),
-          size: {width: 25, height: 25}
+          subtitle: `${vehicle.speed_mph.toFixed(1)} mph`,
+          url: { 1: imageUrl },
+          size: { width: 25, height: 25 },
         };
 
+        // create shuttle object
         const annotation = new window.mapkit.ImageAnnotation(coordinate, annotationOptions);
+
+        // lock route if known
+        if (vehicle.route_name !== "UNCLEAR" && vehicle.route_name !== null) {
+          annotation.lockedRoute = vehicle.route_name;
+        }
+
+        // add shuttle to map
         map.addAnnotation(annotation);
         vehicleOverlays.current[key] = annotation;
       }
 
-      if (vehicle.route_name !== "UNCLEAR") {
-        vehicleOverlays.current[key].color = vehicle.route_name
-          ? routeData[vehicle.route_name].COLOR
-          : "#444444";
-      }
     });
 
+    
     const currentVehicleKeys = new Set(Object.keys(vehicles));
-
-    // Remove vehicles no longer in response
     Object.keys(vehicleOverlays.current).forEach((key) => {
       if (!currentVehicleKeys.has(key)) {
-        console.log(`Removing vehicle ${key}`);
         map.removeAnnotation(vehicleOverlays.current[key]);
         delete vehicleOverlays.current[key];
       }
