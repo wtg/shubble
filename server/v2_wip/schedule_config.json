@@ -1,0 +1,46 @@
+{
+  "routes": {
+    "west": {
+      "title": "West Route",
+      "stops": [
+        "Union Stop",
+        "Blitman Stop",
+        "Fictional Stop #1",
+        "Chasan Stop",
+        "Another fictional stop"
+      ],
+      "travel_times": [
+        5,
+        3,
+        3,
+        4
+      ],
+      "schedule": {
+        "weekday": [
+          {
+            "start": "09:00",
+            "interval": "20m",
+            "end": "17:00",
+            "excludes": []
+          },
+          {
+            "start": "09:00",
+            "interval": "20m",
+            "end": "17:00",
+            "excludes": [
+              "Chasan Building"
+            ]
+          }
+        ],
+        "weekend": [
+          {
+            "start": "10:00",
+            "interval": "30m",
+            "end": "16:00",
+            "excludes": []
+          }
+        ]
+      }
+    }
+  }
+}
