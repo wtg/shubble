@@ -15,7 +15,7 @@ function App() {
     const res = await fetch("/api/shuttles");
     const data = await res.json();
     setShuttles(data);
-    console.log("Fetched shuttles:", data);
+    //console.log("Fetched shuttles:", data);
   };
 
   const addShuttle = async () => {

@@ -33,9 +33,10 @@ export async function executeTest(testData) {
         return;
     }
 
+    console.log("Starting automated test");
     isRunning = true;
-    // queue all shuttle events
     try {
+        // queue all shuttle events
         for (const shuttle of testData.shuttles) {
             // add shuttle first, then add its events
             enqueue(shuttle.id, addShuttle);
@@ -53,9 +54,11 @@ export async function executeTest(testData) {
         return;
     }
 
-    // concurrently execute all shuttle event chains
+    console.log("Loaded shuttle event chains", eventChains);
     try {
+        // concurrently execute all shuttle event chains
         await Promise.all([...eventChains.values()]);
+        console.log("Automated test finished successfully");
     } finally {
         isRunning = false;
         eventChains.clear();
@@ -63,25 +66,30 @@ export async function executeTest(testData) {
 }
 
 async function executeEvent(id, evt) {
-    await nextStateFree(id);
+    await validateState(id);
+    console.log("validiated", id);
     await setState(id, evt.type);
+    console.log("set next state", id, evt);
 }
 
-// next state free (waiting) is equivalent to the current state being finished
-async function nextStateFree(id) {
+// current state is finished when the next state is free (waiting)
+async function validateState(id) {
     while (isRunning) {
-        const shuttle = getShuttles()[id];
+        await new Promise(resolve => setTimeout(resolve, 500));
+        console.log(getShuttles());
+        const shuttle = getShuttles().find(s => s.id === id);
         if (shuttle.next_state === NEXT_STATES[0]) {
             return;
         }
-        await new Promise(resolve => setTimeout(resolve, 500));
     }
 }
 
+// TODO: use event driven updates instead of polling with getShuttles
 export function setGetShuttles(func) {
     getShuttles = func;
 }
 
+// TODO: fix stopTest to also stop in-execution promises
 export function stopTest() {
     isRunning = false;
 }
