@@ -55,14 +55,16 @@ function App() {
     const file = event.target.files[0];
     if (!file) return;
 
-    await clearEvents();
+    await fetch("/api/events/today?keepShuttles=false", {method: "DELETE"});
+    setSelectedId(null);
+
     const reader = new FileReader();
     reader.onload = (e) => {
       let test;
       try {
         test = JSON.parse(e.target.result);
       } catch (err) {
-        console.error(err.message);
+        console.error(err);
         return;
       }
       executeTest(test);
