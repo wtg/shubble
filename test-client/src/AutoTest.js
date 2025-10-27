@@ -21,14 +21,14 @@ export async function executeTest(testData) {
         for (const shuttle of testData.shuttles) {
             // queue addShuttle first, before the test case events
             enqueue(shuttle.id, addShuttle);
-            let lastEvtType = null;
+            let lastEvt = null;
             for (const evt of shuttle.events) {
                 if (!NEXT_STATES.includes(evt.type)) {
                     throw new Error(`Unexpected event type ${evt.type}`);
                 }
-                const prev = lastEvtType;
+                const prev = lastEvt;
                 enqueue(shuttle.id, () => executeEvent(shuttle.id, evt, prev));
-                lastEvtType = evt.type;
+                lastEvt = evt;
             }
         }
     } catch (err) {
@@ -71,36 +71,36 @@ function enqueue(shuttleId, task) {
     eventChains.set(shuttleId, next);
 }
 
-async function executeEvent(id, evt, lastEvtType) {
-    await verifyCurrentState(id, lastEvtType);
+async function executeEvent(id, evt, lastEvt) {
+    await verifyCurrentState(id, lastEvt);
+    if (lastEvt !== null && (lastEvt.type === NEXT_STATES[0] || lastEvt.type === NEXT_STATES[3])) {
+        await new Promise(resolve => setTimeout(resolve, lastEvt.duration * 1000));
+    }
     await setNextState(id, evt.type);
     console.log("set next state for", id, evt);
-    if (evt.type === NEXT_STATES[0] || evt.type === NEXT_STATES[3]) {
-        await new Promise(resolve => setTimeout(resolve, evt.duration * 1000));
-    }
 }
 
 // This function waits until shuttle.next_state is free
 // If, at that time, shuttle.state is mismatched, throw an error
 // This ensures correctness (last state must equal last test case event)
-async function verifyCurrentState(id, lastEvtType) {
+async function verifyCurrentState(id, lastEvt) {
     let checkCount = 0, checkLimit = 3;
     const checkLast = true;
 
     while (isRunning) {
         await new Promise(resolve => setTimeout(resolve, 1000));
 
-        const shuttle = await (lastEvtType === null ? findShuttle(id, 3) : findShuttle(id));
+        const shuttle = await (lastEvt === null ? findShuttle(id, 3) : findShuttle(id));
 
         if (shuttle.next_state === NEXT_STATES[0]) {
-            if (checkLast && lastEvtType !== null) {
-                if ((shuttle.state !== lastEvtType
-                    && !(shuttle.state === NEXT_STATES[0] && lastEvtType === NEXT_STATES[3]))) {
+            if (checkLast && lastEvt !== null) {
+                if (shuttle.state !== lastEvt.type
+                    && !(shuttle.state === NEXT_STATES[0] && lastEvt.type === NEXT_STATES[3])) {
                     if (checkCount < checkLimit) {
                         checkCount++;
                         continue;
                     }
-                    throw new Error(`Shuttle ${id} expected state ${lastEvtType}, got ${shuttle.state}`);
+                    throw new Error(`Shuttle ${id} expected state ${lastEvt.type}, got ${shuttle.state}`);
                 }
             }
             return;
@@ -108,7 +108,7 @@ async function verifyCurrentState(id, lastEvtType) {
     }
 }
 
-// allow multiple tries to find shuttles, useful for processing the first event
+// allow multiple tries to find shuttles by polling
 async function findShuttle(id, tries = 1) {
     for (let i = 0; i < tries; i++) {
         const shuttle = getShuttles().find(s => s.id === id);
