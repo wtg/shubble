@@ -6,6 +6,7 @@ import type { Route } from "../ts/types/schedule";
 
 async function generateRoutePolylines(updatedRouteData: ShuttleRouteData) {
   // Use MapKit Directions API to generate polylines for each route segment
+  // @ts-ignore ts doesn't know mapkit type
   const directions = new mapkit.Directions();
 
   for (const [routeName, routeInfo] of Object.entries(updatedRouteData)) {
