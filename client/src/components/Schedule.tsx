@@ -62,7 +62,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop
 
   const timeToDate = (timeStr: string): Date => {
     const [time, modifier] = timeStr.trim().split(" ");
-    
+
     // eslint-disable-next-line prefer-const
     let [hours, minutes] = time.split(":").map(Number);
     if (modifier.toUpperCase() === "PM" && hours !== 12) {
@@ -92,10 +92,10 @@ export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop
 
     if (selectedDay !== now.getDay()) return; // only scroll if viewing today's schedule
     const currentTimeRow = Array.from(scheduleDiv.querySelectorAll('td.outdented')).find(td => {
-      const timeStr = td.textContent.trim();
+      const timeStr = td.textContent?.trim();
 
       // Expect "H:MM AM/PM" → split at the first space
-      const timeDate = timeToDate(timeStr);
+      const timeDate = timeToDate(timeStr || "");
 
       return timeDate >= now;
     });
