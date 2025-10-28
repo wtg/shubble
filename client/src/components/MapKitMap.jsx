@@ -379,22 +379,12 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
       }
 
       // Select image based on route name
-      let imageUrl;
-      switch (currentRoute) {
-        case "WEST":
-          imageUrl = "/shubble_West.png";
-          break;
-        case "NORTH":
-          imageUrl = "/shubble_North.png";
-          break;
-        default:
-          imageUrl = "/shubble_Default.png";
-          break;
-        // future case "extra":
-        // OR imageURL = "/shubble_" + routename + ".svg"
-        // have svg use variables for colors in here?
-        // else default 
+      let imageUrl = "/shubble_DEFAULT.svg";
+
+      if (vehicle.route_name && vehicle.route_name !== "UNCLEAR") {
+        imageUrl = `/shubble_${vehicle.route_name}.svg`;
       }
+
 
 
       if (existingAnnotation) {
