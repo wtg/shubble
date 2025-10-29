@@ -17,13 +17,13 @@ declare global {
         const loadedLibraries: string[];
     }
     interface Window {
-        // mapkit: typeof mapkit;
         initMapKit?: (value?: unknown) => void;
     }
     interface ImportMeta {
         readonly env: {
             [key: string]: string | boolean | undefined;
             VITE_MAPKIT_KEY?: string;
+            VITE_DEPLOY_MODE?: string;
             GIT_REV?: string;
         };
     }

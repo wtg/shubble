@@ -3,6 +3,7 @@ import type { ShuttleRouteData, ShuttleStopData } from "../ts/types/route";
 import '../styles/MapKitMap.css';
 import type { VehicleInformationMap } from "../ts/types/vehicleLocation";
 import type { Route } from "../ts/types/schedule";
+import { log } from "../ts/logger";
 
 async function generateRoutePolylines(updatedRouteData: ShuttleRouteData) {
   // Use MapKit Directions API to generate polylines for each route segment
@@ -379,12 +380,12 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
       const coordinate = new mapkit.Coordinate(vehicle.latitude, vehicle.longitude);
       if (key in vehicleOverlays.current) {
         // old vehicle: update coordinate
-        console.log(`Updating vehicle ${key} to ${vehicle.latitude}, ${vehicle.longitude}`);
+        log(`Updating vehicle ${key} to ${vehicle.latitude}, ${vehicle.longitude}`);
         vehicleOverlays.current[key].coordinate = coordinate;
         vehicleOverlays.current[key].subtitle = `${vehicle.speed_mph} mph`;
       } else {
         // new vehicle: add to map
-        console.log(`Adding vehicle ${key} to ${vehicle.latitude}, ${vehicle.longitude}`);
+        log(`Adding vehicle ${key} to ${vehicle.latitude}, ${vehicle.longitude}`);
         const annotation = new mapkit.MarkerAnnotation(coordinate, {
           title: vehicle.name,
           subtitle: `${vehicle.speed_mph} mph`,
@@ -406,7 +407,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
     // Remove vehicles no longer in response
     Object.keys(vehicleOverlays.current).forEach((key) => {
       if (!currentVehicleKeys.has(key)) {
-        console.log(`Removing vehicle ${key}`);
+        log(`Removing vehicle ${key}`);
         map.removeAnnotation(vehicleOverlays.current[key]);
         delete vehicleOverlays.current[key];
       }
