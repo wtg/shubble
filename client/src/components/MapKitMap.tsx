@@ -112,6 +112,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
   const selectedMarkerRef = useRef<mapkit.MarkerAnnotation | null>(null);
   const overlays: mapkit.Overlay[] = [];
 
+  // source: https://developer.apple.com/documentation/mapkitjs/loading-the-latest-version-of-mapkit-js
   const setupMapKitJs = async () => {
     if (!window.mapkit || window.mapkit.loadedLibraries.length === 0) {
       await new Promise(resolve => { window.initMapKit = resolve });
@@ -333,7 +334,6 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
     function displayRouteOverlays(routeData: ShuttleRouteData) {
       // display route overlays
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       for (const [_route, thisRouteData] of Object.entries(routeData)) {
         // for route (WEST, NORTH)
         const routePolylines = thisRouteData.ROUTES?.map(
