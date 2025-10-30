@@ -1,8 +1,6 @@
 import json
 import math
 
-# --- Helper Functions (Unchanged) ---
-
 def get_haversine_distance(lat1, lon1, lat2, lon2):
     """Calculates distance between two lat/lon points in meters."""
     R = 6371000  # Earth radius in meters
