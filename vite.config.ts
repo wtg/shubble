@@ -9,6 +9,9 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'robots.txt'],
+      workbox: {
+        navigateFallbackDenylist: [/^\/api/]
+      },
       manifest: {
         name: "Shubble Web App",
         short_name: "Shubble",
