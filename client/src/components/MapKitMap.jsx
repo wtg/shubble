@@ -366,7 +366,12 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
     Object.keys(vehicles).forEach((key) => {
       const vehicle = vehicles[key];
-      const coordinate = new window.mapkit.Coordinate(vehicle.latitude, vehicle.longitude);
+      const LATITUDE_OFFSET_FT = 10;
+      const FT_TO_DEGREES_LAT = 1 / 364000;
+      const latOffset = LATITUDE_OFFSET_FT * FT_TO_DEGREES_LAT;
+      // Apply offset to latitude to position icon above actual location
+      // Please fix in future for annotation image position
+      const coordinate = new window.mapkit.Coordinate(vehicle.latitude - latOffset, vehicle.longitude);
 
       const existingAnnotation = vehicleOverlays.current[key];
 
