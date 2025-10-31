@@ -3,17 +3,27 @@
     "west": {
       "title": "West Route",
       "stops": [
-        "Union Stop",
-        "Blitman Stop",
-        "Fictional Stop #1",
-        "Chasan Stop",
-        "Another fictional stop"
+        "Student Union",
+        "Academy Hall",
+        "Polytechnic",
+        "City Station",
+        "Blitman",
+        "Chasan Building",
+        "Federal & 6th",
+        "West Hall",
+        "Heffner House",
+        "Student Union (Return)"
       ],
       "travel_times": [
-        5,
         3,
-        3,
-        4
+        2,
+        4,
+        2,
+        2,
+        2,
+        1,
+        1,
+        1
       ],
       "schedule": {
         "weekday": [
@@ -23,10 +33,11 @@
             "end": "17:00",
             "excludes": []
           },
+
           {
-            "start": "09:00",
+            "start": "17:00",
             "interval": "20m",
-            "end": "17:00",
+            "end": "23:59",
             "excludes": [
               "Chasan Building"
             ]
