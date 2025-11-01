@@ -15,11 +15,11 @@ import rawRouteData from './data/routes.json';
 import { useState } from "react";
 import WarningBanner from './components/WarningBanner';
 import type { ShuttleRouteData } from './ts/types/route';
+import config from './ts/config';
 
 function App() {
   const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
   const [selectedStop, setSelectedStop] = useState<string>('all');
-  const staging = import.meta.env.VITE_DEPLOY_MODE !== 'production';
   const GIT_REV = import.meta.env.GIT_REV || 'unknown';
   const routeData = rawRouteData as unknown as ShuttleRouteData;
   return (
@@ -46,7 +46,7 @@ function App() {
           </ul>
         </nav>
       </header>
-      {staging && <WarningBanner bannerText="This is a staging domain. Please visit our official website!" bannerLink="https://shuttles.rpi.edu" gitRev={GIT_REV} />}
+      {config.isStaging && <WarningBanner bannerText="This is a staging domain. Please visit our official website!" bannerLink="https://shuttles.rpi.edu" gitRev={GIT_REV} />}
       <div className="App">
         <Routes>
           <Route path='/' element={<LiveLocation />} />
