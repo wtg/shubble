@@ -369,29 +369,36 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
       const LATITUDE_OFFSET_FT = 10;
       const FT_TO_DEGREES_LAT = 1 / 364000;
       const latOffset = LATITUDE_OFFSET_FT * FT_TO_DEGREES_LAT;
-      // Apply offset to latitude to position icon above actual location
-      // Please fix in future for annotation image position
       const coordinate = new window.mapkit.Coordinate(vehicle.latitude - latOffset, vehicle.longitude);
 
       const existingAnnotation = vehicleOverlays.current[key];
 
-      // Determine which route to use (locked vs. current)
-      let currentRoute = vehicle.route_name;
+      //  Build SVG dynamically 
+      const routeColor =
+        vehicle.route_name && vehicle.route_name !== "UNCLEAR" && routeData
+          ? routeData[vehicle.route_name].COLOR
+          : "#444444";
 
-      // If route is unclear but we already have a locked one, keep it (two paths overlap)
-      if (currentRoute === "UNCLEAR" && existingAnnotation?.lockedRoute) {
-        currentRoute = existingAnnotation.lockedRoute;
-      }
+      const svg = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 50 50">
+          <!-- Outer circle -->
+          <circle cx="25" cy="25" r="25" fill="${routeColor}" />
+          <!-- Inner white circle -->
+          <circle cx="25" cy="25" r="21" fill="white" />
+          <!-- Shuttle silhouette -->
+          <g transform="translate(13,13) scale(1)">
+            <path
+              fill="${routeColor}"
+              d="M18 11H6V6h12m-1.5 11a1.5 1.5 0 0 1-1.5-1.5a1.5 1.5 0 0 1 1.5-1.5a1.5 1.5 0 0 1 1.5 1.5a1.5 1.5 0 0 1-1.5 1.5m-9 0A1.5 1.5 0 0 1 6 15.5A1.5 1.5 0 0 1 7.5 14A1.5 1.5 0 0 1 9 15.5A1.5 1.5 0 0 1 7.5 17M4 16c0 .88.39 1.67 1 2.22V20a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1h8v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1.78c.61-.55 1-1.34 1-2.22V6c0-3.5-3.58-4-8-4s-8 .5-8 4z"
+            />
+          </g>
+        </svg>
+      `;
 
-      // Select image based on route name
-      let imageUrl = "/shubble_DEFAULT.svg";
+      const encoded = `data:image/svg+xml;base64,${btoa(svg)}`;
+      const imageUrl = encoded;
 
-      if (vehicle.route_name && vehicle.route_name !== "UNCLEAR") {
-        imageUrl = `/shubble_${vehicle.route_name}.svg`;
-      }
-
-
-
+      // --- Update or create annotation ---
       if (existingAnnotation) {
         // existing vehicle — update position and subtitle
         existingAnnotation.coordinate = coordinate;
@@ -403,16 +410,13 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
           // shuttle off-route (exiting)
           if (existingAnnotation.lockedRoute) {
             existingAnnotation.lockedRoute = null;
-            existingAnnotation.url = { 1: "/shubble_Default.png" };
+            existingAnnotation.url = { 1: encoded };
           }
         } else if (vehicle.route_name !== "UNCLEAR" && vehicle.route_name !== existingAnnotation.lockedRoute) {
-          // shuttle found a new valid route (update and lock)
           existingAnnotation.lockedRoute = vehicle.route_name;
-          existingAnnotation.url = { 1: imageUrl };
+          existingAnnotation.url = { 1: encoded };
         }
       } else {
-        // new vehicle (create annotation)
-
         const annotationOptions = {
           title: vehicle.name,
           subtitle: `${vehicle.speed_mph.toFixed(1)} mph`,
@@ -432,10 +436,9 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         map.addAnnotation(annotation);
         vehicleOverlays.current[key] = annotation;
       }
-
     });
 
-    
+    // --- Remove stale vehicles ---
     const currentVehicleKeys = new Set(Object.keys(vehicles));
     Object.keys(vehicleOverlays.current).forEach((key) => {
       if (!currentVehicleKeys.has(key)) {
@@ -443,7 +446,8 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         delete vehicleOverlays.current[key];
       }
     });
-  }, [map, vehicles]);
+  }, [map, vehicles, routeData]);
+
 
 
   return (
