@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import '../styles/MapKitMap.css';
+import ShuttleIcon from "./ShuttleIcon"; // adjust the path as needed
+
 
 async function generateRoutePolylines(updatedRouteData) {
   // Use MapKit Directions API to generate polylines for each route segment
@@ -373,29 +376,15 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
       const existingAnnotation = vehicleOverlays.current[key];
 
-      //  Build SVG dynamically 
+      // Build SVG dynamically using ShuttleIcon component
       const routeColor =
         vehicle.route_name && vehicle.route_name !== "UNCLEAR" && routeData
           ? routeData[vehicle.route_name].COLOR
           : "#444444";
 
-      const svg = 
-        <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 50 50">
-          {/* Outer circle*/}
-          <circle cx="25" cy="25" r="25" fill="${routeColor}" />
-          {/* Inner white circle */}
-          <circle cx="25" cy="25" r="21" fill="white" />
-          {/* Shuttle silhouette */}
-          <g transform="translate(6,6) scale(1.6)">
-            <path
-              fill="${routeColor}"
-              d="M18 11H6V6h12m-1.5 11a1.5 1.5 0 0 1-1.5-1.5a1.5 1.5 0 0 1 1.5-1.5a1.5 1.5 0 0 1 1.5 1.5a1.5 1.5 0 0 1-1.5 1.5m-9 0A1.5 1.5 0 0 1 6 15.5A1.5 1.5 0 0 1 7.5 14A1.5 1.5 0 0 1 9 15.5A1.5 1.5 0 0 1 7.5 17M4 16c0 .88.39 1.67 1 2.22V20a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1h8v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1.78c.61-.55 1-1.34 1-2.22V6c0-3.5-3.58-4-8-4s-8 .5-8 4z"
-            />
-          </g>
-        </svg>
-      ;
-
-      const encoded = `data:image/svg+xml;base64,${btoa(svg)}`;
+      // Render ShuttleIcon JSX to a static SVG string
+      const svgString = renderToStaticMarkup(<ShuttleIcon color={routeColor} size={25} />);
+      const encoded = `data:image/svg+xml;base64,${btoa(svgString)}`;
       const imageUrl = encoded;
 
       // --- Update or create annotation ---
