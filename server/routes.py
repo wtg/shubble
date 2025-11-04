@@ -3,6 +3,7 @@ from . import db, cache
 from .models import Vehicle, GeofenceEvent, VehicleLocation
 from pathlib import Path
 from sqlalchemy import func, and_
+from sqlalchemy.dialects import postgresql
 from datetime import datetime, date, timezone
 from data.stops import Stops
 from hashlib import sha256
@@ -75,7 +76,7 @@ def get_locations():
     response = {}
     for loc, vehicle in results:
         # Get closest loop
-        closest_distance, _, closest_route_name, _ = Stops.get_closest_point(
+        closest_distance, _, closest_route_name, polyline_index = Stops.get_closest_point(
             (loc.latitude, loc.longitude)
         )
         if closest_distance is None:
@@ -90,11 +91,11 @@ def get_locations():
             'heading_degrees': loc.heading_degrees,
             'speed_mph': loc.speed_mph,
             'route_name': route_name,
+            'polyline_index': polyline_index,
             'is_ecu_speed': loc.is_ecu_speed,
             'formatted_location': loc.formatted_location,
             'address_id': loc.address_id,
             'address_name': loc.address_name,
-            'vehicle_name': vehicle.name,
             'license_plate': vehicle.license_plate,
             'vin': vehicle.vin,
             'asset_type': vehicle.asset_type,
@@ -185,18 +186,18 @@ def webhook():
                 )
                 db.session.add(vehicle)
 
-            # Create GeofenceEvent
-            event = GeofenceEvent(
-                id=event_id,
-                vehicle_id=vehicle_id,
-                event_type='geofenceEntry' if 'geofenceEntry' in details else 'geofenceExit',
-                event_time=event_time,
-                address_name=address.get("name"),
-                address_formatted=address.get("formattedAddress"),
-                latitude=latitude,
-                longitude=longitude,
+            db.session.execute(
+                postgresql.insert(GeofenceEvent).on_conflict_do_nothing().values(
+                    id=event_id,
+                    vehicle_id=vehicle_id,
+                    event_type='geofenceEntry' if 'geofenceEntry' in details else 'geofenceExit',
+                    event_time=event_time,
+                    address_name=address.get("name"),
+                    address_formatted=address.get("formattedAddress"),
+                    latitude=latitude,
+                    longitude=longitude,
+                )
             )
-            db.session.add(event)
 
         db.session.commit()
         
@@ -266,3 +267,8 @@ def get_shuttle_routes():
 def get_shuttle_schedule():
     root_dir = Path(__file__).parent.parent
     return send_from_directory(root_dir / 'data', 'schedule.json')
+
+@bp.route('/api/aggregated-schedule', methods=['GET'])
+def get_aggregated_shuttle_schedule():
+    root_dir = Path(__file__).parent.parent
+    return send_from_directory(root_dir / 'data', 'aggregated_schedule.json')
