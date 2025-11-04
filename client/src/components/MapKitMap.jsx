@@ -379,13 +379,13 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
           ? routeData[vehicle.route_name].COLOR
           : "#444444";
 
-      const svg = `
+      const svg = 
         <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 50 50">
-          <!-- Outer circle -->
+          {/* Outer circle*/}
           <circle cx="25" cy="25" r="25" fill="${routeColor}" />
-          <!-- Inner white circle -->
+          {/* Inner white circle */}
           <circle cx="25" cy="25" r="21" fill="white" />
-          <!-- Shuttle silhouette -->
+          {/* Shuttle silhouette */}
           <g transform="translate(6,6) scale(1.6)">
             <path
               fill="${routeColor}"
@@ -393,7 +393,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
             />
           </g>
         </svg>
-      `;
+      ;
 
       const encoded = `data:image/svg+xml;base64,${btoa(svg)}`;
       const imageUrl = encoded;
