@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { executeTest, stopTest, setGetShuttles } from "./AutoTest.js";
+import * as api from "./api.js"
 import "./App.css";
 
 const NEXT_STATES = ["waiting", "entering", "looping", "on_break", "exiting"];
@@ -10,41 +11,25 @@ function App() {
   const [locationCount, setLocationCount] = useState(0);
   const [geofenceCount, setGeofenceCount] = useState(0);
   const [keepShuttles, setKeepShuttles] = useState(false);
+  const shuttlesRef = useRef([]);
+  const getShuttles = useCallback(() => shuttlesRef.current, []);
 
-  const fetchShuttles = async () => {
-    const res = await fetch("/api/shuttles");
+  // call api to get shuttles, then update the frontend's representation
+  const updateShuttles = async () => {
+    const res = await api.fetchShuttles();
     const data = await res.json();
     setShuttles(data);
-    //console.log("Fetched shuttles:", data);
   };
 
-  const addShuttle = async () => {
-    await fetch("/api/shuttles", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    });
-    await fetchShuttles();
-  };
-
-  const setNextState = async (nextState) => {
-    if (!selectedId) return;
-    await fetch(`/api/shuttles/${selectedId}/set-next-state`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ state: nextState }),
-    });
-    await fetchShuttles();
-  };
-
-  const fetchEvents = async () => {
-    const res = await fetch("/api/events/today");
+  const updateEvents = async () => {
+    const res = await api.fetchEvents();
     const data = await res.json();
     setLocationCount(data.locationCount);
     setGeofenceCount(data.geofenceCount);
   };
 
   const clearEvents = async () => {
-    await fetch(`/api/events/today?keepShuttles=${keepShuttles}`, {method: "DELETE"});
+    await api.deleteEvents(keepShuttles);
     if (!keepShuttles) {
       setSelectedId(null);
     }
@@ -55,7 +40,7 @@ function App() {
     const file = event.target.files[0];
     if (!file) return;
 
-    await fetch("/api/events/today?keepShuttles=false", {method: "DELETE"});
+    await api.deleteEvents(false);
     setSelectedId(null);
 
     const reader = new FileReader();
@@ -72,21 +57,19 @@ function App() {
     reader.readAsText(file);
   };
 
-  // this passes getShuttles as a stable function to the automatic testing module
-  const shuttlesRef = useRef([]);
-  const getShuttles = useCallback(() => shuttlesRef.current, []);
+  // pass getShuttles as a stable function
   useEffect(() => { shuttlesRef.current = shuttles; }, [shuttles]);
   useEffect(() => { setGetShuttles(getShuttles); }, []);
 
   useEffect(() => {
-    fetchEvents();
-    const interval = setInterval(fetchEvents, 1000);
+    updateEvents();
+    const interval = setInterval(updateEvents, 1000);
     return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
-    fetchShuttles();
-    const interval = setInterval(fetchShuttles, 100);
+    updateShuttles();
+    const interval = setInterval(updateShuttles, 100);
     return () => clearInterval(interval);
   }, []);
 
@@ -101,7 +84,7 @@ function App() {
   return (
     <div className="app">
       <h1>Shuttle Manager</h1>
-      <button onClick={addShuttle}>Add Shuttle</button>
+      <button onClick={api.addShuttle}>Add Shuttle</button>
 
       <div className="tabs">
         {shuttles.map((shuttle) => (
@@ -138,7 +121,9 @@ function App() {
               <button
                 key={state}
                 disabled={selected.next_state === state}
-                onClick={() => setNextState(state)}
+                onClick={(() => {
+                  if (selected) api.setNextState(state);
+                })}
               >
                 {state}
               </button>
