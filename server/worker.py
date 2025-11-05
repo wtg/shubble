@@ -1,12 +1,13 @@
+from . import create_app, db, cache, Config
 from .time_utils import get_campus_start_of_day
-from . import create_app, db, Config
 from .models import VehicleLocation, GeofenceEvent
 from sqlalchemy import func, and_
 import time
 import requests
 import os
 import logging
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
+import math
 
 # Logging config
 numeric_level = logging._nameToLevel.get(Config.LOG_LEVEL.upper(), logging.INFO)
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 app = create_app()
 
+@cache.cached(timeout=300, key_prefix="vehicles_in_geofence")
 def get_vehicles_in_geofence():
     """
     Returns a set of vehicle_ids where the latest geofence event from today
@@ -79,6 +81,8 @@ def update_locations(app):
     try:
         has_next_page = True
         after_token = None
+        new_records_added = 0
+        
         while has_next_page:
             # Add pagination token if present
             if after_token:
@@ -113,14 +117,13 @@ def update_locations(app):
                 # Convert ISO 8601 string to datetime
                 timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
 
-                # Check if this location already exists
                 exists = VehicleLocation.query.filter_by(
                     vehicle_id=vehicle_id,
                     timestamp=timestamp
                 ).first()
                 if exists:
-                    continue
-
+                    continue  # Skip if record already exists
+                
                 # Create and add new VehicleLocation
                 loc = VehicleLocation(
                     vehicle_id=vehicle_id,
@@ -136,9 +139,15 @@ def update_locations(app):
                     address_name=gps.get('address', {}).get('name'),
                 )
                 db.session.add(loc)
+                new_records_added += 1
 
-            db.session.commit()
-            logger.info(f'Updated locations for {len(current_vehicle_ids)} vehicles')
+            # Only commit and invalidate cache if we actually added new records
+            if new_records_added > 0:
+                db.session.commit()
+                cache.delete('vehicle_locations')
+                logger.info(f'Updated locations for {len(current_vehicle_ids)} vehicles - {new_records_added} new records')
+            else:
+                logger.info(f'No new location data for {len(current_vehicle_ids)} vehicles')
 
     except requests.RequestException as e:
         logger.error(f'Failed to fetch locations: {e}')
