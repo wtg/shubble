@@ -1,9 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { executeTest, stopTest, setGetShuttles } from "./AutoTest.js";
 import * as api from "./api.js"
+import { NEXT_STATES } from "./utils.js"
+import { executeTest, stopTest, setGetShuttles } from "./AutoTest.js";
 import "./App.css";
-
-const NEXT_STATES = ["waiting", "entering", "looping", "on_break", "exiting"];
 
 function App() {
   const [shuttles, setShuttles] = useState([]);
@@ -33,7 +32,6 @@ function App() {
     if (!keepShuttles) {
       setSelectedId(null);
     }
-    console.log("Cleared events for today");
   };
 
   const uploadTest = async (event) => {
@@ -117,7 +115,7 @@ function App() {
 
           <h3>Set Next State</h3>
           <div className="state-buttons">
-            {NEXT_STATES.map((state) => (
+            {Object.values(NEXT_STATES).map((state) => (
               <button
                 key={state}
                 disabled={selected.next_state === state}
