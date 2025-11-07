@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import '../styles/MapKitMap.css';
-import ShuttleIcon from "./ShuttleIcon"; // adjust the path as needed
+import ShuttleIcon from "./ShuttleIcon";
 
 
 async function generateRoutePolylines(updatedRouteData) {
@@ -369,10 +369,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
     Object.keys(vehicles).forEach((key) => {
       const vehicle = vehicles[key];
-      const LATITUDE_OFFSET_FT = 10;
-      const FT_TO_DEGREES_LAT = 1 / 364000;
-      const latOffset = LATITUDE_OFFSET_FT * FT_TO_DEGREES_LAT;
-      const coordinate = new window.mapkit.Coordinate(vehicle.latitude - latOffset, vehicle.longitude);
+      const coordinate = new window.mapkit.Coordinate(vehicle.latitude, vehicle.longitude);
 
       const existingAnnotation = vehicleOverlays.current[key];
 
@@ -411,6 +408,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
           subtitle: `${vehicle.speed_mph.toFixed(1)} mph`,
           url: { 1: imageUrl },
           size: { width: 25, height: 25 },
+          anchorOffset: new DOMPoint(0, -13),
         };
 
         // create shuttle object
