@@ -77,7 +77,11 @@ class Stops:
             if len(closest_routes) > 1 and haversine(closest_routes[0][1], closest_routes[1][1]) < 0.020:
                 # If not significantly closer, return None to indicate ambiguity
                 return None, None, None, None
-            return closest_routes[0]
+
+            # normalizing return types (float vs Numpy float64 resolution)
+            _best_distance, _best_point, _best_route, _best_polyline_index = closest_routes[0]
+            _coord = (float(_best_point[0]), float(_best_point[1]))
+            return float(_best_distance), _coord, _best_route, int(_best_polyline_index)
         return None, None, None, None
 
     @classmethod
@@ -92,7 +96,6 @@ class Stops:
         for route_name, route in cls.routes_data.items():
             for stop_name in route.get('STOPS', []):
                 stop_point = route[stop_name]['COORDINATES']
-                # use scalar haversine to avoid vectorized shape issues
                 if haversine(origin_point, stop_point) < threshold:
                     return route_name, stop_name
         return None, None
