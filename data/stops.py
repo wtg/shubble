@@ -89,13 +89,21 @@ class Stops:
         :return: A tuple with (the route name if close enough, otherwise None,
                 the stop name if close enough, otherwise None).
         """
+        origin = np.array(origin_point).reshape(1,2)
+
         for route_name, route in cls.routes_data.items():
             for stop in route.get('STOPS', []):
-                stop_point = np.array(route[stop]['COORDINATES'])
+                stop_point = route.get(stop)
+                if not stop_point or "COORDINATES" not in stop_point:
+                    continue
+                
+                stop_obj = np.array(stop_point["COORDINATES"]).reshape(1,2)
+                stop_name = stop_point.get("NAME", stop)
 
-                distance = haversine(tuple(origin_point), tuple(stop_point))
+                distance = haversine_vectorized(origin, stop_obj)[0]
                 if distance < threshold:
-                    return route_name, stop
+                    return route_name, stop_name
+
         return None, None
 
 def haversine(coord1, coord2):
