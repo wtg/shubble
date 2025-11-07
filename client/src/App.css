@@ -166,3 +166,21 @@ footer {
 .banner * {
   margin: 5px;
 }
+
+/*shubble text link styling*/
+.site-title,
+.site-title:link,
+.site-title:visited {
+  color: var(--text-color);
+  text-decoration: none; /* remove underline */
+}
+
+.site-title:hover {
+  color: var(--text-color);
+  text-decoration: none; /* keep no-underline on hover */
+}
+
+.site-title:focus {
+  outline: 3px solid rgba(0,0,0,0.12);
+  outline-offset: 3px;
+}
