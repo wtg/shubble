@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify, send_from_directory, current_app
-from . import db, cache
+from numpy import datetime_as_string
+from . import db
 from .models import Vehicle, GeofenceEvent, VehicleLocation
 from pathlib import Path
 from sqlalchemy import func, and_
@@ -9,6 +10,7 @@ from data.stops import Stops
 from hashlib import sha256
 import hmac
 import logging
+
 from .time_utils import get_campus_start_of_day
 
 logger = logging.getLogger(__name__)
@@ -26,7 +28,6 @@ def serve_react():
     return send_from_directory(root_dir, 'index.html')
 
 @bp.route('/api/locations', methods=['GET'])
-@cache.cached(timeout=300, key_prefix="vehicle_locations")
 def get_locations():
     """
     Returns the latest location for each vehicle currently inside the geofence.
@@ -200,10 +201,6 @@ def webhook():
             )
 
         db.session.commit()
-        
-        # Invalidate Cache
-        cache.delete('vehicles_in_geofence') 
-        
         return jsonify({'status': 'success'}), 200
 
     except Exception as e:
@@ -231,79 +228,98 @@ def data_today():
     ).order_by(GeofenceEvent.event_time.asc()).all()
 
     locations_today_dict = {}
-    # locations 
+    shuttle_state = {} # helper, {vehicle_id -> string state}
+    shuttle_prev = {} # helper, {vehicle_id -> [datetime time_of_day, prev_latitude, prev_longitude]}
+    def second_difference(_veh_id):
+        """
+        Helper function, converting the string JSON format to integer seconds
+        :param timestamp: (string) in the format "HH:MM:SS"
+        :return: (integer) in seconds of the day (out of 24 hours)
+        """
+        return 0;
     for location in locations_today:
-        # _coordinate = (location.latitude, location.longitude), use _corrdinate[0] and [1] for later
-        # _closest_route_location = Stops.get_closest_point(location.latitude, location.longitude)
-        vechicle_location = {
+        # RELATED DATA:  
+        # tuple with the distance to closest point, closest point (latitude, longitude), route name, and polyline index
+        _closest_point = Stops.get_closest_point((location.latitude, location.longitude)) 
+        # tuple with (route name, stop name) if close enough, else None.
+        _at_stop = Stops.is_at_stop((location.latitude, location.longitude)) 
+        # datetime to string
+        _timestamp = location.timestamp.strftime("%H:%M:%S") 
+
+        # LOCATIONS:
+        # setup dict nesting
+        vehicle_location = {
             "latitude": location.latitude,
             "longitude": location.longitude,
-            "closest_route_location": (0, 0),   # update this, maybe Stops.get_closest_point(_current_coords)
-            "distance": 0,                      # update this, maybe Stops.haversine((location.latitude, location.longitude), _closest_route_location)
-            "closest_route": "some",            # update this...
-            "closest_polyline": 0               # update this...
+            "closest_route_location": _closest_point[1],
+            "distance": _closest_point[0],
+            "closest_route": _closest_point[2],
+            "closest_polyline": _closest_point[3],
         }
-        if location.vehicle_id in locations_today_dict:
-            locations_today_dict[location.vehicle_id]["locations"].append(vechicle_location)
-        else:
+        # initialization: adding a new vehicle to the dict
+        if location.vehicle_id not in locations_today_dict:
             locations_today_dict[location.vehicle_id] = {
-                "locations": {location.timestamp: vechicle_location},
+                "locations": {_timestamp: vehicle_location},
                 "loops": [],
                 "breaks": []
             }
-    
-    # shuttles start in break state
-    shuttle_state = {vehicle_id: "break" for vehicle_id in locations_today_dict.keys()}
-
-    # geofence events to track loops and breaks
-    for geoEvent in events_today:
-        vehicle_id = geoEvent.vehicle_id
-
-        # entering and leaving union conditionals
-        if geoEvent.event_type == "geofenceEntry" and geoEvent.address_name == "STUDENT_UNION":
-            # if entering union and ending loop, start break
-            if shuttle_state[vehicle_id] == "loop":
-                shuttle_state[vehicle_id] = "break"
-                # set end time for previous loop
-                if locations_today_dict[vehicle_id]["loops"]:
-                    locations_today_dict[vehicle_id]["loops"][-1]["end"] = geoEvent.event_time
-                # start new break
-                locations_today_dict[vehicle_id]["breaks"].append({
-                    "start": geoEvent.event_time,
-                    "end": None,
-                    "locations": []
-                })
-        elif geoEvent.event_type == "geofenceExit" and geoEvent.address_name == "STUDENT_UNION":
-            # if exiting union and ending break, start loop
-            if shuttle_state[vehicle_id] == "break":
-                shuttle_state[vehicle_id] = "loop"
-                # set end time for previous break
-                if locations_today_dict[vehicle_id]["breaks"]:
-                    locations_today_dict[vehicle_id]["breaks"][-1]["end"] = geoEvent.event_time
-                # start new loop
-                locations_today_dict[vehicle_id]["loops"].append({
-                    "start": geoEvent.event_time,
-                    "end": None,
-                    "locations": []
-                })
-        
-        # add current location to updatedloop or break
-        locations_today_dict[vehicle_id][shuttle_state[vehicle_id]]["locations"].append(geoEvent.event_time)
-        if shuttle_state[vehicle_id] == "break": continue
-        # un-routed and stopped conditionals
-        coords = (geoEvent.latitude, geoEvent.longitude)
-        closest_polyline = Stops.get_closest_point(coords)
-        if (closest_polyline[0]**2 + closest_polyline[1]**2)**0.5 > 0.0002:
-            # unrouted
-            if shuttle_state[vehicle_id] == "loop":
-                shuttle_state[vehicle_id] = "break"
-            elif shuttle_state[vehicle_id] == "break":
-                shuttle_state[vehicle_id] = "loop"
+            # start first break as "entry"
+            shuttle_state[location.vehicle_id] = "entry"
+            locations_today_dict[location.vehicle_id]["breaks"].append({
+                "start": _timestamp,
+                "end": None,
+                "locations": [_timestamp]
+            })
+            continue
         else:
-            # stopped
-            if shuttle_state[vehicle_id] == "loop":
+            locations_today_dict[location.vehicle_id]["locations"][_timestamp] = vehicle_location 
 
-
+        # LOOPS/BREAKS:
+        # Helper Logic, for if shuttle is stopped for > 5 minutes
+        _stopped_for_5_minutes = False
+        # initialization: new vehicle
+        if location.vehicle_id not in shuttle_prev:
+            shuttle_prev[location.vehicle_id] = [location.timestamp, location.latitude, location.longitude]
+        # check: shuttle not moved
+        else:
+            # to update: technically shouldn't subtract lat and lon
+            # threshold of 0.00008 determined from \shubble\test-server\server.py: mock_feed()
+            if (abs(location.latitude - shuttle_prev[location.vehicle_id][1]) < 0.00008) and (abs(location.longitude - shuttle_prev[location.vehicle_id][2]) < 0.00008):
+                if (location.timestamp - shuttle_prev[location.vehicle_id][0]).total_seconds() > 300:
+                    _stopped_for_5_minutes = True
+            else:
+                shuttle_prev[location.vehicle_id] = [location.timestamp, location.latitude, location.longitude]
+        
+        # initialization: "entry" state
+        if (shuttle_state[location.vehicle_id] == "entry" and _at_stop[1] == "STUDENT_UNION"):
+            shuttle_state[location.vehicle_id] = "break"
+        # check: end break & start loop
+        # if - exiting union from a break
+        elif (shuttle_state[location.vehicle_id] == "break" and _at_stop[1] != "STUDENT_UNION"):
+            # end break
+            locations_today_dict[location.vehicle_id]["breaks"][-1]["end"] = _timestamp
+            shuttle_state[location.vehicle_id] = "loop"
+            # start new loop
+            locations_today_dict[location.vehicle_id]["loops"].append({
+                "start": _timestamp,
+                "end": None,
+                "locations": [_timestamp]
+            })
+        # check: end loop & start break
+        # if - entering student union from loop
+        # elif - distance > 0.0002 from nearest route (polyline)
+        # elif - shuttle been stopped for > 5 minutes
+        elif (shuttle_state[location.vehicle_id] == "loop" and _at_stop[1] == "STUDENT_UNION") or (_closest_point[0] is not None and _closest_point[0] > 0.0002) or (_stopped_for_5_minutes):
+            # end loop
+            locations_today_dict[location.vehicle_id]["loops"][-1]["end"] = _timestamp
+            shuttle_state[location.vehicle_id] = "break"
+            # start new break
+            locations_today_dict[location.vehicle_id]["breaks"].append({
+                "start": _timestamp,
+                "end": None,
+                "locations": [_timestamp]
+            })
+            
     return jsonify(locations_today_dict)
 
 @bp.route('/api/routes', methods=['GET'])
