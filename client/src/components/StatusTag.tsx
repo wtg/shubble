@@ -1,6 +1,10 @@
 import '../styles/StatusTag.css';
 
-export default function StatusTag({ isActive }) {
+type StatusTagProps = {
+  isActive: boolean;
+};
+
+export default function StatusTag({ isActive }: StatusTagProps) {
   return (
     <>
       {isActive ? (
