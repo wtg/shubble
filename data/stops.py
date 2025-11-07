@@ -30,7 +30,7 @@ class Stops:
         """
         Find the closest point on any polyline to the given origin point.
         :param origin_point: A tuple or list with (latitude, longitude) coordinates.
-        :return: A tuple with the closest point (latitude, longitude), distance to that point,
+        :return: A tuple with the distance to the closest point, closest point (latitude, longitude),
                 route name, and polyline index.
         """
         point = np.array(origin_point)
@@ -90,12 +90,11 @@ class Stops:
                 the stop name if close enough, otherwise None).
         """
         for route_name, route in cls.routes_data.items():
-            for stop in route.get('STOPS', []):
-                stop_point = np.array(route[stop]['COORDINATES'])
-
-                distance = haversine(tuple(origin_point), tuple(stop_point))
-                if distance < threshold:
-                    return route_name, stop
+            for stop_name in route.get('STOPS', []):
+                stop_point = route[stop_name]['COORDINATES']
+                # use scalar haversine to avoid vectorized shape issues
+                if haversine(origin_point, stop_point) < threshold:
+                    return route_name, stop_name
         return None, None
 
 def haversine(coord1, coord2):
@@ -144,9 +143,8 @@ def haversine_vectorized(coords1, coords2):
     distances : ndarray, shape (N,)
         Great-circle distances in kilometers.
     """
-    # Accept either single (lat,lon) pairs or arrays of pairs. Normalize to 2-D arrays.
-    coords1 = np.atleast_2d(np.asarray(coords1, dtype=float))
-    coords2 = np.atleast_2d(np.asarray(coords2, dtype=float))
+    coords1 = np.asarray(coords1, dtype=float)
+    coords2 = np.asarray(coords2, dtype=float)
 
     # Earth radius in kilometers
     R = 6371.0
