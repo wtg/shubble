@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import * as api from "./api.js";
 import { STATES } from "./utils.js";
-import { executeTest, stopTest, setGetShuttles } from "./AutoTest.js";
+import { startTest, stopTest, setGetShuttles } from "./AutoTest.js";
 import "./App.css";
 
 function App() {
@@ -50,7 +50,7 @@ function App() {
         console.error(err);
         return;
       }
-      executeTest(test);
+      startTest(test);
     }
     reader.readAsText(file);
   };

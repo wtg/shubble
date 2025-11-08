@@ -1,3 +1,4 @@
+import * as api from "./api.js";
 import { STATES, warnUser, assertOk } from "./utils.js";
 
 let isRunning = false;
@@ -7,39 +8,26 @@ const eventChains = new Map();
 /*
 Normal run: all chains resolve, promise.all resolves
 User stop: queued tasks check isRunning and resolve silently, promise.all resolves
-Any shuttle error: entire test fails. error task throws, promise.all throws, further errors ignored
+Any shuttle error: test fails. error task throws, promise.all throws, further errors ignored
 */
-export async function executeTest(testData) {
+export async function startTest(testData) {
     if (isRunning) {
         warnUser("Test already running");
         return;
     }
-
-    console.log("Starting automated test");
     isRunning = true;
+    console.log("Started automated test");
+
     try {
-        // build all shuttle event chains
-        for (const shuttle of testData.shuttles) {
-            // queue addShuttle first, before the test case events
-            enqueue(shuttle.id, addShuttle);
-            let lastEvt = null;
-            for (const evt of shuttle.events) {
-                if (!STATES.values().includes(evt.type)) {
-                    throw new Error(`Unexpected event type ${evt.type}`);
-                }
-                const prev = lastEvt;
-                enqueue(shuttle.id, () => executeEvent(shuttle.id, evt, prev));
-                lastEvt = evt;
-            }
-        }
+        buildEventChains(testData);
     } catch (err) {
         warnUser(err);
         isRunning = false;
         eventChains.clear();
         return;
     }
-
     console.log("Built shuttle event chains", eventChains);
+
     try {
         // concurrently execute all shuttle event chains
         await Promise.all([...eventChains.values()]);
@@ -51,6 +39,23 @@ export async function executeTest(testData) {
     } finally {
         isRunning = false;
         eventChains.clear();
+    }
+}
+
+function buildEventChains(testData) {
+    for (const shuttle of testData.shuttles) {
+        // queue addShuttle first, before the test case events
+        enqueue(shuttle.id, addShuttle);
+        let lastEvt = null;
+        for (const evt of shuttle.events) {
+            if (!Object.values(STATES).includes(evt.type)) {
+                throw new Error(`Unexpected event type ${evt.type}`);
+            }
+            // capture the current state of lastEvt for the anonymous function's closure
+            const prev = lastEvt;
+            enqueue(shuttle.id, () => executeEvent(shuttle.id, evt, prev));
+            lastEvt = evt;
+        }
     }
 }
 
