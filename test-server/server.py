@@ -17,7 +17,7 @@ import numpy as np
 shuttles = {}
 shuttle_counter = 1
 shuttle_lock = Lock()
-route_names = Stops.routes_data.keys()
+route_names = Stops.active_routes
 
 logger = logging.getLogger(__name__)
 

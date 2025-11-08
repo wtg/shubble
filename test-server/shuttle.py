@@ -241,8 +241,11 @@ class Shuttle:
         self.next_state = next_state
 
     def set_route(self, route: str):
-        if route is not None and route not in Stops.active_routes:
-            raise ValueError(f"Invalid shuttle route: {route}")
+        if route is not None:
+            if route not in Stops.routes_data.keys():
+                raise ValueError(f"Invalid shuttle route: {route}")
+            elif route not in Stops.active_routes:
+                raise ValueError(f"Inactive shuttle route: {route}")
         self.current_route = route
 
     def to_dict(self):
