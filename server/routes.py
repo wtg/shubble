@@ -230,13 +230,6 @@ def data_today():
     locations_today_dict = {}
     shuttle_state = {} # helper, {vehicle_id -> string state}
     shuttle_prev = {} # helper, {vehicle_id -> [datetime time_of_day, prev_latitude, prev_longitude]}
-    def second_difference(_veh_id):
-        """
-        Helper function, converting the string JSON format to integer seconds
-        :param timestamp: (string) in the format "HH:MM:SS"
-        :return: (integer) in seconds of the day (out of 24 hours)
-        """
-        return 0;
     for location in locations_today:
         # RELATED DATA:  
         # tuple with the distance to closest point, closest point (latitude, longitude), route name, and polyline index
