@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import * as api from "./api.js"
-import { NEXT_STATES } from "./utils.js"
+import * as api from "./api.js";
+import { STATES } from "./utils.js";
 import { executeTest, stopTest, setGetShuttles } from "./AutoTest.js";
 import "./App.css";
 
@@ -115,7 +115,7 @@ function App() {
 
           <h3>Set Next State</h3>
           <div className="state-buttons">
-            {Object.values(NEXT_STATES).map((state) => (
+            {Object.values(STATES).map((state) => (
               <button
                 key={state}
                 disabled={selected.next_state === state}

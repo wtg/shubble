@@ -1,7 +1,8 @@
+import { STATES, warnUser, assertOk } from "./utils.js";
+
 let isRunning = false;
 let getShuttles = null;
 const eventChains = new Map();
-const NEXT_STATES = ["waiting", "entering", "looping", "on_break", "exiting"];
 
 /*
 Normal run: all chains resolve, promise.all resolves
@@ -23,7 +24,7 @@ export async function executeTest(testData) {
             enqueue(shuttle.id, addShuttle);
             let lastEvt = null;
             for (const evt of shuttle.events) {
-                if (!NEXT_STATES.includes(evt.type)) {
+                if (!STATES.values().includes(evt.type)) {
                     throw new Error(`Unexpected event type ${evt.type}`);
                 }
                 const prev = lastEvt;
@@ -73,7 +74,7 @@ function enqueue(shuttleId, task) {
 
 async function executeEvent(id, evt, lastEvt) {
     await verifyCurrentState(id, lastEvt);
-    if (lastEvt !== null && (lastEvt.type === NEXT_STATES[0] || lastEvt.type === NEXT_STATES[3])) {
+    if (lastEvt && (lastEvt.type === STATES.WAITING || lastEvt.type === STATES.ON_BREAK)) {
         await new Promise(resolve => setTimeout(resolve, lastEvt.duration * 1000));
     }
     await setNextState(id, evt.type);
@@ -92,10 +93,10 @@ async function verifyCurrentState(id, lastEvt) {
 
         const shuttle = await (lastEvt === null ? findShuttle(id, 3) : findShuttle(id));
 
-        if (shuttle.next_state === NEXT_STATES[0]) {
+        if (shuttle.next_state === STATES.WAITING) {
             if (checkLast && lastEvt !== null) {
                 if (shuttle.state !== lastEvt.type
-                    && !(shuttle.state === NEXT_STATES[0] && lastEvt.type === NEXT_STATES[3])) {
+                    && !(shuttle.state === STATES.WAITING && lastEvt.type === STATES.ON_BREAK)) {
                     if (checkCount < checkLimit) {
                         checkCount++;
                         continue;
@@ -113,7 +114,9 @@ async function findShuttle(id, tries = 1) {
     for (let i = 0; i < tries; i++) {
         const shuttle = getShuttles().find(s => s.id === id);
         if (shuttle !== undefined) return shuttle;
-        if (i < tries - 1) await new Promise(resolve => setTimeout(resolve, 1000));
+        if (i < tries - 1) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
     }
     throw new Error(`Couldn't find shuttle with id ${id}`);
 }
@@ -127,48 +130,15 @@ export function setGetShuttles(func) {
     getShuttles = func;
 }
 
-// TODO: replace console errors with UI alerts in App.jsx
-function warnUser(e) {
-    console.error(e);
-}
-
 // api call wrappers
-function addShuttle() {
-    if (!isRunning) return;
-    return fetch("/api/shuttles", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-    }).then(assertOk);
-}
-
-function setNextState(shuttleId, state) {
-    if (!isRunning) return;
-    return fetch(`/api/shuttles/${shuttleId}/set-next-state`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ state: state }),
-    }).then(assertOk);
-}
-
-/*
-function clearData() {
-    if (!isRunning) return;
-    return fetch(`/api/events/today?keepShuttles=false`, {
-        method: "DELETE",
-    }).then(assertOk);
-}
-*/
-
-// helper to reveal http errors
-async function assertOk(res) {
-    if (!res.ok) {
-        let detail;
-        try {
-            detail = await res.text();
-        } catch (err) {
-            console.warn("Failed to read response body:", err);
-        }
-        throw new Error(`HTTP ${res.status} ${res.statusText}${detail ? `: ${detail}` : ""}`)
+async function addShuttle() {
+    if (isRunning) {
+        return api.addShuttle().then(assertOk);
     }
-    return res;
+}
+
+async function setNextState(shuttleId, state) {
+    if (isRunning) {
+        return api.setNextState(shuttleId, state).then(assertOk);
+    }
 }
