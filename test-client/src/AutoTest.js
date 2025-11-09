@@ -31,7 +31,6 @@ export async function startTest(testData) {
     try {
         // concurrently execute all shuttle event chains
         await Promise.all([...eventChains.values()]);
-        console.log("All event calls have been executed");
         console.log("Test finished successfully");
     } catch (err) {
         warnUser(err);
@@ -78,52 +77,57 @@ function enqueue(shuttleId, task) {
 }
 
 async function executeEvent(id, evt, lastEvt) {
-    await verifyCurrentState(id, lastEvt);
-    if (lastEvt && (lastEvt.type === STATES.WAITING || lastEvt.type === STATES.ON_BREAK)) {
-        await new Promise(resolve => setTimeout(resolve, lastEvt.duration * 1000));
+    // if the shuttle was just added, verify it's there
+    if (lastEvt === null) {
+        await retryUntil(() => findShuttle(id) !== undefined);
     }
+
+    // request a state change
     await setNextState(id, evt.type);
-    console.log("set next state for", id, evt);
-}
+    console.log(`shuttle ${id} set next_state to`, evt)
 
-// This function waits until shuttle.next_state is free
-// If, at that time, shuttle.state is mismatched, throw an error
-// This ensures correctness (last state must equal last test case event)
-async function verifyCurrentState(id, lastEvt) {
-    let checkCount = 0, checkLimit = 3;
-    const checkLast = true;
+    // verify that the event started (assumes that the last event finished and cannot block)
+    await retryUntil(() => {
+        const shuttle = findShuttle(id);
+        return shuttle.state === evt.type ||
+              (shuttle.state === STATES.WAITING && evt.type === STATES.ON_BREAK);
+    });
+    console.log(`shuttle ${id} started event`, evt);
 
-    while (isRunning) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
-        const shuttle = await (lastEvt === null ? findShuttle(id, 3) : findShuttle(id));
-
-        if (shuttle.next_state === STATES.WAITING) {
-            if (checkLast && lastEvt !== null) {
-                if (shuttle.state !== lastEvt.type
-                    && !(shuttle.state === STATES.WAITING && lastEvt.type === STATES.ON_BREAK)) {
-                    if (checkCount < checkLimit) {
-                        checkCount++;
-                        continue;
-                    }
-                    throw new Error(`Shuttle ${id} expected state ${lastEvt.type}, got ${shuttle.state}`);
-                }
-            }
-            return;
-        }
+    // wait until the event finishes before returning and resolving the event's promise
+    if (evt.type === STATES.WAITING || evt.type === STATES.ON_BREAK) {
+        await new Promise(resolve => setTimeout(resolve, evt.duration * 1000));
+    } else {
+        // 1 sec interval, 10 min timeout. no event should take longer than 10 minutes
+        await waitUntil(
+            () => findShuttle(id).state === STATES.WAITING,
+        1000, 600000);
     }
+    console.log(`shuttle ${id} completed event`, evt);
 }
 
-// allow multiple tries to find shuttles by polling
-async function findShuttle(id, tries = 1) {
+// check that fn returns true within a limited number of retries
+async function retryUntil(fn, tries = 4, interval = 1000) {
     for (let i = 0; i < tries; i++) {
-        const shuttle = getShuttles().find(s => s.id === id);
-        if (shuttle !== undefined) return shuttle;
-        if (i < tries - 1) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-        }
+        await new Promise(resolve => setTimeout(resolve, interval));
+        if (fn()) return;
     }
-    throw new Error(`Couldn't find shuttle with id ${id}`);
+    throw new Error(`retry() failed on ${fn}`);
+}
+
+async function waitUntil(fn, interval, timeout) {
+    const start = Date.now();
+    while (isRunning) {
+        await new Promise(resolve => setTimeout(resolve, interval))
+        if (Date.now() - start > timeout) {
+            throw new Error("Timeout waiting for condition");
+        }
+        if (fn()) return;
+    }
+}
+
+function findShuttle(id) {
+    return getShuttles().find(s => s.id === id);
 }
 
 // in-execution promises will cancel their tasks and resolve silently
