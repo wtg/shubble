@@ -166,5 +166,127 @@ def evaluate_ar_pipeline(df_raw, vehicle_col, max_gap_include_s, resample, delta
                 else:
                     if len(v_seg) >= 3:
                         segs.append(("raw", t_seg, v_seg))
+        lagged_by_p = {}
+        for p in orders:
+            X_list, y_list = [], []
+            for mode, t_arr, v_arr in segs:
+                if mode == "resampled":
+                    Xs, ys = build_ar_design_from_resampled(v_arr, p)
+                else:
+                    Xs, ys = build_arx_design_irregular(t_arr, v_arr, p, include_dt_lags=include_dt_lags)
+                if Xs.shape[0] > 0:
+                    X_list.append(Xs); y_list.append(ys)
+            if X_list:
+                X_all = np.vstack(X_list); y_all = np.concatenate(y_list)
+            else:
+                feat_dim = (p if resample else (p + (p if include_dt_lags else 0)))
+                X_all = np.zeros((0, feat_dim)); y_all = np.zeros((0,))
+            lagged_by_p[p] = (X_all, y_all)
+        for p in orders:
+            X_all, y_all = lagged_by_p[p]
+            for lam in lambdas:
+                lam_key = 0.0 if lam in (None, 0) else float(lam)
+                beta, y_hat, eps, mse = ridge_fit(X_all, y_all, lam)
+                rmse = float(np.sqrt(mse)) if mse == mse else float("nan")
+                results.append({
+                    "mode": "RESAMPLED" if resample else ("RAW_ARX_dt" if include_dt_lags else "RAW_AR"),
+                    "delta_s": (float(delta) if resample else None),
+                    "order_p": int(p),
+                    "lambda": lam_key,
+                    "n_rows": int(X_all.shape[0]),
+                    "MSE": mse,
+                    "RMSE": rmse
+                })
+                models[((float(delta) if resample else None), int(p), lam_key)] = {
+                    "beta": beta,
+                    "mse": mse,
+                    "rmse": rmse,
+                    "n_rows": int(X_all.shape[0]),
+                    "feat_dim": int(X_all.shape[1]) if X_all.ndim==2 else 0,
+                    "eps": eps,
+                    "y_hat": y_hat
+                }
+    res_df = pd.DataFrame(results).sort_values(["mode","delta_s","order_p","lambda"]).reset_index(drop=True)
+    return res_df, models, debug_pairs
 
+if __name__ == "__main__" or True:
+    df_raw = pd.read_csv(INPUT_PATH)
+    res_df, models, debug_pairs = evaluate_ar_pipeline(
+        df_raw,
+        VEHICLE_COL,
+        MAX_GAP_INCLUDE_S,
+        RESAMPLE,
+        DELTAS,
+        ORDERS,
+        LAMBDAS,
+        DEMEAN_PER_SEGMENT,
+        INCLUDE_DT_LAGS
+    )
+    res_df.to_csv(OUT_PATH, index=False)
+    print(f"\nSaved sweep to: {OUT_PATH}")
+    if not res_df.empty:
+        leaderboard = res_df.sort_values("RMSE").head(20)
+        print("\nTop 20 (lowest RMSE):")
+        cols = ["mode","delta_s","order_p","lambda","n_rows","MSE","RMSE"]
+        print(leaderboard[cols].to_string(index=False))
+    else:
+        print("No rows produced (check input columns and parameters).")
+
+    if RESAMPLE and debug_pairs:
+        show_n = min(3, len(debug_pairs))
+        for i in range(show_n):
+            dp = debug_pairs[i]
+            df_raw_seg = pd.DataFrame({"t_raw": dp["t_raw"], "v_raw": dp["v_raw"]})
+            df_grid_seg = pd.DataFrame({"T_grid": dp["t_grid"], "v_grid": dp["v_grid"]})
+            print(f"\nSegment {i+1} (delta={dp['delta']}) raw head:")
+            print(df_raw_seg.head().to_string(index=False))
+            print(f"\nSegment {i+1} (delta={dp['delta']}) resampled head:")
+            print(df_grid_seg.head().to_string(index=False))
+            plt.figure()
+            plt.plot(dp["t_raw"], dp["v_raw"], marker="o", linestyle="", label="raw (t,v)")
+            plt.plot(dp["t_grid"], dp["v_grid"], marker="x", label="resampled (T,v)")
+            plt.xlabel("time (s)")
+            plt.ylabel("velocity (m/s)")
+            plt.title(f"Segment {i+1} resampling overlay (Δ={dp['delta']})")
+            plt.legend()
+            plt.tight_layout()
+            plt.show()
+
+    if not res_df.empty:
+        best = res_df.sort_values("RMSE").iloc[0]
+        key = ((float(best["delta_s"]) if pd.notna(best["delta_s"]) else None),
+               int(best["order_p"]),
+               float(best["lambda"]))
+        if key in models and models[key]["n_rows"] > 0:
+            eps = models[key]["eps"]
+            yhat = models[key]["y_hat"]
+            plt.figure()
+            plt.hist(eps, bins=30)
+            plt.xlabel("residual ε = y - ŷ")
+            plt.ylabel("count")
+            plt.title(f"Residuals histogram — best config (mode={best['mode']}, Δ={best['delta_s']}, p={best['order_p']}, λ={best['lambda']})")
+            plt.tight_layout()
+            plt.show()
+            if PLOT_RESID_VS_FITTED:
+                plt.figure()
+                plt.scatter(yhat, eps, s=12)
+                plt.axhline(0.0)
+                plt.xlabel("ŷ (fitted)")
+                plt.ylabel("ε (residual)")
+                plt.title(f"Residuals vs Fitted — best config (mode={best['mode']})")
+                plt.tight_layout()
+                plt.show()
+                
+    best = res_df.sort_values("RMSE").iloc[0]
+    key = ((float(best["delta_s"]) if pd.notna(best["delta_s"]) else None),
+           int(best["order_p"]),
+           float(best["lambda"]))
+    if key in models:
+        beta = models[key]["beta"]
+        print("\nBest config weights (phi):")
+        print(f"mode={best['mode']}, Δ={best['delta_s']}, p={best['order_p']}, λ={best['lambda']}")
+        print(beta)
+    chosen = (6.0, 3, 0.0)  
+    if chosen in models:
+        print("\nChosen config weights (phi):", models[chosen]["beta"])
 
