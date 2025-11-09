@@ -92,3 +92,79 @@ def resample_linear(t_seg, v_seg, delta_s):
     v_grid = np.interp(t_grid, t_seg, v_seg)
     return t_grid.astype("int64"), v_grid.astype("float64")
 
+def build_ar_design_from_resampled(v_grid, p):
+    T = len(v_grid)
+    if T <= p:
+        return np.zeros((0, p), dtype="float64"), np.zeros((0,), dtype="float64")
+    X = np.zeros((T - p, p), dtype="float64")
+    y = np.zeros((T - p,), dtype="float64")
+    for i in range(p, T):
+        X[i - p, :] = v_grid[i - p : i][::-1]
+        y[i - p] = v_grid[i]
+        
+    return X, y
+
+def build_arx_design_irregular(t_seg, v_seg, p, include_dt_lags=True):
+    T = len(v_seg)
+    if T <= p:
+        q = p + (p if include_dt_lags else 0)
+        return np.zeros((0, q), dtype="float64"), np.zeros((0,), dtype="float64")
+    dt_seg = np.diff(t_seg, prepend=np.nan)
+    rows = []; targets = []
+    for i in range(p, T):
+        v_lags = v_seg[i - p : i][::-1]
+        if include_dt_lags:
+            dt_lags = dt_seg[i - p : i][::-1]
+            if np.isnan(dt_lags).any():
+                med = np.nanmedian(dt_seg[1:i]) if i > 1 else 0.0
+                dt_lags = np.where(np.isnan(dt_lags), (med if np.isfinite(med) else 0.0), dt_lags)
+            feat = np.concatenate([v_lags, dt_lags])
+        else:
+            feat = v_lags
+        rows.append(feat); targets.append(v_seg[i])
+    X = np.asarray(rows, dtype="float64")
+    y = np.asarray(targets, dtype="float64")
+    return X, y
+
+def ridge_fit(X, y, lam):
+    if X.shape[0] == 0:
+        return np.zeros((X.shape[1],), dtype="float64"), np.array([]), np.array([]), float("nan")
+    
+    print("dimension:",  X.shape)
+    XT = X.T
+    A = XT @ X + (0 if lam in (None, 0) else lam) * np.eye(X.shape[1])
+    b = XT @ y
+    beta = np.linalg.solve(A, b)
+    y_hat = X @ beta
+    eps = y - y_hat
+    mse = float(np.mean(eps**2))
+    print("dim_phi: ", beta.shape)
+    return beta, y_hat, eps, mse
+
+def evaluate_ar_pipeline(df_raw, vehicle_col, max_gap_include_s, resample, deltas, orders, lambdas, demean_per_segment=True, include_dt_lags=True):
+    results = []
+    models = {}
+    debug_pairs = []
+    if vehicle_col and vehicle_col in df_raw.columns:
+        groups = list(df_raw.groupby(vehicle_col))
+    else:
+        groups = [(None, df_raw)]
+    delta_list = deltas if resample else [None]
+    for delta in delta_list:
+        segs = []
+        for _, df_g in groups:
+            dfv = compute_velocity_mps(df_g)
+            raw_segs = split_segments_on_gaps(dfv["t"], dfv["v_mps"], dfv["dt_s"], max_gap_include_s)
+            for (t_seg, v_seg) in raw_segs:
+                if demean_per_segment and len(v_seg) > 0:
+                    v_seg = v_seg - np.nanmean(v_seg)
+                if resample:
+                    t_grid, v_grid = resample_linear(t_seg, v_seg, float(delta))
+                    if len(v_grid) >= 5:
+                        segs.append(("resampled", t_grid, v_grid))
+                        debug_pairs.append({"delta": float(delta), "t_raw": t_seg, "v_raw": v_seg, "t_grid": t_grid, "v_grid": v_grid})
+                else:
+                    if len(v_seg) >= 3:
+                        segs.append(("raw", t_seg, v_seg))
+
+
