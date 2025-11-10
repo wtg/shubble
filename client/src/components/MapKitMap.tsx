@@ -96,13 +96,11 @@ type MapKitMapProps = {
   generateRoutes?: boolean;
   selectedRoute?: string | null;
   setSelectedRoute?: (route: string | null) => void;
-  selectedStop?: string;
-  setSelectedStop?: (stop: string) => void;
 };
 
 // @ts-expect-error selectedRoutes is never used
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-export default function MapKitMap({ routeData, vehicles, generateRoutes = false, selectedRoute, setSelectedRoute, selectedStop, setSelectedStop }: MapKitMapProps) {
+export default function MapKitMap({ routeData, vehicles, generateRoutes = false, selectedRoute, setSelectedRoute }: MapKitMapProps) {
 
   const mapRef = useRef(null);
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -200,9 +198,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
           if (isDesktop) {
             // Desktop: handle schedule change
             const routeKey = e.overlay.routeKey;
-            const stopKey = e.overlay.stopKey;
             if (setSelectedRoute && routeKey) setSelectedRoute(routeKey);
-            if (setSelectedStop && stopKey) setSelectedStop(stopKey);
           }
         }
       });
