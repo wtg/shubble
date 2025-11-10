@@ -116,7 +116,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
   // source: https://developer.apple.com/documentation/mapkitjs/loading-the-latest-version-of-mapkit-js
   const setupMapKitJs = async () => {
     if (!window.mapkit || window.mapkit.loadedLibraries.length === 0) {
-      await new Promise(resolve => { window.initMapKit = resolve });
+      await new Promise(resolve => { window.initMapKit = () => resolve(null); });
       delete window.initMapKit;
     }
   };
@@ -352,7 +352,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
             return polyline;
           }
         ).filter(p => p !== null);
-        overlays.push(...routePolylines);
+        overlays.push(...routePolylines as mapkit.Overlay[]);
       }
     }
 
