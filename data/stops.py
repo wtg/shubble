@@ -1,5 +1,6 @@
 import json
 import math
+from pathlib import Path
 import numpy as np
 
 # --- Haversine Functions (Required by the class) ---
@@ -67,11 +68,15 @@ class Stops:
     """
     Handles loading, processing, and querying of bus route and stop data.
     """
-    # Load data at the class level so it's only done once.
-    with open('data/routes.json', 'r') as f:
+    # Resolve data files relative to this module so imports work from any CWD.
+    _BASE_DIR = Path(__file__).resolve().parent
+    _ROUTES_PATH = _BASE_DIR / 'routes.json'
+    _SCHEDULE_PATH = _BASE_DIR / 'schedule.json'
+
+    with _ROUTES_PATH.open('r', encoding='utf-8') as f:
         routes_data = json.load(f)
 
-    with open('data/schedule.json', 'r') as f:
+    with _SCHEDULE_PATH.open('r', encoding='utf-8') as f:
         schedule_data = json.load(f)
 
     # get active routes from schedule
@@ -87,6 +92,8 @@ class Stops:
     polylines = {}
     for route_name in active_routes:
         route = routes_data.get(route_name)
+        if not route:
+            continue
         polylines[route_name] = []
         for polyline in route.get('ROUTES', []):
             polylines[route_name].append(np.array(polyline))

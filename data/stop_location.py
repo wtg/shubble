@@ -1,14 +1,44 @@
+import matplotlib
+matplotlib.use('Agg')
+
+from pathlib import Path
+
 import pandas as pd
 import numpy as np
 from data.stops import Stops
 from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsRegressor
-from sklearn.ensemble import RandomForestRegressor  # <-- NEW: Added Random Forest
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error
-import json
 import matplotlib.pyplot as plt
 from data.get_distances import calculate_distances_for_route, load_json_file
 from sklearn.preprocessing import MinMaxScaler
+import gc
+
+DATA_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = DATA_DIR.parent
+ROUTES_JSON_PATH = DATA_DIR / 'routes.json'
+CUMULATIVE_JSON_PATH = DATA_DIR / 'cumulative_distances.json'
+DATASET_PATH = DATA_DIR / 'shubble_october.csv'
+PLOTS_DIR = PROJECT_ROOT / 'plots'
+
+_ROUTES_DATA_CACHE = None
+_CUMULATIVE_DATA_CACHE = None
+
+
+def _get_route_metadata():
+    """
+    Lazily load and cache the heavy route JSON payloads so they only need
+    to be deserialized once per process invocation.
+    """
+    global _ROUTES_DATA_CACHE, _CUMULATIVE_DATA_CACHE
+
+    if _ROUTES_DATA_CACHE is None:
+        _ROUTES_DATA_CACHE = load_json_file(ROUTES_JSON_PATH)
+    if _CUMULATIVE_DATA_CACHE is None:
+        _CUMULATIVE_DATA_CACHE = load_json_file(CUMULATIVE_JSON_PATH)
+
+    return _ROUTES_DATA_CACHE, _CUMULATIVE_DATA_CACHE
 
 def process_vehicle_data(df):
     """
@@ -25,20 +55,22 @@ def process_vehicle_data(df):
     Returns:
         tuple: (separated_dataframes, processed_df)
             - separated_dataframes (dict): A dictionary where keys are 
-              (route_name, polyline_index) and values are the
+              (route_name, segment_id) and values are the
               corresponding DataFrames.
             - processed_df (pd.DataFrame): The single, fully processed 
               DataFrame.
     """
     
     # 1. Apply expensive I/O operations (Stops module) ONCE.
-    # --- MODIFIED: Ensure data is sorted *first* for the ambiguity logic ---
     print("Initial sort by vehicle and time...")
     df.sort_values(by=['vehicle_id', 'timestamp'], inplace=True)
     df = _get_stop_and_route_info(df)
     
     # 2. Clean, filter, and sort the data.
     df = _clean_and_enrich_data(df)
+    
+    # --- NEW: Create temporal stop-to-stop segments ---
+    df = _create_segments(df)
     
     # 3. Engineer all new features.
     df = _create_features(df)
@@ -64,7 +96,6 @@ def _get_stop_and_route_info(df):
     threshold = 0.050  # 50 meters
     
     # --- NEW: Create last_point columns ---
-    # This assumes df is already sorted by vehicle_id, timestamp
     df['last_latitude'] = df.groupby('vehicle_id')['latitude'].shift(1)
     df['last_longitude'] = df.groupby('vehicle_id')['longitude'].shift(1)
     
@@ -106,7 +137,9 @@ def _clean_and_enrich_data(df):
     df['distance_to_route_point'] = df['route_info_tuple'].apply(lambda x: x[0])
     df['coordinates_on_route'] = df['route_info_tuple'].apply(lambda x: x[1])
     df['route_name'] = df['route_info_tuple'].apply(lambda x: x[2])
-    df['polyline_index'] = df['route_info_tuple'].apply(lambda x: x[3])
+    # We keep the original polyline_index as it might be a useful feature,
+    # but we will not use it for grouping.
+    df['polyline_index'] = df['route_info_tuple'].apply(lambda x: x[3]) 
     df['stop_name'] = df['stop_info_tuple'].apply(lambda x: x[1] if (isinstance(x, (list, tuple, np.ndarray)) and len(x) > 1) else None)
     
     # Standardize 'MOVING' status
@@ -119,12 +152,52 @@ def _clean_and_enrich_data(df):
     # Prune data before a specific start date.
     df = df[df['timestamp'] >= '2025-08-28'].copy()
     
-    # **Critical Step**: Sort by vehicle and time (redundant but safe)
-    df.sort_values(by=['vehicle_id', 'timestamp'], inplace=True)
+    # **Critical Step**: Sort by vehicle and time
+    # This sort is now essential for the segment logic
+    df.sort_values(by=['vehicle_id', 'route_name', 'timestamp'], inplace=True)
     
     # Clean up temporary columns
     df.drop(columns=['route_info_tuple', 'stop_info_tuple'], inplace=True)
     
+    return df
+
+def _create_segments(df):
+    """
+    Creates temporal stop-to-stop segment identifiers.
+    ...
+    """
+    print("Creating stop-to-stop segments...")
+    
+    # 1. Identify the last non-moving stop name
+    df['last_stop'] = df['stop_name'].where(df['stop_name'] != 'MOVING')
+    df['last_stop'] = df.groupby(['vehicle_id', 'route_name'])['last_stop'].ffill()
+
+    # 2. Identify the next non-moving stop name
+    df['next_stop'] = df['stop_name'].where(df['stop_name'] != 'MOVING')
+    df['next_stop'] = df.groupby(['vehicle_id', 'route_name'])['next_stop'].bfill()
+
+    # 3. Create the new segment_id
+    df['segment_id'] = 'AT_' + df['stop_name']
+    moving_mask = (df['stop_name'] == 'MOVING')
+    df.loc[moving_mask, 'segment_id'] = 'From_' + df['last_stop'] + '_To_' + df['next_stop']
+    
+    # --- NEW FIX ---
+    # 4. Re-classify noisy 'MOVING' segments (e.g., From_A_To_A)
+    # These are usually just GPS drift at a stop.
+    noisy_segment_mask = (
+        (df['stop_name'] == 'MOVING') &
+        (df['last_stop'] == df['next_stop']) &
+        (df['last_stop'].notna()) # Make sure it's not a NaN fill
+    )
+    # Re-label these as if they were 'AT_STOP'
+    df.loc[noisy_segment_mask, 'segment_id'] = 'AT_' + df['last_stop']
+    # --- END FIX ---
+
+    # 5. Clean up
+    df.dropna(subset=['last_stop', 'next_stop', 'segment_id'], inplace=True)
+    df.drop(columns=['last_stop', 'next_stop'], inplace=True)
+    
+    print("Segment creation complete.")
     return df
 
 def _create_features(df):
@@ -136,27 +209,24 @@ def _create_features(df):
     # 1. Create time-based features (ETA)
     df = _create_eta(df)
     
-    # 2. Prune outliers based on calculated ETA (e.g., > 30 min)
-    # Using 1800 seconds (30 min) as per your code.
-    # Also remove negative ETAs which can result from stale data
-    df = df[(df['ETA_seconds'] <= 1800) & (df['ETA_seconds'] >= 0)].copy()
+    # 2. Prune outliers based on calculated ETA (e.g., > 10 min)
+    df = df[(df['ETA_seconds'] <= 600) & (df['ETA_seconds'] >= 0)].copy()
     
-    # Print max/min ETA for verification and their rows
-    print(f"Max ETA after pruning: {df['ETA_seconds'].max():.2f} seconds")
-    print(f"Min ETA after pruning: {df['ETA_seconds'].min():.2f} seconds")
-    # print("Rows with Max ETA:")
-    # print(df[df['ETA_seconds'] == df['ETA_seconds'].max()][['vehicle_id', 'timestamp', 'ETA_seconds', 'stop_name', 'latitude', 'longitude', 'route_name', 'polyline_index', 'distance_to_route_point', 'coordinates_on_route']])
-    # print("Rows with Min ETA:")
-    # print(df[df['ETA_seconds'] == df['ETA_seconds'].min()][['vehicle_id', 'timestamp', 'ETA_seconds', 'stop_name', 'latitude', 'longitude']])
+    # Print max/min ETA for verification
+    if not df.empty:
+        print(f"Max ETA after pruning: {df['ETA_seconds'].max():.2f} seconds")
+        print(f"Min ETA after pruning: {df['ETA_seconds'].min():.2f} seconds")
+    else:
+        print("No data remaining after ETA pruning.")
+        return df
 
     # 3. Create time-based features (day of week, time of day)
     df = _create_time_features(df)
     
+    df = _create_distance_to_stop(df)
+    
     # 4. Create location-based features (lags)
     df = _create_lagged_features(df)
-    
-    # 5. Create distance-based features
-    df = _create_distance_to_stop(df)
     
     return df
 
@@ -171,19 +241,21 @@ def _create_eta(df):
     df['stop_arrival_time'] = df['timestamp'].where(df['stop_name'] != 'MOVING')
 
     # Identify the start of a new stop group.
+    # We must group by route as well, in case a vehicle switches routes
     is_new_stop_group = (
         (df['stop_name'] != df['stop_name'].shift()) | 
-        (df['vehicle_id'] != df['vehicle_id'].shift())
+        (df['vehicle_id'] != df['vehicle_id'].shift()) |
+        (df['route_name'] != df['route_name'].shift()) # Added route check
     )
     
     # Get the timestamp only for the *first* entry of a new stop
     df['next_stop_timestamp'] = df['stop_arrival_time'].where(is_new_stop_group)
 
-    # For each vehicle, shift the "next stop arrival time" up.
-    df['next_stop_timestamp'] = df.groupby('vehicle_id')['next_stop_timestamp'].shift(-1)
+    # For each vehicle/route, shift the "next stop arrival time" up.
+    df['next_stop_timestamp'] = df.groupby(['vehicle_id', 'route_name'])['next_stop_timestamp'].shift(-1)
 
     # Propagate the next stop time backward (backward fill).
-    df['next_stop_timestamp'] = df.groupby('vehicle_id')['next_stop_timestamp'].bfill()
+    df['next_stop_timestamp'] = df.groupby(['vehicle_id', 'route_name'])['next_stop_timestamp'].bfill()
 
     # Calculate ETA in seconds
     df['ETA_seconds'] = (df['next_stop_timestamp'] - df['timestamp']).dt.total_seconds()
@@ -200,13 +272,11 @@ def _create_time_features(df):
     """
     dt = df['timestamp'].dt
     
-    # --- FIX for timestamp_time_seconds ---
     seconds_in_day = 24 * 60 * 60
     time_seconds = dt.hour * 3600 + dt.minute * 60 + dt.second
     df['time_sin'] = np.sin(2 * np.pi * time_seconds / seconds_in_day)
     df['time_cos'] = np.cos(2 * np.pi * time_seconds / seconds_in_day)
 
-    # --- FIX for timestamp_day_of_week ---
     days_in_week = 7
     df['day_sin'] = np.sin(2 * np.pi * dt.dayofweek / days_in_week)
     df['day_cos'] = np.cos(2 * np.pi * dt.dayofweek / days_in_week)
@@ -215,20 +285,32 @@ def _create_time_features(df):
 
 def _create_lagged_features(df):
     """
-    Creates 6 new fields for the last 3 location points
-    and delta features for the most recent change.
+    Creates lagged features and deltas.
     Assumes df is sorted by ['vehicle_id', 'timestamp'].
     """
     
-    # Group by vehicle to prevent lagging data from one vehicle to another
-    grouped = df.groupby('vehicle_id')
+    # Group by vehicle/route to prevent lagging data across groups
+    grouped = df.groupby(['vehicle_id', 'route_name'])
     
-    for i in [1, 2, 3]:
+    # --- Create conditional distance lags ---
+    max_distance = df['distance_to_next_stop']
+    
+    for i in [1, 2, 3, 4]:
+        lagged_dist_0 = grouped['distance_to_next_stop'].shift(i)
+        lagged_dist_1 = grouped['distance_to_next_stop_1'].shift(i)
+        
+        condition = lagged_dist_0 > max_distance
+        current_lag_col = lagged_dist_0.where(condition, lagged_dist_1)
+        
+        df[f'distance_to_next_stop_t_minus_{i}'] = current_lag_col
+        max_distance = current_lag_col.where(current_lag_col.notna(), max_distance)
+        
+    # --- Create lat/lon lags ---
+    for i in [1, 2, 3, 4]:
         df[f'lat_t_minus_{i}'] = grouped['latitude'].shift(i)
         df[f'lon_t_minus_{i}'] = grouped['longitude'].shift(i)
-        
-    # --- NEW: Add Delta Features ---
-    # These explicitly state the most recent change in position
+
+    # --- Add Delta Features ---
     df['lat_delta_1'] = df['latitude'] - df['lat_t_minus_1']
     df['lon_delta_1'] = df['longitude'] - df['lon_t_minus_1']
         
@@ -236,90 +318,107 @@ def _create_lagged_features(df):
 
 def _create_distance_to_stop(df):
     """
-    Calculates the distance (e.g., meters) to the next stop.
+    Calculates the distance (e.g., meters) to the next two stops.
     Uses the external 'calculate_distances_for_route' function.
     """
     # Load route data ONCE
-    all_cumulative_data = load_json_file('data/cumulative_distances.json')
-    all_routes_data = load_json_file('data/routes.json')
+    all_routes_data, all_cumulative_data = _get_route_metadata()
 
     if all_cumulative_data is None or all_routes_data is None:
         print("Error: Could not load route data. Distances will be NaN.")
         df['distance_to_next_stop'] = np.nan
+        df['distance_to_next_stop_1'] = np.nan # Assign NaN to both
         return df
 
-    # This operation is row-wise and does not depend on sorting.
-    def get_dist(row):
+    def get_distances(row):
+        """
+        Gets the distance to the next stop (index 0) and the one after (index 1).
+        Returns a tuple (dist_0, dist_1).
+        """
         route_name = row['route_name']
         if route_name not in all_routes_data or route_name not in all_cumulative_data:
-            return None  # Or np.nan
+            return np.nan, np.nan # Return a tuple of NaNs
         
         try:
-            # Call the imported function with the correct route data for this row
             dist_list, _, _ = calculate_distances_for_route(
                 [row['latitude'], row['longitude']], 
                 route_name,
                 all_routes_data, 
                 all_cumulative_data
             )
-            # find_current_route_distance returns (results_list, current_dist, snap_dist)
-            # We want the distance to the *next* stop, which is the first item in the list.
+            
+            dist_0 = np.nan
+            dist_1 = np.nan
+            
             if dist_list:
-                return dist_list[0]['distance_m']
-            else:
-                return np.nan 
+                dist_0 = dist_list[0]['distance_m']
+                if len(dist_list) > 1:
+                    dist_1 = dist_list[1]['distance_m']
+            
+            return dist_0, dist_1
+        
         except Exception as e:
             print(f"Row error: {e}")
-            return np.nan
+            return np.nan, np.nan 
 
-    df['distance_to_next_stop'] = df.apply(get_dist, axis=1)
+    df[['distance_to_next_stop', 'distance_to_next_stop_1']] = df.apply(
+        get_distances, 
+        axis=1, 
+        result_type='expand'
+    )
+    
     return df
 
+# --- MODIFIED FUNCTION ---
 def _separate_dataframes(df):
     """
-    Groups the fully processed DataFrame by route and polyline index.
+    Groups the fully processed DataFrame by route and segment_id.
     """
-    print("Grouping data into separate DataFrames...")
+    print("Grouping data into separate DataFrames by segment...")
     separated_dataframes = {}
-    grouped = df.groupby(['route_name', 'polyline_index'])
     
-    for (route, poly_index), group_df in grouped:
+    # --- MODIFIED: Group by segment_id instead of polyline_index ---
+    grouped = df.groupby(['route_name', 'segment_id'])
+    
+    for (route, segment), group_df in grouped:
         # Create a copy to avoid SettingWithCopyWarning
-        separated_dataframes[(route, poly_index)] = group_df.copy()
+        separated_dataframes[(route, segment)] = group_df.copy()
         
     return separated_dataframes
  
+def _sanitize_filename(name):
+    """Removes invalid characters for a file name."""
+    name = str(name).replace(' ', '_').replace('(', '').replace(')', '').replace('-', '')
+    return "".join(c for c in name if c.isalnum() or c in ('_', '.')).rstrip()
+
 # --- MODIFIED FUNCTION ---
-def create_model(df, route_name, polyline_index, model_type='KNN'):
+def create_model(df, route_name, segment_id, model_type='KNN'):
     """
     Creates and evaluates a model for a specific subset of data.
+    
+    -- MODIFIED to use segment_id and remove redundant plots --
     
     Args:
         df (pd.DataFrame): The data subset to model.
         route_name (str): The name of the route for titles.
-        polyline_index (int): The polyline index for titles.
+        segment_id (str): The segment identifier (e.g., "From_A_To_B").
         model_type (str): 'KNN' or 'RF' (Random Forest).
     """
     
     # Drop rows with NaNs created by lagging features
     df_clean = df.dropna()
     
-    # --- MODIFIED: Updated feature list ---
     features = [
-        'latitude', 'longitude', 
-        'lat_t_minus_1', 'lon_t_minus_1', 
-        'lat_t_minus_2', 'lon_t_minus_2', 
-        'lat_t_minus_3', 'lon_t_minus_3',
-        'lat_delta_1', 'lon_delta_1',         # Added delta features
-        'distance_to_next_stop', 'speed_mph', 'heading_degrees', 
-        'time_sin', 'time_cos',               # Added cyclical features
-        'day_sin', 'day_cos'                  # Added cyclical features
+        'distance_to_next_stop_t_minus_1', 'distance_to_next_stop_t_minus_2', 'distance_to_next_stop_t_minus_3', 'distance_to_next_stop_t_minus_4',
+        'distance_to_next_stop',
+        'lat_delta_1', 'lon_delta_1',
+        'time_sin', 'time_cos', # Added cos back for completeness
+        'day_sin', 'day_cos'    # Added cos back for completeness
     ]
 
-    # Only use features that actually exist in the cleaned df
     available_features = [f for f in features if f in df_clean.columns]
     
-    if len(available_features) < 3: # Not enough features to model
+    if len(available_features) < 3: 
         print("Not enough valid features to create a model.")
         return
 
@@ -333,163 +432,189 @@ def create_model(df, route_name, polyline_index, model_type='KNN'):
         print("Not enough data to train the model after splitting.")
         return
 
-    # --- NEW: Model selection logic ---
+    # --- Model selection logic ---
     if model_type == 'KNN':
-        print(f"[{route_name} - {polyline_index}] Training KNeighborsRegressor...")
-        
-        # 1. Initialize and apply the scaler
+        print(f"[{route_name} - {segment_id}] Training KNeighborsRegressor...")
         scaler = MinMaxScaler()
         X_train_scaled = scaler.fit_transform(X_train)
         X_test_scaled = scaler.transform(X_test)
-        
-        # 2. Tuned KNN model
-        model = KNeighborsRegressor(n_neighbors=5, weights='distance')
-        
-        # 3. Fit and predict using SCALED data
+        model = KNeighborsRegressor(n_neighbors=3, weights='distance')
         model.fit(X_train_scaled, y_train)
         y_pred = model.predict(X_test_scaled)
 
     elif model_type == 'RF':
-        print(f"[{route_name} - {polyline_index}] Training RandomForestRegressor...")
-        
-        # 1. RF doesn't need scaling
+        print(f"[{route_name} - {segment_id}] Training RandomForestRegressor...")
         model = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1, oob_score=True)
-        
-        # 2. Fit and predict using ORIGINAL data
         model.fit(X_train, y_train)
         y_pred = model.predict(X_test)
         print(f"OOB Score: {model.oob_score_:.4f}")
 
     else:
         raise ValueError(f"Unknown model_type: {model_type}. Must be 'KNN' or 'RF'.")
-    # --------------------------------------------
 
     mse = mean_squared_error(y_test, y_pred)
     rmse = np.sqrt(mse)
     print(f"Model RMSE: {rmse:.2f} seconds")
     
-    # To print the example, you can still use the unscaled X_test
-    print(f"Example Prediction (unscaled features): \n{X_test.iloc[0].to_string()}")
-    print(f"Y-test: {y_test.iloc[0]:.0f}, Predicted: {y_pred[0]:.0f}")
-      
-    # --- PLOT 1: Original (All Data) ---
-    plot_title = f"{model_type} - {route_name} (Poly {polyline_index}) - Actual vs Predicted (Last 100)"
-    plt.figure(figsize=(10, 6))
-    plt.plot(y_test.iloc[-100:].values, label='Actual ETA (All)', marker='o')
-    plt.plot(y_pred[-100:], label='Predicted ETA (All)', marker='x')
+    if not X_test.empty:
+        print(f"Example Prediction (unscaled features): \n{X_test.iloc[0].to_string()}")
+        print(f"Y-test: {y_test.iloc[0]:.0f}, Predicted: {y_pred[0]:.0f}")
+        
+    # --- PLOT 1: All Data (which is now specific to the segment) ---
+    # --- MODIFIED: Use segment_id in title and filename ---
+    plot_title = f"{model_type} - {route_name}\n({segment_id})\nActual vs Predicted (Last 100)"
+    plt.figure(figsize=(10, 7)) # Made figure taller for new title
+    plt.plot(y_test.iloc[-100:].values, label='Actual ETA', marker='o')
+    plt.plot(y_pred[-100:], label='Predicted ETA', marker='x', linestyle='--')
     plt.xlabel('Sample Index') 
     plt.ylabel('ETA (seconds)')
     plt.title(plot_title)
     plt.legend()
     plt.grid()
-
-    # --- Logic to filter test data for new plots ---
-    test_stop_names = df_clean.loc[y_test.index, 'stop_name']
-    is_moving_mask = (test_stop_names == 'MOVING')
-    is_at_stop_mask = (test_stop_names != 'MOVING')
+    plt.tight_layout() # Adjust plot to prevent title overlap
     
-    y_test_moving = y_test[is_moving_mask]
-    y_test_at_stop = y_test[is_at_stop_mask]
-    y_pred_moving = y_pred[is_moving_mask.values]
-    y_pred_at_stop = y_pred[is_at_stop_mask.values]
-    
-    # --- PLOT 2: NEW (Moving Data Only) ---
-    if len(y_test_moving) > 0:
-        num_moving_samples = min(100, len(y_test_moving)) # Get up to 100 samples
-        plot_title = f"{model_type} - {route_name} (Poly {polyline_index}) - 'Moving' (Last {num_moving_samples})"
-        
-        plt.figure(figsize=(10, 6))
-        plt.plot(y_test_moving.iloc[-num_moving_samples:].values, label='Actual ETA (Moving)', marker='o', color='blue')
-        plt.plot(y_pred_moving[-num_moving_samples:], label='Predicted ETA (Moving)', marker='x', color='cyan', linestyle='--')
-        plt.xlabel('Sample Index') 
-        plt.ylabel('ETA (seconds)')
-        plt.title(plot_title)
-        plt.legend()
-        plt.grid()
-    else:
-        print("No 'MOVING' samples in test set to plot.")
+    filename = _sanitize_filename(f"1_all_data_{route_name}_{segment_id}")
+    plt.savefig(PLOTS_DIR / f'{filename}.png')
+    plt.close()
 
-    # --- PLOT 3: NEW (At Stop Data Only) ---
-    if len(y_test_at_stop) > 0:
-        num_at_stop_samples = min(100, len(y_test_at_stop)) # Get up to 100 samples
-        plot_title = f"{model_type} - {route_name} (Poly {polyline_index}) - 'At Stop' (Last {num_at_stop_samples})"
-        
-        plt.figure(figsize=(10, 6))
-        plt.plot(y_test_at_stop.iloc[-num_at_stop_samples:].values, label='Actual ETA (At Stop)', marker='o', color='red')
-        plt.plot(y_pred_at_stop[-num_at_stop_samples:], label='Predicted ETA (At Stop)', marker='x', color='magenta', linestyle='--')
-        plt.xlabel('Sample Index') 
-        plt.ylabel('ETA (seconds)')
-        plt.title(plot_title)
-        plt.legend()
-        plt.grid()
-    else:
-        print("No 'At Stop' samples in test set to plot.")
-        
+    # --- PLOTS 2 & 3 REMOVED ---
+    # The new grouping by segment_id makes these plots redundant.
+    # A group is now *either* 100% 'MOVING' or 100% 'AT_STOP'.
+    # Plot 1 now serves the purpose of both.
     
     # --- PLOT 4: Scatter Plot (At Stop vs. Moving) ---
+    # This plot is still useful to see the *location* of the data
+    # for this specific segment.
     df['at_stop'] = (df['stop_name'] != 'MOVING').astype(int)
-    plot_title = f"{route_name} (Poly {polyline_index}) - Vehicle Locations"
+    plot_title = f"{route_name}\n({segment_id}) - Vehicle Locations"
 
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(10, 7))
     plt.scatter(df['longitude'], df['latitude'], c=df['at_stop'], cmap='coolwarm', alpha=0.5, s=5)
     plt.colorbar(label='At Stop (1=Yes, 0=No)')
     plt.xlabel('Longitude')
     plt.ylabel('Latitude')
     plt.title(plot_title)
     plt.grid()
+    plt.tight_layout()
+
+    # --- MODIFIED: Use segment_id in filename ---
+    filename = _sanitize_filename(f"4_locations_{route_name}_{segment_id}")
+    plt.savefig(PLOTS_DIR / f'{filename}.png')
+    plt.close()
 
     print(f"Model Root Mean Squared Error (RMSE): {rmse:.2f} seconds")
-    # plt.show() is called once at the end of main()
     
 # --- MAIN FUNCTION (MODIFIED) ---
 def main():
     
-    # --- NEW: Set your model type here ---
     MODEL_TO_USE = 'RF'  # Options: 'KNN' or 'RF'
     
     print("hello")
     try:
-        with open('data/data2.csv', 'r') as f:
-            df = pd.read_csv(f)
+        with DATASET_PATH.open('r') as f:
+            df = pd.read_csv(f, nrows=200000)
+            
     except FileNotFoundError:
-        print("Error: 'data/data2.csv' not found.")
+        print(f"Error: '{DATASET_PATH}' not found.")
         return
         
     print(f"Original data columns: {df.columns.to_list()}")
-     
+        
+    print("Optimizing data types...")
+    df['latitude'] = df['latitude'].astype('float32')
+    df['longitude'] = df['longitude'].astype('float32')
+    df['speed_mph'] = df['speed_mph'].astype('float32')
+    df['heading_degrees'] = df['heading_degrees'].astype('float32')
+    df['vehicle_id'] = df['vehicle_id'].astype('category')
+    print("Data types optimized.")
+    
     separated_dataframes, processed_df = process_vehicle_data(df)
     
     print("\n--- Processing Complete ---")
     
     print(f"Created {len(separated_dataframes)} separate dataframes.")
-    print(f"Keys: {list(separated_dataframes.keys())}")
+    print(f"Segment Keys: {list(separated_dataframes.keys())}")
     
-    # Example: Print the head of the first separated dataframe
+    del processed_df
+    gc.collect() 
+    print("Freed memory by deleting full processed DataFrame.")
+    
     if separated_dataframes:
         first_key = list(separated_dataframes.keys())[0]
         print(f"\n--- Head of group {first_key} ---")
-        print(separated_dataframes[first_key].head())
-        # print(separated_dataframes[first_key][['address_id', 'address_name']] )
-        # print(separated_dataframes[first_key].columns.to_list())
+        print(separated_dataframes[first_key][['timestamp', 'stop_name', 'segment_id', 'ETA_seconds']].head())
             
-    print(f"\n--- Head of FULL processed DataFrame ---")
-    print(processed_df.head())
+    PLOTS_DIR.mkdir(parents=True, exist_ok=True)
     
+    # --- NEW: Get route stop lists for validation ---
+    # This global cache was populated by process_vehicle_data()
+    global _ROUTES_DATA_CACHE 
+    if _ROUTES_DATA_CACHE is None:
+        print("ERROR: Route cache is not populated. Cannot validate segments.")
+        # Fallback: create an empty dict to avoid crashing
+        route_stop_lists = {}
+    else:
+        # Create a simple lookup: { route_name: [STOP1, STOP2, ...] }
+        route_stop_lists = {
+            route: data["STOPS"] 
+            for route, data in _ROUTES_DATA_CACHE.items() 
+            if "STOPS" in data
+        }
+    # --- END NEW ---
     
-    # --- NEW: Loop and create a model for each group ---
+    # --- MODIFIED: Loop over segment_id ---
     print("\n--- Creating Models for Each Group ---")
-    for (route_name, poly_index), group_df in separated_dataframes.items():
-        print(f"\n--- Modeling for Route: {route_name}, Polyline Index: {poly_index} ---")
+    for (route_name, segment_id), group_df in separated_dataframes.items():
+        print(f"\n--- Modeling for Route: {route_name}, Segment: {segment_id} ---")
         
-        # Add a check to ensure there's enough data to model
-        if len(group_df) > 50: # Arbitrary threshold for train/test split
-            create_model(group_df, route_name, poly_index, model_type=MODEL_TO_USE)
+        # --- FILTER 1: Skip 'AT_STOP' segments ---
+        if segment_id.startswith('AT_'):
+            print("Skipping model (Segment is 'AT_STOP')")
+            continue
+        
+        # --- FILTER 2: Skip 'From_A_To_A' noisy segments ---
+        try:
+            parts = segment_id.split('_')
+            if parts[0] == 'From' and parts[1] == parts[3]:
+                print(f"Skipping model (Segment start/end is the same: {segment_id})")
+                continue
+        except IndexError:
+            pass # Not a 'From_To' segment, let it pass
+
+        # --- NEW FILTER 3: Skip 'From_A_To_C' (skipped stop) segments ---
+        if segment_id.startswith('From_') and route_name in route_stop_lists:
+            try:
+                parts = segment_id.split('_')
+                from_stop = parts[1]
+                to_stop = parts[3]
+                
+                stop_list = route_stop_lists[route_name]
+                
+                # Check if both stops are in the official route list
+                if from_stop in stop_list and to_stop in stop_list:
+                    from_index = stop_list.index(from_stop)
+                    to_index = stop_list.index(to_stop)
+                    
+                    # Check if the 'to' stop is more than 1 stop after the 'from' stop
+                    if (to_index - from_index) > 1:
+                        print(f"Skipping model (Segment skips stops. From: {from_stop} (idx {from_index}) "
+                              f"To: {to_stop} (idx {to_index}))")
+                        continue
+                
+            except (IndexError, ValueError) as e:
+                # IndexError: segment_id not in 'From_X_To_Y' format
+                # ValueError: stop_name not in the official list
+                print(f"Warning: Could not validate segment '{segment_id}' for route '{route_name}'. Error: {e}")
+                # We'll let it pass and try to model it anyway.
+                pass
+        # --- END NEW FILTER ---
+
+        if len(group_df) > 50:
+            create_model(group_df, route_name, segment_id, model_type=MODEL_TO_USE)
         else:
             print(f"Skipping model (not enough data: {len(group_df)} rows)")
     
-    # --- NEW: Show all plots at the very end ---
-    print("\nDisplaying all model plots...")
-    plt.show()
+    print(f"\nAll plots have been saved to '{PLOTS_DIR}' directory.")
 
 if __name__ == '__main__':
     main()

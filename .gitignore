@@ -13,3 +13,5 @@ venv/
 
 **/data.csv
 **/data2.csv
+plots/
+data/shubble_october.csv
