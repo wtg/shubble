@@ -220,13 +220,6 @@ def data_today():
         )
     ).order_by(VehicleLocation.timestamp.asc()).all()
 
-    events_today = db.session.query(GeofenceEvent).filter(
-        and_(
-            GeofenceEvent.event_time >= start_of_day,
-            GeofenceEvent.event_time <= now
-        )
-    ).order_by(GeofenceEvent.event_time.asc()).all()
-
     locations_today_dict = {}
     shuttle_state = {} # helper, {vehicle_id -> string state}
     shuttle_prev = {} # helper, {vehicle_id -> [datetime time_of_day, prev_latitude, prev_longitude]}
@@ -277,7 +270,7 @@ def data_today():
         else:
             # to update: technically shouldn't subtract lat and lon
             # threshold of 0.00008 determined from \shubble\test-server\server.py: mock_feed()
-            if (abs(location.latitude - shuttle_prev[location.vehicle_id][1]) < 0.00008) and (abs(location.longitude - shuttle_prev[location.vehicle_id][2]) < 0.00008):
+            if (abs(location.latitude - shuttle_prev[location.vehicle_id][1]) < 0.002) and (abs(location.longitude - shuttle_prev[location.vehicle_id][2]) < 0.002):
                 if (location.timestamp - shuttle_prev[location.vehicle_id][0]).total_seconds() > 300:
                     _stopped_for_5_minutes = True
             else:
@@ -302,7 +295,7 @@ def data_today():
         # if - entering student union from loop
         # elif - distance > 0.0002 from nearest route (polyline)
         # elif - shuttle been stopped for > 5 minutes
-        elif (shuttle_state[location.vehicle_id] == "loop" and _at_stop[1] == "STUDENT_UNION") or (_closest_point[0] is not None and _closest_point[0] > 0.0002) or (_stopped_for_5_minutes):
+        elif (shuttle_state[location.vehicle_id] == "loop" and _at_stop[1] == "STUDENT_UNION") or (_closest_point[0] is not None and _closest_point[0] > 0.2) or (_stopped_for_5_minutes):
             # end loop
             locations_today_dict[location.vehicle_id]["loops"][-1]["end"] = _timestamp
             shuttle_state[location.vehicle_id] = "break"
