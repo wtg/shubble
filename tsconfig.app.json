@@ -22,7 +22,7 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
-    "types": ["vite/client"],
+    "types": ["vite/client", "./src/ts/types/mapkit.d.ts"],
     "typeRoots": [
       "node_modules/@types"
     ]
