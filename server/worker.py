@@ -64,7 +64,7 @@ def update_locations(app):
     headers = {'Accept': 'application/json'}
     # Determine API URL based on environment
     if app.config['ENV'] == 'development':
-        url = 'http://localhost:4000/fleet/vehicles/stats/feed'
+        url = 'http://localhost:4000/fleet/vehicles/stats'
     else:
         api_key = os.environ.get('API_KEY')
         if not api_key:
