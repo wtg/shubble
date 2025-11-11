@@ -147,8 +147,8 @@ function App() {
         </label>
       </div>
 
+      <h3>JSON Test Case Executor</h3>
       <div className="test-container">
-        <p><strong>JSON Test Case Executor</strong></p>
         <input type="file" accept=".json" onChange={uploadTest}></input>
         <button onClick={stopTest}>
           Stop Test

@@ -1,50 +1,66 @@
 import * as api from "./api.js";
 import { STATES, warnUser, assertOk } from "./utils.js";
 
-let isRunning = false;
 let getShuttles = null;
+let controller = null;
 const eventChains = new Map();
 
+class CancelTest extends Error {
+    constructor() {
+        super();
+    }
+}
+
 /*
-Normal run: all chains resolve, promise.all resolves
-User stop: queued tasks check isRunning and resolve silently, promise.all resolves
-Any shuttle error: test fails. error task throws, promise.all throws, further errors ignored
+Normal run: all chains resolve, promise.all resolves, test succeeds
+User stop: first task to see the abort throws, promise.all throws, test stops nicely
+Any event error: first task to throw throws, promise.all throws, further errors ignored
+buildEventChains error: gate prevents earlier promises from running, and the map is wiped safely
 */
 export async function startTest(testData) {
-    if (isRunning) {
+    if (controller && !controller.signal.aborted) {
         warnUser("Test already running");
         return;
     }
-    isRunning = true;
+
+    controller = new AbortController();
+    let openGate;
+    const gate = new Promise(resolve => { openGate = resolve; });
     console.log("Started automated test");
 
     try {
-        buildEventChains(testData);
+        buildEventChains(testData, gate);
     } catch (err) {
         warnUser(err);
-        isRunning = false;
+        console.log("Error building shuttle event chains");
         eventChains.clear();
+        controller = null;
         return;
     }
     console.log("Built shuttle event chains", eventChains);
 
     try {
         // concurrently execute all shuttle event chains
+        openGate();
         await Promise.all([...eventChains.values()]);
         console.log("Test finished successfully");
     } catch (err) {
-        warnUser(err);
-        console.log("Test failed");
+        if (err instanceof CancelTest) {
+            console.log("Test stopped successfully");
+        } else {
+            warnUser(err);
+            console.log("Test failed");
+        }
     } finally {
-        isRunning = false;
         eventChains.clear();
+        controller = null;
     }
 }
 
-function buildEventChains(testData) {
+function buildEventChains(testData, gate) {
     for (const shuttle of testData.shuttles) {
         // queue addShuttle first, before the test case events
-        enqueue(shuttle.id, addShuttle);
+        enqueue(shuttle.id, addShuttle, gate);
         let lastEvt = null;
         for (const evt of shuttle.events) {
             if (!Object.values(STATES).includes(evt.type)) {
@@ -58,25 +74,15 @@ function buildEventChains(testData) {
     }
 }
 
-function enqueue(shuttleId, task) {
-    if (!isRunning) {
-        throw new Error("enqueue() called while test is not running");
-    }
-    const current = eventChains.get(shuttleId) ?? Promise.resolve();
-    const next = current.then(async () => {
-        if (isRunning) {
-            try {
-                await task();
-            } catch (err) {
-                isRunning = false;
-                throw err;
-            }
-        }
-    });
+function enqueue(shuttleId, task, gate) {
+    const current = eventChains.get(shuttleId) ?? gate;
+    const next = current.then(() => task());
     eventChains.set(shuttleId, next);
 }
 
 async function executeEvent(id, evt, lastEvt) {
+    throwIfAborted();
+
     // if the shuttle was just added, verify it's there
     if (lastEvt === null) {
         await retryUntil(() => findShuttle(id) !== undefined);
@@ -96,7 +102,7 @@ async function executeEvent(id, evt, lastEvt) {
 
     // wait until the event finishes before returning and resolving the event's promise
     if (evt.type === STATES.WAITING || evt.type === STATES.ON_BREAK) {
-        await new Promise(resolve => setTimeout(resolve, evt.duration * 1000));
+        await sleep(evt.duration * 1000);
     } else {
         // 1 sec interval, 10 min timeout. no event should take longer than 10 minutes
         await waitUntil(
@@ -106,19 +112,20 @@ async function executeEvent(id, evt, lastEvt) {
     console.log(`shuttle ${id} completed event`, evt);
 }
 
-// check that fn returns true within a limited number of retries
+// check that fn returns true within some number of retries
 async function retryUntil(fn, tries = 4, interval = 1000) {
     for (let i = 0; i < tries; i++) {
-        await new Promise(resolve => setTimeout(resolve, interval));
+        await sleep(interval);
         if (fn()) return;
     }
     throw new Error(`retry() failed on ${fn}`);
 }
 
+// check that fn returns true within some timeout
 async function waitUntil(fn, interval, timeout) {
     const start = Date.now();
-    while (isRunning) {
-        await new Promise(resolve => setTimeout(resolve, interval))
+    while (true) {
+        await sleep(interval);
         if (Date.now() - start > timeout) {
             throw new Error("Timeout waiting for condition");
         }
@@ -126,13 +133,52 @@ async function waitUntil(fn, interval, timeout) {
     }
 }
 
-function findShuttle(id) {
-    return getShuttles().find(s => s.id === id);
+// abortable sleep function
+function sleep(delay) {
+    return new Promise((resolve, reject) => {
+        let timer;
+
+        const onAbort = () => {
+            cleanup();
+            reject(new CancelTest());
+        };
+
+        const cleanup = () => {
+            clearTimeout(timer);
+            controller.signal.removeEventListener("abort", onAbort);
+        };
+
+        // attach the abort listener first
+        controller.signal.addEventListener("abort", onAbort);
+
+        // controller could've aborted before the listener is attached
+        if (controller.signal.aborted) {
+            onAbort();
+            return;
+        }
+
+        // only then start the timeout
+        timer = setTimeout(() => {
+            cleanup();
+            resolve();
+        }, delay);
+    });
 }
 
-// in-execution promises will cancel their tasks and resolve silently
+function throwIfAborted() {
+    if (controller.signal.aborted) {
+        throw new CancelTest();
+    }
+}
+
 export function stopTest() {
-    isRunning = false;
+    if (controller) {
+        controller.abort();
+    }
+}
+
+function findShuttle(id) {
+    return getShuttles().find(s => s.id === id);
 }
 
 export function setGetShuttles(func) {
@@ -140,14 +186,12 @@ export function setGetShuttles(func) {
 }
 
 // api call wrappers
-async function addShuttle() {
-    if (isRunning) {
-        return api.addShuttle().then(assertOk);
-    }
+function addShuttle() {
+    throwIfAborted();
+    return api.addShuttle().then(assertOk);
 }
 
-async function setNextState(shuttleId, state) {
-    if (isRunning) {
-        return api.setNextState(shuttleId, state).then(assertOk);
-    }
+function setNextState(shuttleId, state) {
+    throwIfAborted();
+    return api.setNextState(shuttleId, state).then(assertOk);
 }
