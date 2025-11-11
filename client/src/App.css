@@ -175,12 +175,3 @@ footer {
   text-decoration: none; /* remove underline */
 }
 
-.site-title:hover {
-  color: var(--text-color);
-  text-decoration: none; /* keep no-underline on hover */
-}
-
-.site-title:focus {
-  outline: 3px solid rgba(0,0,0,0.12);
-  outline-offset: 3px;
-}
