@@ -41,18 +41,11 @@ function App() {
     await api.deleteEvents(false);
     setSelectedId(null);
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      let test;
-      try {
-        test = JSON.parse(e.target.result);
-      } catch (err) {
-        console.error(err);
-        return;
-      }
-      startTest(test);
-    }
-    reader.readAsText(file);
+    const text = await file.text();
+    const json = JSON.parse(text);
+    await startTest(json);
+    // reset the chosen file after the test finishes
+    event.target.value = "";
   };
 
   // pass getShuttles as a stable function
