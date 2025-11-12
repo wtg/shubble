@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import * as api from "./api.js";
 import { STATES } from "./utils.js";
-import { startTest, stopTest, setGetShuttles } from "./AutoTest.js";
+import Tester from "./AutoTest.js";
 import "./App.css";
 
 function App() {
@@ -12,6 +12,12 @@ function App() {
   const [keepShuttles, setKeepShuttles] = useState(false);
   const shuttlesRef = useRef([]);
   const getShuttles = useCallback(() => shuttlesRef.current, []);
+  const testerRef = useRef(null);
+
+  if (!testerRef.current) {
+    testerRef.current = Tester();
+  }
+  const tester = testerRef.current;
 
   // call api to get shuttles, then update the frontend's representation
   const updateShuttles = async () => {
@@ -43,14 +49,14 @@ function App() {
 
     const text = await file.text();
     const json = JSON.parse(text);
-    await startTest(json);
+    await tester.startTest(json);
     // reset the chosen file after the test finishes
     event.target.value = "";
   };
 
   // pass getShuttles as a stable function
   useEffect(() => { shuttlesRef.current = shuttles; }, [shuttles]);
-  useEffect(() => { setGetShuttles(getShuttles); }, []);
+  useEffect(() => { tester.setGetShuttles(getShuttles); }, []);
 
   useEffect(() => {
     updateEvents();
@@ -143,7 +149,7 @@ function App() {
       <h3>JSON Test Case Executor</h3>
       <div className="test-container">
         <input type="file" accept=".json" onChange={uploadTest}></input>
-        <button onClick={stopTest}>
+        <button onClick={tester.stopTest}>
           Stop Test
         </button>
       </div>

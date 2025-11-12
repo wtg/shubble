@@ -8,6 +8,12 @@ export const STATES = Object.freeze({
     EXITING: "exiting"
 });
 
+export class TestCancel extends Error {
+    constructor() {
+        super();
+    }
+}
+
 // TODO: replace console errors with UI alerts in App.jsx
 export function warnUser(e) {
     console.error(e);
