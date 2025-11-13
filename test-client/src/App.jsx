@@ -117,7 +117,7 @@ function App() {
                 key={state}
                 disabled={selected.next_state === state}
                 onClick={(() => {
-                  if (selected) api.setNextState(state);
+                  if (selected) api.setNextState(selected.id, state);
                 })}
               >
                 {state}

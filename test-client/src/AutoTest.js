@@ -48,7 +48,7 @@ export default function Tester(getShuttlesFn) {
                 // if user stopped, controller already aborted. other tasks will check and throw
                 console.log("Test stopped successfully");
             } else {
-                // else, an error happened. need to abort now so that other tasks will check and throw
+                // else, an error happened. abort now so that other tasks will check and throw
                 controller.abort();
                 warnUser(err);
                 console.log("Test failed");
@@ -63,7 +63,7 @@ export default function Tester(getShuttlesFn) {
         const VALID_STATES = new Set(Object.values(STATES));
         for (const shuttle of testData.shuttles) {
             // queue addShuttle first, before the test case events
-            enqueue(shuttle.id, addShuttle, [], gate);
+            enqueue(shuttle.id, makeApiCall, [api.addShuttle], gate);
             let lastEvt = null;
             for (const evt of shuttle.events) {
                 if (!VALID_STATES.has(evt.type)) {
@@ -84,17 +84,17 @@ export default function Tester(getShuttlesFn) {
     }
 
     // at the boundary of every async operation, this function implicitly checks for
-    // controller.aborted through sleep(). if aborted, the awaits will throw
+    // controller.aborted. if aborted, the awaits will throw
     async function executeEvent(id, evt, lastEvt) {
         throwIfAborted();
 
         // if the shuttle was just added, verify it's there
         if (lastEvt === null) {
-            await retryUntil(() => findShuttle(id) !== undefined);
+            await waitUntil(() => findShuttle(id) !== undefined, 1000, 10000);
         }
 
         // request a state change
-        await setNextState(id, evt.type);
+        await makeApiCall(api.setNextState, id, evt.type);
         console.log(`shuttle ${id} set next_state to`, evt);
 
         // verify that the event started (assumes that the last event finished and cannot block)
@@ -115,15 +115,6 @@ export default function Tester(getShuttlesFn) {
             1000, 600000);
         }
         console.log(`shuttle ${id} completed event`, evt);
-    }
-
-    // check that fn returns true within some number of retries
-    async function retryUntil(fn, tries = 5, interval = 1000) {
-        for (let i = 0; i < tries; i++) {
-            await sleep(interval);
-            if (fn()) return;
-        }
-        throw new Error(`retry() failed on ${fn}`);
     }
 
     // check that fn returns true within some timeout
@@ -181,16 +172,19 @@ export default function Tester(getShuttlesFn) {
         }
     }
 
-    // api call wrappers
-    // TODO: make api calls abortable by passing in controller.signal
-    function addShuttle() {
+    // wrapper for abortable api calls
+    async function makeApiCall(apiFn, ...params) {
         throwIfAborted();
-        return api.addShuttle().then(assertOk);
-    }
-
-    function setNextState(shuttleId, state) {
-        throwIfAborted();
-        return api.setNextState(shuttleId, state).then(assertOk);
+        try {
+            const res = await apiFn(...params, controller.signal);
+            return assertOk(res);
+        } catch (err) {
+            if (err.name === "AbortError") {
+                // if the call aborted, convert to TestCancel so it's caught properly
+                throw new TestCancel();
+            }
+            throw err;
+        }
     }
 
     return { startTest, stopTest };
