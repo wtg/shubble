@@ -1,10 +1,13 @@
 import * as api from "./api.js";
 import { STATES, TestCancel, warnUser, assertOk } from "./utils.js";
 
-export default function Tester() {
-    let getShuttles = null;
+export default function Tester(getShuttlesFn) {
+    let getShuttles = getShuttlesFn;
     let controller = null;
     const eventChains = new Map();
+
+    const isRunning = () => controller && !controller.signal.aborted;
+    const findShuttle = (id) => getShuttles().find(s => s.id === id);
 
     /*
     Normal run: all chains resolve, promise.all resolves, test succeeds
@@ -13,7 +16,7 @@ export default function Tester() {
     buildEventChains error: gate prevents earlier promises from running, and the map is wiped safely
     */
     async function startTest(testData) {
-        if (controller && !controller.signal.aborted) {
+        if (isRunning()) {
             warnUser("Test already running");
             return;
         }
@@ -40,9 +43,13 @@ export default function Tester() {
             await Promise.all([...eventChains.values()]);
             console.log("Test finished successfully");
         } catch (err) {
+            // only the first task that throws will be caught, promise.all ignores the rest
             if (err instanceof TestCancel) {
+                // if user stopped, controller already aborted. other tasks will check and throw
                 console.log("Test stopped successfully");
             } else {
+                // else, an error happened. need to abort now so that other tasks will check and throw
+                controller.abort();
                 warnUser(err);
                 console.log("Test failed");
             }
@@ -76,6 +83,8 @@ export default function Tester() {
         eventChains.set(shuttleId, next);
     }
 
+    // at the boundary of every async operation, this function implicitly checks for
+    // controller.aborted through sleep(). if aborted, the awaits will throw
     async function executeEvent(id, evt, lastEvt) {
         throwIfAborted();
 
@@ -86,21 +95,21 @@ export default function Tester() {
 
         // request a state change
         await setNextState(id, evt.type);
-        console.log(`shuttle ${id} set next_state to`, evt)
+        console.log(`shuttle ${id} set next_state to`, evt);
 
         // verify that the event started (assumes that the last event finished and cannot block)
-        await retryUntil(() => {
+        await waitUntil(() => {
             const shuttle = findShuttle(id);
             return shuttle.state === evt.type ||
                 (shuttle.state === STATES.WAITING && evt.type === STATES.ON_BREAK);
-        });
+        }, 1000, 10000);
         console.log(`shuttle ${id} started event`, evt);
 
         // wait until the event finishes before returning and resolving the event's promise
         if (evt.type === STATES.WAITING || evt.type === STATES.ON_BREAK) {
             await sleep(evt.duration * 1000);
         } else {
-            // 1 sec interval, 10 min timeout. no event should take longer than 10 minutes
+            // 1 sec interval, 10 min timeout, no event should take longer than 10 minutes
             await waitUntil(
                 () => findShuttle(id).state === STATES.WAITING,
             1000, 600000);
@@ -122,6 +131,7 @@ export default function Tester() {
         const start = Date.now();
         while (true) {
             await sleep(interval);
+            // probably misses the last check due to processing overhead, but not a big deal
             if (Date.now() - start > timeout) {
                 throw new Error(`timeout waiting for condition ${fn}`);
             }
@@ -151,7 +161,6 @@ export default function Tester() {
                 onAbort();
                 return;
             }
-
             // only then start the timeout
             timer = setTimeout(() => {
                 cleanup();
@@ -160,27 +169,20 @@ export default function Tester() {
         });
     }
 
-    function throwIfAborted() {
-        if (controller.signal.aborted) {
-            throw new TestCancel();
-        }
-    }
-
     function stopTest() {
         if (controller) {
             controller.abort();
         }
     }
 
-    function findShuttle(id) {
-        return getShuttles().find(s => s.id === id);
-    }
-
-    function setGetShuttles(func) {
-        getShuttles = func;
+    function throwIfAborted() {
+        if (!isRunning()) {
+            throw new TestCancel();
+        }
     }
 
     // api call wrappers
+    // TODO: make api calls abortable by passing in controller.signal
     function addShuttle() {
         throwIfAborted();
         return api.addShuttle().then(assertOk);
@@ -191,5 +193,5 @@ export default function Tester() {
         return api.setNextState(shuttleId, state).then(assertOk);
     }
 
-    return { startTest, stopTest, setGetShuttles };
+    return { startTest, stopTest };
 }

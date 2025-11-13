@@ -15,7 +15,7 @@ function App() {
   const testerRef = useRef(null);
 
   if (!testerRef.current) {
-    testerRef.current = Tester();
+    testerRef.current = Tester(getShuttles);
   }
   const tester = testerRef.current;
 
@@ -54,9 +54,7 @@ function App() {
     event.target.value = "";
   };
 
-  // pass getShuttles as a stable function
   useEffect(() => { shuttlesRef.current = shuttles; }, [shuttles]);
-  useEffect(() => { tester.setGetShuttles(getShuttles); }, []);
 
   useEffect(() => {
     updateEvents();
