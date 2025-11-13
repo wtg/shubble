@@ -4,7 +4,12 @@ import React from "react";
  * Generates a shuttle SVG icon with dynamic route color.
  * Used by the map annotations.
  */
-const ShuttleIcon = ({ color = "#444444", size = 25 }) => (
+interface ShuttleIconProps {
+  color?: string;
+  size?: number;
+}
+
+const ShuttleIcon: React.FC<ShuttleIconProps> = ({ color = "#444444", size = 25 }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     width={size}
