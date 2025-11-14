@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState } from "react";
+import type { ShuttleRouteData, ShuttleStopData } from "../ts/types/route";
 import '../styles/MapKitMap.css';
+import type { VehicleInformationMap } from "../ts/types/vehicleLocation";
+import type { Route } from "../ts/types/schedule";
+import { log } from "../ts/logger";
 
-async function generateRoutePolylines(updatedRouteData) {
+async function generateRoutePolylines(updatedRouteData: ShuttleRouteData) {
   // Use MapKit Directions API to generate polylines for each route segment
-  const directions = new window.mapkit.Directions();
+  const directions = new mapkit.Directions();
 
   for (const [routeName, routeInfo] of Object.entries(updatedRouteData)) {
     const polyStops = routeInfo.POLYLINE_STOPS || [];
@@ -20,16 +24,16 @@ async function generateRoutePolylines(updatedRouteData) {
       // Get origin and destination stops
       const originStop = polyStops[i];
       const destStop = polyStops[i + 1];
-      const originCoords = routeInfo[originStop]?.COORDINATES;
-      const destCoords = routeInfo[destStop]?.COORDINATES;
+      const originCoords = (routeInfo[originStop] as ShuttleStopData)?.COORDINATES;
+      const destCoords = (routeInfo[destStop] as ShuttleStopData)?.COORDINATES;
       if (!originCoords || !destCoords) continue;
 
       // Fetch segment polyline
       const segment = await new Promise((resolve) => {
         directions.route(
           {
-            origin: new window.mapkit.Coordinate(originCoords[0], originCoords[1]),
-            destination: new window.mapkit.Coordinate(destCoords[0], destCoords[1]),
+            origin: new mapkit.Coordinate(originCoords[0], originCoords[1]),
+            destination: new mapkit.Coordinate(destCoords[0], destCoords[1]),
           },
           (error, data) => {
             if (error) {
@@ -39,14 +43,14 @@ async function generateRoutePolylines(updatedRouteData) {
             }
             try {
               const coords = data.routes[0].polyline.points.map(pt => [pt.latitude, pt.longitude]);
-              resolve(coords);
+              resolve(coords as [number, number][]);
             } catch (e) {
               console.error(`Unexpected response parsing for ${routeName} segment ${originStop}→${destStop}:`, e);
               resolve([]);
             }
           }
         );
-      });
+      }) as [number, number][];
 
       // Add to the current real stop segment
       if (segment.length > 0) {
@@ -67,7 +71,7 @@ async function generateRoutePolylines(updatedRouteData) {
   }
 
   // Trigger download
-  function downloadJSON(data, filename = 'routeData.json') {
+  function downloadJSON(data: ShuttleRouteData, filename = 'routeData.json') {
     const jsonStr = JSON.stringify(data, null, 2);
     const blob = new Blob([jsonStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -86,21 +90,31 @@ async function generateRoutePolylines(updatedRouteData) {
   return updatedRouteData;
 }
 
-export default function MapKitMap({ routeData, vehicles, generateRoutes = false, selectedRoute, setSelectedRoute, selectedStop, setSelectedStop }) {
+type MapKitMapProps = {
+  routeData: ShuttleRouteData | null;
+  vehicles: VehicleInformationMap | null;
+  generateRoutes?: boolean;
+  selectedRoute?: string | null;
+  setSelectedRoute?: (route: string | null) => void;
+};
+
+// @ts-expect-error selectedRoutes is never used
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export default function MapKitMap({ routeData, vehicles, generateRoutes = false, selectedRoute, setSelectedRoute }: MapKitMapProps) {
 
   const mapRef = useRef(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const token = import.meta.env.VITE_MAPKIT_KEY;
-  const [map, setMap] = useState(null);
-  const vehicleOverlays = useRef({});
+  const [map, setMap] = useState<(mapkit.Map | null)>(null);
+  const vehicleOverlays = useRef<Record<string, mapkit.MarkerAnnotation>>({});
   const circleWidth = 15;
-  const selectedMarkerRef = useRef(null);
-
+  const selectedMarkerRef = useRef<mapkit.MarkerAnnotation | null>(null);
+  const overlays: mapkit.Overlay[] = [];
 
   // source: https://developer.apple.com/documentation/mapkitjs/loading-the-latest-version-of-mapkit-js
   const setupMapKitJs = async () => {
     if (!window.mapkit || window.mapkit.loadedLibraries.length === 0) {
-      await new Promise(resolve => { window.initMapKit = resolve });
+      await new Promise(resolve => { window.initMapKit = () => resolve(null); });
       delete window.initMapKit;
     }
   };
@@ -110,7 +124,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
     const mapkitScript = async () => {
       // load the MapKit JS library
       await setupMapKitJs();
-      window.mapkit.init({
+      mapkit.init({
         authorizationCallback: (done) => {
           done(token);
         },
@@ -125,9 +139,9 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
     if (mapLoaded) {
 
       // center on RPI
-      const center = new window.mapkit.Coordinate(42.730216326401114, -73.67568961656735);
-      const span = new window.mapkit.CoordinateSpan(0.02, 0.005);
-      const region = new window.mapkit.CoordinateRegion(center, span);
+      const center = new mapkit.Coordinate(42.730216, -73.675690);
+      const span = new mapkit.CoordinateSpan(0.02, 0.005);
+      const region = new mapkit.CoordinateRegion(center, span);
 
       const mapOptions = {
         center: center,
@@ -141,27 +155,27 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
       };
 
       // create the map
-      const thisMap = new window.mapkit.Map(mapRef.current, mapOptions);
+      const thisMap = new mapkit.Map(mapRef.current!, mapOptions);
       // set zoom and boundary limits
       thisMap.setCameraZoomRangeAnimated(
-        new window.mapkit.CameraZoomRange(200, 3000),
+        new mapkit.CameraZoomRange(200, 3000),
         false,
       );
       thisMap.setCameraBoundaryAnimated(
-        new window.mapkit.CoordinateRegion(
+        new mapkit.CoordinateRegion(
           center,
-          new window.mapkit.CoordinateSpan(0.02, 0.025)
+          new mapkit.CoordinateSpan(0.02, 0.025)
         ),
         false,
       );
       thisMap.setCameraDistanceAnimated(2500);
       // Helper function to create and add stop marker
-      const createStopMarker = (overlay) => {
+      const createStopMarker = (overlay: mapkit.CircleOverlay) => {
         if (selectedMarkerRef.current) {
           thisMap.removeAnnotation(selectedMarkerRef.current);
           selectedMarkerRef.current = null;
         }
-        const marker = new window.mapkit.MarkerAnnotation(overlay.coordinate, {
+        const marker = new mapkit.MarkerAnnotation(overlay.coordinate, {
           title: overlay.stopName,
           glyphImage: { 1: "map-marker.png" },
         });
@@ -172,6 +186,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
       thisMap.addEventListener("select", (e) => {
         if (!e.overlay) return;
+        if (!(e.overlay instanceof mapkit.CircleOverlay)) return;
 
         // Only change schedule selection on desktop-sized screens
         const isDesktop = window.matchMedia('(min-width: 800px)').matches;
@@ -183,9 +198,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
           if (isDesktop) {
             // Desktop: handle schedule change
             const routeKey = e.overlay.routeKey;
-            const stopKey = e.overlay.stopKey;
             if (setSelectedRoute && routeKey) setSelectedRoute(routeKey);
-            if (setSelectedStop && stopKey) setSelectedStop(stopKey);
           }
         }
       });
@@ -197,29 +210,26 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         }
       });
 
-      // Detect hover on stop overlays
-      let currentHoveredOverlay = null;
-
       thisMap.addEventListener("region-change-start", () => {
-        thisMap.element.style.cursor = "grab";
+        (thisMap.element as HTMLElement).style.cursor = "grab";
       });
 
       thisMap.addEventListener("region-change-end", () => {
-        thisMap.element.style.cursor = "default";
+        (thisMap.element as HTMLElement).style.cursor = "default";
       });
 
       // Working hover detection
-      let currentHover = null;
-
+      let currentHover: mapkit.CircleOverlay | null = null;
       thisMap.element.addEventListener('mousemove', (e) => {
         const rect = thisMap.element.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
+        const x = (e as MouseEvent).clientX - rect.left;
+        const y = (e as MouseEvent).clientY - rect.top;
 
-        let foundOverlay = null;
+        let foundOverlay: mapkit.CircleOverlay | null = null;
 
         // Check overlays for mouse position
-        thisMap.overlays.forEach(overlay => {
+        for (const overlay of thisMap.overlays) {
+          if (!(overlay instanceof mapkit.CircleOverlay)) continue;
           if (overlay.stopKey) {
             // Calculate overlay screen position
             const mapRect = thisMap.element.getBoundingClientRect();
@@ -229,7 +239,6 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
             // Check if mouse is within overlay radius
             const region = thisMap.region;
             if (region) {
-              const pixelPerDegree = mapRect.width / region.span.longitudeDelta;
               const centerX = mapRect.width * (centerLng - region.center.longitude + region.span.longitudeDelta/2) / region.span.longitudeDelta;
               const centerY = mapRect.height * (region.center.latitude - centerLat + region.span.latitudeDelta/2) / region.span.latitudeDelta;
 
@@ -239,12 +248,12 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
               }
             }
           }
-        });
+        }
 
         if (foundOverlay !== currentHover) {
           // Clear previous hover style
           if (currentHover) {
-            currentHover.style = new window.mapkit.Style({
+            currentHover.style = new mapkit.Style({
               strokeColor: '#000000',
               fillColor: '#FFFFFF',
               fillOpacity: 0.1,
@@ -254,15 +263,15 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
           // Apply hover style
           if (foundOverlay) {
-            foundOverlay.style = new window.mapkit.Style({
+            foundOverlay.style = new mapkit.Style({
               strokeColor: '#6699ff',
               fillColor: '#a1c3ff',
               fillOpacity: 0.3,
               lineWidth: 2.5,
             });
-            thisMap.element.style.cursor = "pointer";
+            (thisMap.element as HTMLElement).style.cursor = "pointer";
           } else {
-            thisMap.element.style.cursor = "default";
+            (thisMap.element as HTMLElement).style.cursor = "default";
           }
 
           currentHover = foundOverlay;
@@ -271,7 +280,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
       // Store reference to cleanup function
       thisMap._hoverCleanup = () => {
-        thisMap.element.removeEventListener('mousemove', handleMouseMove);
+        // thisMap.element.removeEventListener('mousemove', _);
       };
 
       setMap(thisMap);
@@ -290,19 +299,18 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
   useEffect(() => {
     if (!map || !routeData) return;
 
-    var overlays = [];
-
 
     // display stop overlays
     for (const [route, thisRouteData] of Object.entries(routeData)) {
       for (const stopKey of thisRouteData.STOPS) {
-        const stopCoordinate = new window.mapkit.Coordinate(...thisRouteData[stopKey].COORDINATES);
+        const stopData = thisRouteData[stopKey] as ShuttleStopData;
+        const stopCoordinate = new mapkit.Coordinate(...(stopData.COORDINATES));
         // add stop overlay (circle)
-        const stopOverlay = new window.mapkit.CircleOverlay(
+        const stopOverlay = new mapkit.CircleOverlay(
           stopCoordinate,
           circleWidth,
           {
-            style: new window.mapkit.Style(
+            style: new mapkit.Style(
               {
                 strokeColor: '#000000',
                 fillColor: '#FFFFFF', // White fill by default
@@ -315,25 +323,24 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         // attach exact identifiers so the select handler can update selection precisely
         stopOverlay.routeKey = route;
         stopOverlay.stopKey = stopKey;
-        stopOverlay.stopName = thisRouteData[stopKey].NAME;
-        overlays.push(stopOverlay);
-
-
+        stopOverlay.stopName = stopData.NAME;
+        // cast circle overlay to generic overlay for adding to map
+        overlays.push(stopOverlay as mapkit.Overlay);
       }
     }
 
-    function displayRouteOverlays(routeData) {
+    function displayRouteOverlays(routeData: ShuttleRouteData) {
       // display route overlays
-      for (const [route, thisRouteData] of Object.entries(routeData)) {
+      for (const [_route, thisRouteData] of Object.entries(routeData)) {
         // for route (WEST, NORTH)
         const routePolylines = thisRouteData.ROUTES?.map(
           // for segment (STOP1 -> STOP2, STOP2 -> STOP3, ...)
           (route) => {
-            const coords = route.map(([lat, lon]) => new window.mapkit.Coordinate(lat, lon));
+            const coords = route.map(([lat, lon]) => new mapkit.Coordinate(lat, lon));
             if (coords.length === 0) return null;
-            const polyline = new window.mapkit.PolylineOverlay(coords, {
+            const polyline = new mapkit.PolylineOverlay(coords, {
               // for coordinate ([lat, lon], ...)
-              style: new window.mapkit.Style({
+              style: new mapkit.Style({
                 strokeColor: thisRouteData.COLOR,
                 lineWidth: 2
               })
@@ -341,7 +348,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
             return polyline;
           }
         ).filter(p => p !== null);
-        overlays.push(...routePolylines);
+        overlays.push(...routePolylines as mapkit.Overlay[]);
       }
     }
 
@@ -371,19 +378,19 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
     Object.keys(vehicles).map((key) => {
       const vehicle = vehicles[key];
-      const coordinate = new window.mapkit.Coordinate(vehicle.latitude, vehicle.longitude);
+      const coordinate = new mapkit.Coordinate(vehicle.latitude, vehicle.longitude);
       if (key in vehicleOverlays.current) {
         // old vehicle: update coordinate
-        console.log(`Updating vehicle ${key} to ${vehicle.latitude}, ${vehicle.longitude}`);
+        log(`Updating vehicle ${key} to ${vehicle.latitude}, ${vehicle.longitude}`);
         vehicleOverlays.current[key].coordinate = coordinate;
         vehicleOverlays.current[key].subtitle = `${vehicle.speed_mph} mph`;
       } else {
         // new vehicle: add to map
-        console.log(`Adding vehicle ${key} to ${vehicle.latitude}, ${vehicle.longitude}`);
-        const annotation = new window.mapkit.MarkerAnnotation(coordinate, {
+        log(`Adding vehicle ${key} to ${vehicle.latitude}, ${vehicle.longitude}`);
+        const annotation = new mapkit.MarkerAnnotation(coordinate, {
           title: vehicle.name,
           subtitle: `${vehicle.speed_mph} mph`,
-          color: vehicle.route_name && vehicle.route_name !== "UNCLEAR" ? routeData[vehicle.route_name].COLOR : '#444444',
+          color: vehicle.route_name && vehicle.route_name !== "UNCLEAR" && routeData ? routeData[vehicle.route_name as Route].COLOR : '#444444',
           glyphImage: { 1: 'shubble20.png' },
           selectedGlyphImage: { 1: 'shubble20.png', 2: 'shubble40.png' },
         });
@@ -392,7 +399,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
       }
 
       if (vehicle.route_name !== "UNCLEAR") {
-        vehicleOverlays.current[key].color = vehicle.route_name ? routeData[vehicle.route_name].COLOR : '#444444';
+        vehicleOverlays.current[key].color = vehicle.route_name && routeData ? routeData[vehicle.route_name as Route].COLOR : '#444444';
       }
     });
 
@@ -401,7 +408,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
     // Remove vehicles no longer in response
     Object.keys(vehicleOverlays.current).forEach((key) => {
       if (!currentVehicleKeys.has(key)) {
-        console.log(`Removing vehicle ${key}`);
+        log(`Removing vehicle ${key}`);
         map.removeAnnotation(vehicleOverlays.current[key]);
         delete vehicleOverlays.current[key];
       }
