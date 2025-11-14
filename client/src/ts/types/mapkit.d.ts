@@ -103,25 +103,7 @@ declare namespace mapkit {
     interface ShuttleAnnotation extends ImageAnnotation {
       lockedRoute?: string | null;
     }
-
-    // -------------------
-    // Shuttle Route Data
-    // -------------------
-    interface ShuttleRouteData {
-      [routeName: string]: {
-        COLOR: string;
-        [key: string]: any;
-      };
-    }
-    
-    interface RouteInfo {
-      COLOR: string;
-      [key: string]: any;
-    }
-
-    type ShuttleRouteData = Record<string, RouteInfo>;
-
-
+  
     // -------------------
     // Directions
     // -------------------

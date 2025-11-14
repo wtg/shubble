@@ -388,10 +388,10 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         if (!routeData || !vehicle.route_name || vehicle.route_name === "UNCLEAR") {
           return "#444444";
         }
-        // cast to a key of the routeData object so TypeScript accepts indexing
         const routeKey = vehicle.route_name as keyof typeof routeData;
-        if (!(routeKey in routeData)) return "#444444";
-        return routeData[routeKey].COLOR ?? "#444444";
+        const info = routeData[routeKey] as { COLOR?: string };
+        return info.COLOR ?? "#444444";
+        
       })();
 
       // Render ShuttleIcon JSX to a static SVG string
