@@ -21,6 +21,7 @@ function App() {
   return (
     <Router>
       <Routes>
+        {/* with header and footer */}
         <Route element={<Navigation GIT_REV={GIT_REV} />} >
           <Route index element={<LiveLocation />} />
           <Route path='/schedule' element={<Schedule selectedRoute={selectedRoute} setSelectedRoute={setSelectedRoute} />} />
@@ -28,6 +29,8 @@ function App() {
           <Route path='/data' element={<Data />} />
           <Route path='/generate-static-routes' element={<MapKitMap routeData={routeData} vehicles={null} generateRoutes={true} />} />
         </Route>
+
+        {/* without header and footer */}
         <Route>
           <Route path='/map' element={<MapKitMap routeData={routeData} vehicles={null} generateRoutes={false} selectedRoute={selectedRoute} setSelectedRoute={setSelectedRoute} isFullscreen={true} />} />
         </Route>
