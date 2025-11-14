@@ -18,7 +18,6 @@ export default function LiveLocation() {
 
   //New selection state for the schedule
   const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
-  const [selectedStop, setSelectedStop] = useState<string>('all');
 
   // Filter routeData to only include routes present in aggregatedSchedule
   useEffect(() => {
@@ -63,15 +62,11 @@ export default function LiveLocation() {
         vehicles={location}
         selectedRoute={selectedRoute}
         setSelectedRoute={setSelectedRoute}
-        selectedStop={selectedStop}
-        setSelectedStop={setSelectedStop}
       />
       <div className="schedule-table">
         <Schedule
           selectedRoute={selectedRoute}
           setSelectedRoute={setSelectedRoute}
-          selectedStop={selectedStop}
-          setSelectedStop={setSelectedStop}
         />
       </div>
     </div>

@@ -19,7 +19,6 @@ import config from './ts/config';
 
 function App() {
   const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
-  const [selectedStop, setSelectedStop] = useState<string>('all');
   const GIT_REV = import.meta.env.GIT_REV || 'unknown';
   const routeData = rawRouteData as unknown as ShuttleRouteData;
   return (
@@ -50,7 +49,7 @@ function App() {
       <div className="App">
         <Routes>
           <Route path='/' element={<LiveLocation />} />
-          <Route path='/schedule' element={<Schedule selectedRoute={selectedRoute} setSelectedRoute={setSelectedRoute} selectedStop={selectedStop} setSelectedStop={setSelectedStop}/>} />
+          <Route path='/schedule' element={<Schedule selectedRoute={selectedRoute} setSelectedRoute={setSelectedRoute} />} />
           <Route path='/about' element={<About />} />
           <Route path='/data' element={<Data />} />
           <Route path='/generate-static-routes' element={<MapKitMap routeData={routeData} vehicles={null} generateRoutes={true} />} />
