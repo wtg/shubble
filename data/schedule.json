@@ -677,14 +677,6 @@
                 "NORTH"
             ],
             [
-                "12:20 PM",
-                "NORTH"
-            ],
-            [
-                "12:40 PM",
-                "NORTH"
-            ],
-            [
                 "1:30 PM",
                 "NORTH"
             ],
@@ -771,14 +763,6 @@
                 "WEST"
             ],
             [
-                "12:20 PM",
-                "WEST"
-            ],
-            [
-                "12:40 PM",
-                "WEST"
-            ],
-            [
                 "1:30 PM",
                 "WEST"
             ],
@@ -861,11 +845,11 @@
                 "NORTH"
             ],
             [
-                "8:30 PM",
+                "8:40 PM",
                 "NORTH"
             ],
             [
-                "8:50 PM",
+                "9:00 PM",
                 "NORTH"
             ],
             [
@@ -912,87 +896,87 @@
         "PM WEST Bus": [
             [
                 "5:00 PM",
-                "WEST"
+                "NORTH"
             ],
             [
                 "5:20 PM",
-                "WEST"
+                "NORTH"
             ],
             [
                 "5:40 PM",
-                "WEST"
+                "NORTH"
             ],
             [
                 "6:00 PM",
-                "WEST"
+                "NORTH"
             ],
             [
                 "6:20 PM",
-                "WEST"
+                "NORTH"
             ],
             [
                 "6:40 PM",
-                "WEST"
+                "NORTH"
             ],
             [
                 "7:00 PM",
-                "WEST"
+                "NORTH"
             ],
             [
                 "7:20 PM",
-                "WEST"
+                "NORTH"
             ],
             [
                 "7:40 PM",
-                "WEST"
+                "NORTH"
             ],
             [
                 "8:40 PM",
-                "WEST"
+                "NORTH"
             ],
             [
                 "9:00 PM",
-                "WEST"
+                "NORTH"
             ],
             [
                 "9:10 PM",
-                "WEST"
+                "NORTH"
             ],
             [
                 "9:30 PM",
-                "WEST"
+                "NORTH"
             ],
             [
                 "9:50 PM",
-                "WEST"
+                "NORTH"
             ],
             [
                 "10:10 PM",
-                "WEST"
+                "NORTH"
             ],
             [
                 "10:30 PM",
-                "WEST"
+                "NORTH"
             ],
             [
                 "10:50 PM",
-                "WEST"
+                "NORTH"
             ],
             [
                 "11:10 PM",
-                "WEST"
+                "NORTH"
             ],
             [
                 "11:30 PM",
-                "WEST"
+                "NORTH"
             ],
             [
                 "11:45 PM",
-                "WEST"
+                "NORTH"
             ],
             [
                 "12:00 AM",
-                "WEST"
+                "NORTH"
             ]
         ]
     },
