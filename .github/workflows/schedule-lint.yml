@@ -1,0 +1,53 @@
+name: Validate Bus Schedule
+
+on:
+    pull_request:
+        paths:
+            - 'data/schedule.json'
+
+jobs:
+    validate-schedule:
+        runs-on: ubuntu-latest
+        steps:
+          - name: Checkout code
+            uses: actions/checkout@v4
+
+          - name: Validate schedule for duplicates
+            run: |
+              echo "🚌 Validating bus schedule..."
+
+              jq -e '
+                [
+                  to_entries[]
+                  | select(.key | test("^(weekday|saturday|sunday)$"))
+                  | .key as $schedule_type
+                  | .value
+                  | to_entries[]
+                  | .key as $bus_name
+                  | .value[]
+                  | select(length >= 2)
+                  | {
+                      schedule_type: $schedule_type,
+                      bus_name: $bus_name,
+                      time: .,
+                      destination: .,[1]
+                      key: ($schedule_type + "|" + . + "|" + .[1])
+                    }
+                ]
+                | group_by(.key)
+                | map(select(length > 1))
+                | if length > 0 then
+                    . as $duplicates
+                    | "❌ Validation Failed: Found $$length) duplicate bus schedule(s)\n"
+                    + ($duplicates | map(
+                        "\nSchedule Type: $$..schedule_type)\n"
+                        + "  Time: $$..time)\n"
+                        + "  Destination: $$..destination)\n"
+                        + "  Duplicate in buses: $$[.[].bus_name] | join(", "))\n"
+                      ) | join(""))
+                    + "\nPlease ensure each time+destination combination appears in only one bus route."
+                    | error
+                  else
+                    "✅ Validation Passed: No duplicate bus schedules found"
+                  end
+              ' data/schedule.json
