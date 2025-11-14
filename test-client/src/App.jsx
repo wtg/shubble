@@ -10,6 +10,7 @@ function App() {
   const [locationCount, setLocationCount] = useState(0);
   const [geofenceCount, setGeofenceCount] = useState(0);
   const [keepShuttles, setKeepShuttles] = useState(false);
+  const [routes, setRoutes] = useState([]);
   const shuttlesRef = useRef([]);
   const getShuttles = useCallback(() => shuttlesRef.current, []);
   const testerRef = useRef(null);
@@ -19,7 +20,7 @@ function App() {
   }
   const tester = testerRef.current;
 
-  // call api to get shuttles, then update the frontend's representation
+  // call api, then update the frontend's representation
   const updateShuttles = async () => {
     const res = await api.fetchShuttles();
     const data = await res.json();
@@ -54,13 +55,23 @@ function App() {
     event.target.value = "";
   };
 
+  const fetchRoutes = async () => {
+    const res = await fetch("/api/routes");
+    const data = await res.json();
+    setRoutes(data);
+  }
+
+  const selected = shuttles.find((s) => s.id === selectedId);
+
+  useEffect(() => { fetchRoutes(); }, []);
+
   useEffect(() => { shuttlesRef.current = shuttles; }, [shuttles]);
 
   useEffect(() => {
-    updateEvents();
-    const interval = setInterval(updateEvents, 1000);
-    return () => clearInterval(interval);
-  }, []);
+    if (shuttles.length > 0 && !selectedId) {
+      setSelectedId(shuttles[0].id);
+    }
+  }, [shuttles]);
 
   useEffect(() => {
     updateShuttles();
@@ -69,12 +80,10 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (shuttles.length > 0 && !selectedId) {
-      setSelectedId(shuttles[0].id);
-    }
-  }, [shuttles]);
-
-  const selected = shuttles.find((s) => s.id === selectedId);
+    updateEvents();
+    const interval = setInterval(updateEvents, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="app">
@@ -123,6 +132,26 @@ function App() {
                 {state}
               </button>
             ))}
+
+            {selected.next_state === "looping" && (
+              <div className="route-select">
+                <label>
+                  Route:
+                  <select
+                    value={selected.current_route}
+                    onchange={(e)=>{
+                      // set next state looping with route
+                    }}
+                  >
+                    {routes.map(route => {
+                      <option key={route} value={route}>
+                        {route}
+                      </option>
+                    })}
+                  </select>
+                </label>
+              </div>
+            )}
           </div>
         </div>
       ) : (

@@ -130,7 +130,7 @@ def trigger_action(shuttle_id):
 
 @app.route("/api/routes", methods=["GET"])
 def get_routes():
-    return route_names
+    return jsonify(sorted(list(route_names)))
 
 @app.route("/api/events/today", methods=["GET"])
 def get_events_today():
