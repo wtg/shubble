@@ -24,7 +24,7 @@ function App() {
   return (
     <Router>
       <header>
-        <span className='title'>SHUBBLE</span>
+  <Link to='/' className='site-title'>SHUBBLE</Link>
         <nav className='big'>
           <ul>
             <li>
