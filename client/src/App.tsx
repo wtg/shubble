@@ -12,7 +12,7 @@ import Feedback from './components/Feedback';
 import Data from './pages/Data';
 import MapKitMap from './components/MapKitMap';
 import rawRouteData from './data/routes.json';
-import { useState } from "react";
+import { useState, useEffect, use } from "react";
 import WarningBanner from './components/WarningBanner';
 import type { ShuttleRouteData } from './ts/types/route';
 import config from './ts/config';
@@ -21,6 +21,17 @@ function App() {
   const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
   const GIT_REV = import.meta.env.GIT_REV || 'unknown';
   const routeData = rawRouteData as unknown as ShuttleRouteData;
+
+  // if config.isStaging, add a meta tag to tell search engines not to index
+  useEffect(() => {
+    if (config.isStaging) {
+      const meta = document.createElement('meta');
+      meta.name = 'robots';
+      meta.content = 'noindex, nofollow';
+      document.getElementsByTagName('head')[0].appendChild(meta);
+    }
+  }, []);
+
   return (
     <Router>
       <header>
