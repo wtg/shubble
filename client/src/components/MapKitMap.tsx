@@ -413,8 +413,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
   return (
     <div
-      className='map'
-      style={{ width: isFullscreen ? '100vw' : undefined, height: isFullscreen ? '100vh' : undefined }}
+      className={isFullscreen ? 'map-fullscreen' : 'map'}
       ref={mapRef}
     >
     </div>
