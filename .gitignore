@@ -15,3 +15,4 @@ venv/
 **/data2.csv
 plots/
 data/shubble_october.csv
+/keras_tuner
