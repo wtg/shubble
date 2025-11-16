@@ -12,16 +12,16 @@ const routeData = rawRouteData as unknown as ShuttleRouteData;
 type ScheduleProps = {
   selectedRoute: string | null;
   setSelectedRoute: (route: string | null) => void;
+  selectedDay: number;
+  setSelectedDay: React.Dispatch<React.SetStateAction<number>>;
 };
 
-export default function Schedule({ selectedRoute, setSelectedRoute }: ScheduleProps) {
+export default function Schedule({ selectedRoute, setSelectedRoute, selectedDay, setSelectedDay }: ScheduleProps) {
   // Validate props once at the top
   if (typeof setSelectedRoute !== 'function') {
     throw new Error('setSelectedRoute must be a function');
   }
 
-  const now = new Date();
-  // const [selectedDay, setSelectedDay] = useState(now.getDay());
   const [routeNames, setRouteNames] = useState(Object.keys(aggregatedSchedule[selectedDay]));
   const [stopNames, setStopNames] = useState<string[]>([]);
   const [schedule, setSchedule] = useState<AggregatedDaySchedule>(aggregatedSchedule[selectedDay]);
@@ -78,6 +78,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
 
   // scroll to the current time on route change
   useEffect(() => {
+    const now = new Date()
     const scheduleDiv = document.querySelector('.schedule-scroll');
     if (!scheduleDiv) return;
 
@@ -146,6 +147,14 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
                     undefined,
                     { timeStyle: "short" }
                   );
+                  const dateTime = offsetTime(time, stopData.OFFSET);
+                  if (
+                    stopData.NAME.toUpperCase() === "CHASAN BUILDING" &&
+                    (selectedDay === 0 || selectedDay === 6 || dateTime.getHours() < 7 || (selectedDay >= 1 && selectedDay <= 5 && (dateTime.getHours() > 17 || (dateTime.getHours() === 17 && dateTime.getMinutes() <= 30))))
+                  ) {
+                    return null;
+                  }
+
                   return (
                     <tr key={`${index}-${sidx}`}>
                       <td className={sidx === 0 ? "outdented" : "indented-time"}>

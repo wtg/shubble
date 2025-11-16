@@ -27,7 +27,7 @@ export default function LiveLocation() {
     // TODO: figure out how to make this type correct...
     setFilteredRouteData(
       Object.fromEntries(
-        Object.entries(routeData).filter(([routeName]) => aggregatedSchedule.some(daySchedule => routeName in daySchedule))
+       Object.entries(routeData).filter(([routeName]) => routeName in aggregatedSchedule[selectedDay])
       ) as unknown as ShuttleRouteData
     );
   }, [selectedDay]);
@@ -70,6 +70,8 @@ export default function LiveLocation() {
         <Schedule
           selectedRoute={selectedRoute}
           setSelectedRoute={setSelectedRoute}
+          selectedDay={selectedDay}
+          setSelectedDay={setSelectedDay}
         />
       </div>
     </div>
