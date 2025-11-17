@@ -235,4 +235,139 @@ def evaluate_ar_pipeline(df_raw,
 
     delta_list = deltas if resample else [None]
 
+    for delta in delta_list:
+        segs = []
+
+        for _, df_g in groups:
+            dfv = compute_velocity_mps(df_g)
+            raw_segs = split_segments_on_gaps(
+                dfv["t"], dfv["v_mps"], dfv["dt_s"], max_gap_include_s
+            )
+            for (t_seg, v_seg) in raw_segs:
+                if demean_per_segment and len(v_seg) > 0:
+                    v_seg = v_seg - np.nanmean(v_seg)
+                if resample:
+                    t_grid, v_grid = resample_linear(t_seg, v_seg, float(delta))
+                    if len(v_grid) >= 5:
+                        segs.append(("resampled", t_grid, v_grid))
+                        debug_pairs.append({
+                            "delta": float(delta),
+                            "t_raw": t_seg,
+                            "v_raw": v_seg,
+                            "t_grid": t_grid,
+                            "v_grid": v_grid
+                        })
+                else:
+                    if len(v_seg) >= 3:
+                        segs.append(("raw", t_seg, v_seg))
+
+        lagged_by_p = {}
+        for p in orders:
+            X_list, y_list = [], []
+            for mode, t_arr, v_arr in segs:
+                if mode == "resampled":
+                    Xs, ys = build_ar_design_from_resampled(v_arr, p)
+                else:
+                    Xs, ys = build_arx_design_irregular(
+                        t_arr, v_arr, p, include_dt_lags=include_dt_lags
+                    )
+                if Xs.shape[0] > 0:
+                    X_list.append(Xs)
+                    y_list.append(ys)
+
+            if X_list:
+                X_all = np.vstack(X_list)
+                y_all = np.concatenate(y_list)
+            else:
+                feat_dim = (p if resample else (p + (p if include_dt_lags else 0)))
+                X_all = np.zeros((0, feat_dim), dtype="float64")
+                y_all = np.zeros((0,), dtype="float64")
+
+            # --- NEW: train/test split --- #
+            n_total = X_all.shape[0]
+            if holdout_n > 0 and n_total > holdout_n:
+                idx = np.arange(n_total)
+                rng.shuffle(idx)
+                test_idx = idx[:holdout_n]
+                train_idx = idx[holdout_n:]
+                X_train, y_train = X_all[train_idx], y_all[train_idx]
+                X_test,  y_test  = X_all[test_idx],  y_all[test_idx]
+            else:
+                # Not enough data to have a separate test set
+                X_train, y_train = X_all, y_all
+                X_test  = np.zeros((0, X_all.shape[1]), dtype="float64")
+                y_test  = np.zeros((0,), dtype="float64")
+
+            lagged_by_p[p] = (X_all, y_all, X_train, y_train, X_test, y_test)
+
+        # 3) Fit models for each (p, lambda) using *train* only, evaluate test
+        for p in orders:
+            X_all, y_all, X_train, y_train, X_test, y_test = lagged_by_p[p]
+            n_total = int(X_all.shape[0])
+            n_train = int(X_train.shape[0])
+            n_test  = int(X_test.shape[0])
+
+            for lam in lambdas:
+                lam_key = 0.0 if lam in (None, 0) else float(lam)
+
+                # Train fit
+                beta, y_hat_train, eps_train, mse_train = ridge_fit(X_train, y_train, lam)
+                rmse_train = float(np.sqrt(mse_train)) if mse_train == mse_train else float("nan")
+
+                # Test evaluation
+                if n_test > 0:
+                    y_hat_test = X_test @ beta
+                    eps_test = y_test - y_hat_test
+                    mse_test = float(np.mean(eps_test**2))
+                    rmse_test = float(np.sqrt(mse_test))
+                else:
+                    y_hat_test = np.array([])
+                    eps_test = np.array([])
+                    mse_test = float("nan")
+                    rmse_test = float("nan")
+
+                # For backward compatibility: MSE/RMSE = test if available, else train
+                mse_main = mse_test if n_test > 0 else mse_train
+                rmse_main = rmse_test if n_test > 0 else rmse_train
+
+                results.append({
+                    "mode": "RESAMPLED" if resample else ("RAW_ARX_dt" if include_dt_lags else "RAW_AR"),
+                    "delta_s": (float(delta) if resample else None),
+                    "order_p": int(p),
+                    "lambda": lam_key,
+                    "n_rows": n_total,
+                    "n_train": n_train,
+                    "n_test": n_test,
+                    "MSE_train": mse_train,
+                    "RMSE_train": rmse_train,
+                    "MSE_test": mse_test,
+                    "RMSE_test": rmse_test,
+                    "MSE": mse_main,
+                    "RMSE": rmse_main,
+                })
+
+                models[((float(delta) if resample else None), int(p), lam_key)] = {
+                    "beta": beta,
+                    "mse_train": mse_train,
+                    "rmse_train": rmse_train,
+                    "mse_test": mse_test,
+                    "rmse_test": rmse_test,
+                    "n_rows": n_total,
+                    "n_train": n_train,
+                    "n_test": n_test,
+                    "feat_dim": int(X_train.shape[1]) if X_train.ndim == 2 else 0,
+                    "eps_train": eps_train,
+                    "y_hat_train": y_hat_train,
+                    "eps_test": eps_test,
+                    "y_hat_test": y_hat_test,
+                }
+
+    res_df = pd.DataFrame(results).sort_values(
+        ["mode", "delta_s", "order_p", "lambda"]
+    ).reset_index(drop=True)
+
+    return res_df, models, debug_pairs
+
+
+
 
