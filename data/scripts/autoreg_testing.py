@@ -184,3 +184,55 @@ def build_arx_design_irregular(t_seg, v_seg, p, include_dt_lags=True):
     X = np.asarray(rows, dtype="float64")
     y = np.asarray(targets, dtype="float64")
     return X, y
+def ridge_fit(X, y, lam):
+    """
+    Solve (X^T X + λI) β = X^T y.
+    Returns beta, y_hat, eps, mse on the provided (X, y).
+    """
+    if X.shape[0] == 0:
+        beta = np.zeros((X.shape[1],), dtype="float64") if X.shape[1] > 0 else np.array([])
+        return beta, np.array([]), np.array([]), float("nan")
+
+    XT = X.T
+    A = XT @ X + (0 if lam in (None, 0) else lam) * np.eye(X.shape[1])
+    b = XT @ y
+    beta = np.linalg.solve(A, b)
+    y_hat = X @ beta
+    eps = y - y_hat
+    mse = float(np.mean(eps**2))
+    return beta, y_hat, eps, mse
+
+
+
+def evaluate_ar_pipeline(df_raw,
+                         vehicle_col,
+                         max_gap_include_s,
+                         resample,
+                         deltas,
+                         orders,
+                         lambdas,
+                         demean_per_segment=True,
+                         include_dt_lags=True,
+                         holdout_n=0,
+                         holdout_seed=42):
+    """
+    Build AR windows, optionally hold out `holdout_n` random rows per (delta, p)
+    for test, and evaluate MSE/RMSE on both train and test.
+    """
+
+    results = []
+    models = {}
+    debug_pairs = []
+
+    # For reproducible splits
+    rng = np.random.default_rng(holdout_seed)
+
+    # Group by vehicle, if present
+    if vehicle_col and vehicle_col in df_raw.columns:
+        groups = list(df_raw.groupby(vehicle_col))
+    else:
+        groups = [(None, df_raw)]
+
+    delta_list = deltas if resample else [None]
+
+
