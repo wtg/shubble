@@ -92,3 +92,95 @@ def compute_velocity_mps(df):
     out = out.loc[(out["dt_s"] > 0) & out["v_mps"].notna()].reset_index(drop=True)
     return out[["t", "v_mps", "dt_s"]]
 
+def split_segments_on_gaps(t_series, v_series, dt_series, max_gap_include_s=15.0):
+    """
+    Split into segments when dt > max_gap_include_s or dt is non-finite.
+    """
+    t = np.asarray(t_series, dtype="int64")
+    v = np.asarray(v_series, dtype="float64")
+    dt = np.asarray(dt_series, dtype="float64")
+
+    segments = []
+    start = 0
+    for i in range(1, len(t)):
+        if (not np.isfinite(dt[i])) or (dt[i] > max_gap_include_s):
+            if i - start >= 2:
+                segments.append((t[start:i], v[start:i]))
+            start = i
+    if len(t) - start >= 2:
+        segments.append((t[start:], v[start:]))
+
+    return segments
+
+def resample_linear(t_seg, v_seg, delta_s):
+    """
+    Linearly resample segment onto a regular time grid with spacing delta_s.
+    """
+    if len(t_seg) < 2:
+        return np.array([], dtype="int64"), np.array([], dtype="float64")
+
+    t0, tN = int(t_seg[0]), int(t_seg[-1])
+    if (tN - t0) < delta_s:
+        return np.array([], dtype="int64"), np.array([], dtype="float64")
+
+    step = int(round(delta_s))
+    kmax = (tN - t0) // step
+    t_grid = t0 + np.arange(0, kmax + 1) * step
+    v_grid = np.interp(t_grid, t_seg, v_seg)
+
+    return t_grid.astype("int64"), v_grid.astype("float64")
+
+def build_ar_design_from_resampled(v_grid, p):
+    """
+    Build AR(p) design matrix from a regularly sampled series v_grid.
+    X rows: [v(t-Δ), v(t-2Δ), ..., v(t-pΔ)]
+    y: v(t)
+    """
+    T = len(v_grid)
+    if T <= p:
+        return np.zeros((0, p), dtype="float64"), np.zeros((0,), dtype="float64")
+
+    X = np.zeros((T - p, p), dtype="float64")
+    y = np.zeros((T - p,), dtype="float64")
+    for i in range(p, T):
+        X[i - p, :] = v_grid[i - p : i][::-1]
+        y[i - p] = v_grid[i]
+
+    return X, y
+
+def build_arx_design_irregular(t_seg, v_seg, p, include_dt_lags=True):
+    """
+    Build ARX design matrix for irregularly sampled data:
+      features = [v_lags, (optionally) dt_lags]
+      target   = v(t)
+    """
+    T = len(v_seg)
+    if T <= p:
+        q = p + (p if include_dt_lags else 0)
+        return np.zeros((0, q), dtype="float64"), np.zeros((0,), dtype="float64")
+
+    dt_seg = np.diff(t_seg, prepend=np.nan)
+    rows = []
+    targets = []
+
+    for i in range(p, T):
+        v_lags = v_seg[i - p : i][::-1]
+        if include_dt_lags:
+            dt_lags = dt_seg[i - p : i][::-1]
+            if np.isnan(dt_lags).any():
+                med = np.nanmedian(dt_seg[1:i]) if i > 1 else 0.0
+                dt_lags = np.where(
+                    np.isnan(dt_lags),
+                    (med if np.isfinite(med) else 0.0),
+                    dt_lags
+                )
+            feat = np.concatenate([v_lags, dt_lags])
+        else:
+            feat = v_lags
+
+        rows.append(feat)
+        targets.append(v_seg[i])
+
+    X = np.asarray(rows, dtype="float64")
+    y = np.asarray(targets, dtype="float64")
+    return X, y
