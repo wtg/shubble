@@ -368,6 +368,118 @@ def evaluate_ar_pipeline(df_raw,
 
     return res_df, models, debug_pairs
 
+if __name__ == "__main__" or True:
+    df_raw = pd.read_csv(INPUT_PATH)
 
+    res_df, models, debug_pairs = evaluate_ar_pipeline(
+        df_raw,
+        VEHICLE_COL,
+        MAX_GAP_INCLUDE_S,
+        RESAMPLE,
+        DELTAS,
+        ORDERS,
+        LAMBDAS,
+        DEMEAN_PER_SEGMENT,
+        INCLUDE_DT_LAGS,
+        holdout_n=HOLDOUT_N,
+        holdout_seed=HOLDOUT_SEED
+    )
+
+    res_df.to_csv(OUT_PATH, index=False)
+    print(f"\nSaved sweep to: {OUT_PATH}")
+
+    if not res_df.empty:
+        leaderboard = res_df.sort_values("RMSE").head(20)
+        print("\nTop 20 (lowest RMSE) — RMSE uses TEST if available:")
+        cols = [
+            "mode", "delta_s", "order_p", "lambda",
+            "n_rows", "n_train", "n_test",
+            "RMSE_train", "RMSE_test", "RMSE"
+        ]
+        print(leaderboard[cols].to_string(index=False))
+    else:
+        print("No rows produced (check input columns and parameters).")
+
+    # Debug plots for resampling
+    if RESAMPLE and debug_pairs:
+        show_n = min(3, len(debug_pairs))
+        for i in range(show_n):
+            dp = debug_pairs[i]
+            df_raw_seg = pd.DataFrame({"t_raw": dp["t_raw"], "v_raw": dp["v_raw"]})
+            df_grid_seg = pd.DataFrame({"T_grid": dp["t_grid"], "v_grid": dp["v_grid"]})
+            print(f"\nSegment {i+1} (delta={dp['delta']}) raw head:")
+            print(df_raw_seg.head().to_string(index=False))
+            print(f"\nSegment {i+1} (delta={dp['delta']}) resampled head:")
+            print(df_grid_seg.head().to_string(index=False))
+
+            plt.figure()
+            plt.plot(dp["t_raw"], dp["v_raw"], marker="o", linestyle="", label="raw (t,v)")
+            plt.plot(dp["t_grid"], dp["v_grid"], marker="x", label="resampled (T,v)")
+            plt.xlabel("time (s)")
+            plt.ylabel("velocity (m/s)")
+            plt.title(f"Segment {i+1} resampling overlay (Δ={dp['delta']})")
+            plt.legend()
+            plt.tight_layout()
+            plt.show()
+
+    # Residual diagnostics for best config (prefers test residuals if present)
+    if not res_df.empty:
+        best = res_df.sort_values("RMSE").iloc[0]
+        key = (
+            (float(best["delta_s"]) if pd.notna(best["delta_s"]) else None),
+            int(best["order_p"]),
+            float(best["lambda"])
+        )
+        if key in models:
+            m = models[key]
+            # Prefer test residuals if we have a test set, else train
+            use_test = m["n_test"] > 0 and m["eps_test"].size > 0
+            eps = m["eps_test"] if use_test else m["eps_train"]
+            yhat = m["y_hat_test"] if use_test else m["y_hat_train"]
+
+            split_label = "TEST" if use_test else "TRAIN"
+
+            if eps.size > 0:
+                plt.figure()
+                plt.hist(eps, bins=30)
+                plt.xlabel("residual ε = y - ŷ")
+                plt.ylabel("count")
+                plt.title(
+                    f"Residuals histogram ({split_label}) — best config "
+                    f"(mode={best['mode']}, Δ={best['delta_s']}, "
+                    f"p={best['order_p']}, λ={best['lambda']})"
+                )
+                plt.tight_layout()
+                plt.show()
+
+                if PLOT_RESID_VS_FITTED:
+                    plt.figure()
+                    plt.scatter(yhat, eps, s=12)
+                    plt.axhline(0.0)
+                    plt.xlabel("ŷ (fitted)")
+                    plt.ylabel("ε (residual)")
+                    plt.title(
+                        f"Residuals vs Fitted ({split_label}) "
+                        f"— best config (mode={best['mode']})"
+                    )
+                    plt.tight_layout()
+                    plt.show()
+
+    if not res_df.empty:
+        best = res_df.sort_values("RMSE").iloc[0]
+        key = (
+            (float(best["delta_s"]) if pd.notna(best["delta_s"]) else None),
+            int(best["order_p"]),
+            float(best["lambda"])
+        )
+        if key in models:
+            beta = models[key]["beta"]
+            print("\nBest config weights (phi):")
+            print(f"mode={best['mode']}, Δ={best['delta_s']}, p={best['order_p']}, λ={best['lambda']}")
+            print(beta)
+
+    chosen = (6.0, 3, 0.0)
+    if chosen in models:
+        print("\nChosen config weights (phi):", models[chosen]["beta"])
 
 
