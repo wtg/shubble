@@ -14,6 +14,7 @@ import { useState, useEffect, use } from "react";
 import WarningBanner from './components/WarningBanner';
 import type { ShuttleRouteData } from './ts/types/route';
 import Navigation from './components/Navigation';
+import config from "./ts/config";
 
 function App() {
   const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
