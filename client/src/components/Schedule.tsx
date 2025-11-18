@@ -150,7 +150,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute, selectedDay,
                   const dateTime = offsetTime(time, stopData.OFFSET);
                   if (
                     stopData.NAME.toUpperCase() === "CHASAN BUILDING" &&
-                    (selectedDay === 0 || selectedDay === 6 || dateTime.getHours() < 7 || (selectedDay >= 1 && selectedDay <= 5 && (dateTime.getHours() > 17 || (dateTime.getHours() === 17 && dateTime.getMinutes() <= 30))))
+                    ((selectedDay === 0 || selectedDay === 6) || (dateTime.getHours() > 17 || (dateTime.getHours() === 17 && dateTime.getMinutes() >= 30)))
                   ) {
                     return null;
                   }
