@@ -194,12 +194,49 @@ def serve_frontend(path=""):
     else:
         return send_from_directory(app.static_folder, "index.html")
 
+@app.route('/fleet/vehicles/stats')
+def mock_stats():
+    vehicle_ids = request.args.get('vehicleIds', '').split(',')
+    after = request.args.get('after')
+
+    logger.info(f'[MOCK API] Received stats snapshot request for vehicles {vehicle_ids} after={after}')
+
+    # update timestamps
+    with shuttle_lock:
+        data = []
+        for shuttle_id in vehicle_ids:
+            if shuttle_id in shuttles:
+                # add error to location
+                lat, lon = shuttles[shuttle_id].location
+                lat += np.random.normal(0, 0.00008)
+                lon += np.random.normal(0, 0.00008)
+                data.append({
+                    'id': shuttle_id,
+                    'name': shuttle_id[-3:],
+                    'gps': {
+                        'latitude': lat,
+                        'longitude': lon,
+                        'time': datetime.fromtimestamp(shuttles[shuttle_id].last_updated).isoformat(timespec='seconds').replace('+00:00', 'Z'),
+                        'speedMilesPerHour': shuttles[shuttle_id].speed,
+                        'headingDegrees': 90,
+                        'reverseGeo': {'formattedLocation': 'Test Location'}
+                    }
+                })
+
+        return jsonify({
+            'data': data,
+            'pagination': {
+                'hasNextPage': False,
+                'endCursor': 'fake-token-next'
+            }
+        })
+
 @app.route('/fleet/vehicles/stats/feed')
 def mock_feed():
     vehicle_ids = request.args.get('vehicleIds', '').split(',')
     after = request.args.get('after')
 
-    logger.info(f'[MOCK API] Received stats request for vehicles {vehicle_ids} after={after}')
+    logger.info(f'[MOCK API] Received stats feed request for vehicles {vehicle_ids} after={after}')
 
     # update timestamps
     with shuttle_lock:

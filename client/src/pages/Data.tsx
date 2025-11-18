@@ -1,17 +1,16 @@
-import React, {
+import {
   useState,
   useEffect,
 } from 'react';
 import "../styles/Data.css"
-import MapKitMap from '../components/MapKitMap';
 import DataBoard from '../components/DataBoard';
 import ShuttleRow from '../components/ShuttleRow';
+import type { VehicleInformationMap } from '../ts/types/vehicleLocation';
 
 export default function Data() {
 
-  const [shuttleData, setShuttleData] = useState(null);
-
-  const [selectedShuttleID, setSelectedShuttleID] = useState(null);
+  const [shuttleData, setShuttleData] = useState<VehicleInformationMap | null>(null);
+  const [selectedShuttleID, setSelectedShuttleID] = useState<string | null>(null);
 
   const fetchShuttleData = async () => {
     try {
@@ -32,7 +31,7 @@ export default function Data() {
 
   useEffect(() => {
     if (shuttleData != null) {
-      if (!(selectedShuttleID in shuttleData)) {
+      if (selectedShuttleID === null || !(selectedShuttleID in shuttleData)) {
         setSelectedShuttleID(Object.keys(shuttleData)[0]);
       }
     }
@@ -74,7 +73,7 @@ export default function Data() {
 
         {shuttleData ? (
           <div>
-            {shuttleData[selectedShuttleID] ? (
+            {selectedShuttleID && shuttleData[selectedShuttleID] ? (
               <div className="main-content">
                 <DataBoard
                   title="Summary"
@@ -88,12 +87,12 @@ export default function Data() {
                   title="Breaks"
                   datatable={[["17 minutes", "12:32-12:49"]]}
                 />
-                <DataBoard
+                {/* <DataBoard
                   title="Historical Locations"
                   dataToDisplay={["..."]}
-                />
+                /> */}
                 <div className="map-container">
-                  <MapKitMap vehicles={shuttleData} />
+                  {/* <MapKitMap vehicles={shuttleData} /> */}
                 </div>
               </div>
             ) : (

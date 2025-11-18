@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify, send_from_directory, current_app
-from . import db
+from . import db, cache
 from .models import Vehicle, GeofenceEvent, VehicleLocation
 from pathlib import Path
 from sqlalchemy import func, and_
@@ -21,6 +21,7 @@ bp = Blueprint('routes', __name__)
 @bp.route('/schedule')
 @bp.route('/about')
 @bp.route('/data')
+@bp.route('/map')
 @bp.route('/generate-static-routes')
 def serve_react():
     # serve the React app's index.html for all main routes
@@ -28,6 +29,7 @@ def serve_react():
     return send_from_directory(root_dir, 'index.html')
 
 @bp.route('/api/locations', methods=['GET'])
+@cache.cached(timeout=300, key_prefix="vehicle_locations")
 def get_locations():
     """
     Returns the latest location for each vehicle currently inside the geofence.
@@ -226,6 +228,10 @@ def webhook():
             )
 
         db.session.commit()
+        
+        # Invalidate Cache
+        cache.delete('vehicles_in_geofence') 
+        
         return jsonify({'status': 'success'}), 200
 
     except Exception as e:
@@ -289,3 +295,8 @@ def get_shuttle_routes():
 def get_shuttle_schedule():
     root_dir = Path(__file__).parent.parent
     return send_from_directory(root_dir / 'data', 'schedule.json')
+
+@bp.route('/api/aggregated-schedule', methods=['GET'])
+def get_aggregated_shuttle_schedule():
+    root_dir = Path(__file__).parent.parent
+    return send_from_directory(root_dir / 'data', 'aggregated_schedule.json')
