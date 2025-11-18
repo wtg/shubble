@@ -5,7 +5,6 @@ import routeData from '../data/routes.json';
 import { aggregatedSchedule } from '../data/parseSchedule';
 
 export default function RouteToggle({selectedRoute, setSelectedRoute}) {
-   console.log(aggregatedSchedule);
    const today = new Date();
    const keys = Object.keys(aggregatedSchedule[today.getDay()])
 

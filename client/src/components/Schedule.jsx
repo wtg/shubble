@@ -45,7 +45,6 @@ export default function Schedule() {
     const scheduleDiv = document.querySelector('.schedule-scroll');
     if (!scheduleDiv) return;
 
-    // if (selectedDay !== now.getDay()) return; // only scroll if viewing today's schedule
     const currentTimeRow = Array.from(scheduleDiv.querySelectorAll('td.outdented')).find(td => {
       const text = td.textContent.trim();
 
@@ -80,8 +79,6 @@ export default function Schedule() {
     }
   }, [selectedRoute, selectedDay, selectedStop, schedule]);
 
-
-  // const daysOfTheWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
   return (
     <div className="p-4">
