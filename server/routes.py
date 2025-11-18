@@ -9,8 +9,9 @@ from data.stops import Stops
 from hashlib import sha256
 import hmac
 import logging
-
+from .services.eta_predictor import ETAPredictor
 from .time_utils import get_campus_start_of_day
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -63,26 +64,51 @@ def get_locations():
 
     # Join to get full location and vehicle info for vehicles in geofence
     results = db.session.query(VehicleLocation, Vehicle).join(
-        latest_locations,
-        and_(
-            VehicleLocation.vehicle_id == latest_locations.c.vehicle_id,
-            VehicleLocation.timestamp == latest_locations.c.latest_time
-        )
-    ).join(
-        Vehicle, VehicleLocation.vehicle_id == Vehicle.id
-    ).all()
+            latest_locations,
+            and_(
+                VehicleLocation.vehicle_id == latest_locations.c.vehicle_id,
+                VehicleLocation.timestamp == latest_locations.c.latest_time
+            )
+        ).join(
+            Vehicle, VehicleLocation.vehicle_id == Vehicle.id
+        ).all()
 
-    # Format response
+    predictor = ETAPredictor() # Get the singleton instance
     response = {}
+    
     for loc, vehicle in results:
-        # Get closest loop
+        # ... (Existing closest loop logic) ...
         closest_distance, _, closest_route_name, polyline_index = Stops.get_closest_point(
             (loc.latitude, loc.longitude)
         )
-        if closest_distance is None:
-            route_name = "UNCLEAR"
-        else:
-            route_name = closest_route_name if closest_distance < 0.020 else None
+        
+        # --- NEW: Calculate ETA ---
+        predicted_eta_seconds = None
+        
+        # Only predict if we are on a known route
+        if closest_route_name: 
+            # Fetch last 5 locations for this vehicle for LSTM context
+            history = VehicleLocation.query.filter_by(vehicle_id=loc.vehicle_id)\
+                .order_by(VehicleLocation.timestamp.desc())\
+                .limit(5)\
+                .all()
+            
+            # We need 5 points to make a prediction
+            if len(history) == 5:
+                # Convert to DataFrame, sort ascending by time
+                history_df = pd.DataFrame([{
+                    'latitude': h.latitude,
+                    'longitude': h.longitude,
+                    'speed_mph': h.speed_mph if h.speed_mph else 0, # Handle None speeds
+                    'heading_degrees': h.heading_degrees,
+                    'timestamp': h.timestamp
+                } for h in history]).sort_values('timestamp')
+
+                # Run Inference
+                # IMPORTANT: Pass the segment_id or route_name exactly as trained
+                # You might need logic here to format "From_StopA_To_StopB" based on polyline_index
+                predicted_eta_seconds = predictor.predict(history_df, closest_route_name)
+
         response[loc.vehicle_id] = {
             'name': loc.name,
             'latitude': loc.latitude,
@@ -90,7 +116,8 @@ def get_locations():
             'timestamp': loc.timestamp.isoformat(),
             'heading_degrees': loc.heading_degrees,
             'speed_mph': loc.speed_mph,
-            'route_name': route_name,
+            'route_name': closest_route_name,
+            'eta_seconds': predicted_eta_seconds,
             'polyline_index': polyline_index,
             'is_ecu_speed': loc.is_ecu_speed,
             'formatted_location': loc.formatted_location,
@@ -104,7 +131,6 @@ def get_locations():
         }
 
     return jsonify(response)
-
 @bp.route('/api/webhook', methods=['POST'])
 def webhook():
     if secret := current_app.config['SAMSARA_SECRET']:

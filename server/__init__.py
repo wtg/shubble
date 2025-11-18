@@ -3,6 +3,9 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 import logging
 from .config import Config
+from .services.eta_predictor import ETAPredictor
+from pathlib import Path
+
 
 numeric_level = logging._nameToLevel.get(Config.LOG_LEVEL.upper(), logging.INFO)
 logging.basicConfig(
@@ -26,4 +29,7 @@ def create_app():
     from . import routes
     app.register_blueprint(routes.bp)
 
+    model_path = Path(__file__).parent.parent / 'models'
+    ETAPredictor().initialize(model_path)
+    
     return app

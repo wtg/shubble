@@ -1,19 +1,28 @@
+import os
+import random
+import numpy as np
+import tensorflow as tf
+
+# --- 1. SET RANDOM SEEDS FOR REPRODUCIBILITY ---
+# This must be done before any other imports or code
+SEED = 42
+os.environ['PYTHONHASHSEED'] = str(SEED)
+random.seed(SEED)
+np.random.seed(SEED)
+tf.random.set_seed(SEED)
+
 import matplotlib
 matplotlib.use('Agg')
 
 from pathlib import Path
-
 import pandas as pd
-import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler, LabelEncoder
 import gc
+import joblib 
 
-# --- NEW IMPORTS FOR TENSORFLOW & KERAS TUNER ---
-import tensorflow as tf
-import keras_tuner as kt
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, LSTM, Dense, Concatenate, Embedding, Flatten, Dropout
 from tensorflow.keras.callbacks import EarlyStopping
@@ -25,10 +34,9 @@ from . import stop_location
 from .stop_location import MODELS_DIR 
 
 
-# --- LSTM-SPECIFIC CONSTANTS (SLIDING WINDOW) ---
-SEQUENCE_LENGTH = 5  # Use the last 5 pings to predict the next ETA
+# --- LSTM-SPECIFIC CONSTANTS ---
+SEQUENCE_LENGTH = 5
 
-# Features that change at every ping (the sequence)
 SEQ_FEATURES = [
     'distance_to_next_stop', 
     'speed_mph', 
@@ -38,7 +46,6 @@ SEQ_FEATURES = [
     'speed_delta_1'
 ]
 
-# Features that are constant for a given ping (the context)
 CTX_FEATURES = [
     'time_sin', 
     'time_cos',
@@ -47,30 +54,19 @@ CTX_FEATURES = [
 ]
 
 TARGET_NAME = 'ETA_seconds'
-# --- (Removed STATUS_NAME, it was from a previous bug) ---
-
-
-# --- NEW LSTM MODELING FUNCTIONS ---
 
 def create_sliding_window_dataset(df, segment_index_col, sequence_length):
-    """
-    Creates a sliding window dataset for a time-series model.
-    
-    --- MODIFIED ---
-    - Correctly extracts the *unscaled speed* for error analysis
-      by copying it before scaling.
-    """
+    """Creates a sliding window dataset for a time-series model."""
     
     # Scalers
     seq_scaler = MinMaxScaler()
     ctx_scaler = MinMaxScaler()
     target_scaler = MinMaxScaler()
 
-    # --- FIX: Copy the unscaled speed *before* scaling ---
+    # Copy unscaled speed before scaling
     df['unscaled_speed'] = df['speed_mph']
 
-    # Scale data *before* creating windows
-    # Note: This will scale 'speed_mph' in SEQ_FEATURES, but 'unscaled_speed' remains
+    # Scale data
     df[SEQ_FEATURES] = seq_scaler.fit_transform(df[SEQ_FEATURES])
     df[CTX_FEATURES] = ctx_scaler.fit_transform(df[CTX_FEATURES])
     df[TARGET_NAME] = target_scaler.fit_transform(df[[TARGET_NAME]])
@@ -82,7 +78,6 @@ def create_sliding_window_dataset(df, segment_index_col, sequence_length):
     all_y = []
     all_speeds = [] 
 
-    # Group by vehicle so windows don't cross vehicles
     grouped = df.groupby('vehicle_id')
 
     print(f"Creating sliding windows for {len(grouped)} vehicles...")
@@ -92,27 +87,21 @@ def create_sliding_window_dataset(df, segment_index_col, sequence_length):
         ctx_data = group[CTX_FEATURES].values
         seg_data = group[segment_index_col].values
         target_data = group[TARGET_NAME].values
-        # --- FIX: Get the unscaled speed from the copy ---
         speed_data_unscaled = group['unscaled_speed'].values 
 
-        # Iterate to create overlapping windows
         for i in range(len(group) - sequence_length):
             window_end = i + sequence_length
             
             all_X_seq.append(seq_data[i:window_end])
-            
-            # The context and target are from the *last* ping in the window
             all_X_ctx.append(ctx_data[window_end - 1])
             all_X_seg.append(seg_data[window_end - 1])
             all_y.append(target_data[window_end - 1])
-            # --- FIX: Append the *true* unscaled speed ---
             all_speeds.append(speed_data_unscaled[window_end - 1]) 
 
     if not all_X_seq:
         print("Warning: No windows were created. Check data and sequence length.")
-        return None, None, None, None
+        return None, None, None, None, None, None
 
-    # Convert to numpy arrays
     X_seq = np.array(all_X_seq)
     X_ctx = np.array(all_X_ctx)
     X_seg = np.array(all_X_seg)
@@ -121,83 +110,83 @@ def create_sliding_window_dataset(df, segment_index_col, sequence_length):
 
     print(f"Created {len(y)} total windows.")
     
-    # Package data
     X_inputs = {
         'sequential_input': X_seq,
         'context_input': X_ctx,
         'segment_input': X_seg
     }
     
-    return X_inputs, y, target_scaler, speeds
+    return X_inputs, y, seq_scaler, ctx_scaler, target_scaler, speeds
 
 
-# --- NEW: Model Building Function for KerasTuner ---
-def build_model(hp, n_segments, seq_len, n_seq_features, n_ctx_features):
+def build_and_train_lstm(train_data, test_data, scalers, encoder, n_segments, sequence_length):
     """
-    Builds a compiled Keras model with hyperparameters.
-    This function is designed to be used by KerasTuner.
+    Builds, trains, evaluates, and SAVES the model and scalers.
     """
+    (X_train, y_train) = train_data
+    (X_test, y_test, speeds_test) = test_data
     
-    # --- 1. Define Hyperparameters ---
-    # Layer Units
-    lstm_units_1 = hp.Int('lstm_units_1', min_value=16, max_value=64, step=16)
-    lstm_units_2 = hp.Int('lstm_units_2', min_value=16, max_value=32, step=16)
-    embed_dim = hp.Int('embed_dim', min_value=4, max_value=12, step=4)
-    dense_units_1 = hp.Int('dense_units_1', min_value=16, max_value=64, step=16)
-    dense_units_2 = hp.Int('dense_units_2', min_value=8, max_value=32, step=8)
+    # Unpack artifacts
+    seq_scaler, ctx_scaler, target_scaler = scalers
+    segment_encoder = encoder
+
+    # --- 1. Define Manual Model Architecture ---
+    # This is the 32/16 configuration that gave the best results
+    print("Building model with manual parameters (32/16 LSTM units)...")
+
+    # Input 1: Sequential
+    seq_input = Input(shape=(sequence_length, len(SEQ_FEATURES)), name='sequential_input')
+    lstm_out = LSTM(32, activation='relu', return_sequences=True)(seq_input)
+    lstm_out = Dropout(0.2)(lstm_out)
+    lstm_out = LSTM(16, activation='relu')(lstm_out)
     
-    # Dropout Rate
-    dropout_rate = hp.Float('dropout', min_value=0.1, max_value=0.4, step=0.1)
+    # Input 2: Contextual
+    ctx_input = Input(shape=(len(CTX_FEATURES),), name='context_input')
     
-    # Learning Rate
-    learning_rate = hp.Choice('learning_rate', values=[1e-3, 5e-4, 1e-4])
-    
-    
-    # --- 2. Define Model Architecture ---
-    seq_input = Input(shape=(seq_len, n_seq_features), name='sequential_input')
-    lstm_out = LSTM(lstm_units_1, activation='relu', return_sequences=True)(seq_input)
-    lstm_out = Dropout(dropout_rate)(lstm_out)
-    lstm_out = LSTM(lstm_units_2, activation='relu')(lstm_out)
-    
-    ctx_input = Input(shape=(n_ctx_features,), name='context_input')
-    
+    # Input 3: Segment Embedding
     seg_input = Input(shape=(1,), name='segment_input')
-    seg_embedding = Embedding(input_dim=n_segments, output_dim=embed_dim, name='segment_embedding')(seg_input)
+    seg_embedding = Embedding(input_dim=n_segments, output_dim=8, name='segment_embedding')(seg_input)
     seg_embedding = Flatten()(seg_embedding)
     
+    # Concatenate
     concatenated = Concatenate()([lstm_out, ctx_input, seg_embedding])
     
-    dense_1 = Dense(dense_units_1, activation='relu')(concatenated)
-    dense_1 = Dropout(dropout_rate)(dense_1)
-    dense_2 = Dense(dense_units_2, activation='relu')(dense_1)
+    # Dense Layers
+    dense_1 = Dense(32, activation='relu')(concatenated)
+    dense_1 = Dropout(0.2)(dense_1)
+    dense_2 = Dense(16, activation='relu')(dense_1)
     output = Dense(1, activation='linear')(dense_2)
     
     model = Model(inputs=[seq_input, ctx_input, seg_input], outputs=output)
     
-    # --- 3. Compile Model ---
-    model.compile(
-        optimizer=Adam(learning_rate=learning_rate), 
-        loss='mean_squared_error'
+    # Explicitly use Adam with default learning rate for consistency
+    model.compile(optimizer=Adam(learning_rate=0.001), loss='mean_squared_error')
+    model.summary()
+
+    # --- 2. Train Model ---
+    print(f"[Global Model] Training LSTM model...")
+    
+    early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+    
+    history = model.fit(
+        x=X_train,
+        y=y_train,
+        validation_data=(X_test, y_test),
+        epochs=50,
+        batch_size=64,
+        callbacks=[early_stopping],
+        verbose=2
     )
-    
-    return model
 
-
-# --- NEW: Evaluation Function ---
-def evaluate_model(model, X_test, y_test, speeds_test, y_scaler):
-    """
-    Takes a trained model and evaluates it, creating plots and saving the model.
-    """
-    
-    # --- 1. Evaluate Model ---
-    print("Evaluating best model...")
+    # --- 3. Evaluate Model ---
+    print("Evaluating model...")
     y_pred_scaled = model.predict(X_test)
     
-    y_pred = y_scaler.inverse_transform(y_pred_scaled)
-    y_test_orig = y_scaler.inverse_transform(y_test.reshape(-1, 1))
+    y_pred = target_scaler.inverse_transform(y_pred_scaled)
+    y_test_orig = target_scaler.inverse_transform(y_test.reshape(-1, 1))
     
     # --- Robust RMSE Calculation ---
-    print("\n--- Best Model Performance Breakdown ---")
+    print("\n--- Model Performance Breakdown ---")
     
     y_test_flat = y_test_orig.squeeze()
     y_pred_flat = y_pred.squeeze()
@@ -223,10 +212,10 @@ def evaluate_model(model, X_test, y_test, speeds_test, y_scaler):
     rmse_overall = np.sqrt(mean_squared_error(y_test_flat, y_pred_flat))
     print(f"OVERALL Model RMSE: {rmse_overall:.2f} seconds\n")
 
-    # --- 2. Plot Predictions ---
+    # --- 4. Plot Predictions ---
     print("Generating plots...")
     
-    plot_title = f"Global LSTM Model (Tuned)\nActual vs Predicted (Last 200 samples)"
+    plot_title = f"Global LSTM Model\nActual vs Predicted (Last 200 samples)"
     plt.figure(figsize=(12, 7))
     plt.plot(y_test_flat[-200:], label='Actual ETA', marker='o', markersize=5, linestyle='None')
     plt.plot(y_pred_flat[-200:], label='Predicted ETA', marker='x', markersize=5, linestyle='None')
@@ -247,7 +236,7 @@ def evaluate_model(model, X_test, y_test, speeds_test, y_scaler):
     plt.plot([min_val, max_val], [min_val, max_val], 'r--', label='Perfect Prediction')
     plt.xlabel('Actual ETA (seconds)')
     plt.ylabel('Predicted ETA (seconds)')
-    plt.title('Prediction vs. Actual ETA (Tuned)')
+    plt.title('Prediction vs. Actual ETA')
     plt.legend()
     plt.grid()
     plt.tight_layout()
@@ -261,7 +250,7 @@ def evaluate_model(model, X_test, y_test, speeds_test, y_scaler):
     plt.axhline(0, color='red', linestyle='--', label='No Error')
     plt.xlabel('Predicted ETA (seconds)')
     plt.ylabel('Error (Actual - Predicted)')
-    plt.title('Residual Plot (Tuned)')
+    plt.title('Residual Plot (Error vs. Prediction)')
     plt.legend()
     plt.grid()
     plt.tight_layout()
@@ -269,15 +258,27 @@ def evaluate_model(model, X_test, y_test, speeds_test, y_scaler):
     plt.savefig(stop_location.PLOTS_DIR / f'{filename}.png')
     plt.close()
     
-    # --- 3. Save the Model ---
-    print("Saving best model...")
+    # --- 5. Save the Model AND Artifacts ---
+    print("Saving model and artifacts...")
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    
+    # Save Keras Model
     model_save_path = MODELS_DIR / "global_lstm_eta_model.keras"
     model.save(model_save_path)
+    
+    # Save Scalers and Encoder via Joblib
+    joblib.dump(seq_scaler, MODELS_DIR / 'seq_scaler.pkl')
+    joblib.dump(ctx_scaler, MODELS_DIR / 'ctx_scaler.pkl')
+    joblib.dump(target_scaler, MODELS_DIR / 'target_scaler.pkl')
+    joblib.dump(segment_encoder, MODELS_DIR / 'segment_encoder.pkl')
+    
     print(f"Model saved to {model_save_path}")
+    print(f"Scalers and Encoder saved to {MODELS_DIR}")
+    
+    print(f"Global Model Root Mean Squared Error (RMSE): {rmse_overall:.2f} seconds")
 
 
-# --- MODIFIED MAIN FUNCTION ---
+# --- MAIN FUNCTION ---
 def main():
     
     print("Starting LSTM ETA Prediction Process (Global Model)...")
@@ -379,7 +380,8 @@ def main():
         print(f"Not enough clean data ({len(df_clean)} rows) to train global model.")
         return
         
-    X_inputs, y, target_scaler, speeds = create_sliding_window_dataset(
+    # Unpack ALL scalers
+    X_inputs, y, seq_scaler, ctx_scaler, target_scaler, speeds = create_sliding_window_dataset(
         df_clean, 
         'segment_index', 
         SEQUENCE_LENGTH
@@ -391,6 +393,7 @@ def main():
 
     print("Splitting data into train and test sets...")
     
+    # IMPORTANT: Use the exact same random_state as the seed for consistency
     X_seq_train, X_seq_test, \
     X_ctx_train, X_ctx_test, \
     X_seg_train, X_seg_test, \
@@ -400,78 +403,36 @@ def main():
         X_inputs['context_input'],
         X_inputs['segment_input'],
         y,
-        speeds, # Split this too
+        speeds, 
         test_size=0.2,
-        random_state=42
+        random_state=SEED # Use the global seed constant
     )
 
-    # Package data into the formats KerasTuner expects
-    train_data_inputs = {
+    train_data = ({
         'sequential_input': X_seq_train,
         'context_input': X_ctx_train,
         'segment_input': X_seg_train
-    }
+    }, y_train)
     
-    test_data_inputs = {
+    test_data = ({
         'sequential_input': X_seq_test,
         'context_input': X_ctx_test,
         'segment_input': X_seg_test
-    }
+    }, y_test, speeds_test)
     
-    # --- NEW: Get data shapes for the model builder ---
-    n_seq_features = X_inputs['sequential_input'].shape[2]
-    n_ctx_features = X_inputs['context_input'].shape[1]
     
-    # --- NEW: KerasTuner Setup ---
-    
-    model_builder = lambda hp: build_model(
-        hp,
-        n_segments=n_segments,
-        seq_len=SEQUENCE_LENGTH,
-        n_seq_features=n_seq_features,
-        n_ctx_features=n_ctx_features
-    )
-
-    tuner = kt.RandomSearch(
-        model_builder,
-        objective='val_loss',
-        max_trials=10,
-        executions_per_trial=1,
-        directory='keras_tuner',
-        project_name='shubble_eta_lstm'
-    )
-    
-    search_early_stopping = EarlyStopping(monitor='val_loss', patience=3)
-
-    print("\n--- Starting Hyperparameter Search ---")
-    tuner.search(
-        train_data_inputs,
-        y_train,
-        epochs=50,
-        validation_data=(test_data_inputs, y_test),
-        callbacks=[search_early_stopping]
-    )
-
-    print("\n--- Hyperparameter Search Complete ---")
-    tuner.results_summary()
-
     try:
-        best_hps = tuner.get_best_hyperparameters(num_trials=1)[0]
-        print(f"Best HPs found: {best_hps.values}")
-
-        best_model = tuner.get_best_models(num_models=1)[0]
-        
-        # --- Evaluate the best model ---
-        evaluate_model(
-            best_model, 
-            test_data_inputs, 
-            y_test, 
-            speeds_test, 
-            target_scaler  # <--- THIS IS THE FIX
+        # Pass all artifacts to build_and_train
+        build_and_train_lstm(
+            train_data, 
+            test_data, 
+            (seq_scaler, ctx_scaler, target_scaler), # Tuple of scalers
+            segment_encoder, # Segment encoder
+            n_segments,
+            SEQUENCE_LENGTH
         )
-        
     except Exception as e:
-        print(f"!! FAILED to evaluate the best model. Error: {e}")
+        print(f"!! FAILED to build or train global LSTM model. Error: {e}")
         import traceback
         traceback.print_exc()
 
