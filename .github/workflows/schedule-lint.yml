@@ -28,21 +28,21 @@ jobs:
                       | {
                           schedule_type: $schedule_type,
                           bus_name: $bus_name,
-                          time: .,
+                          time: .[0],
                           destination: .[1],
-                          key: ($schedule_type + "|" + . + "|" + .[1])
+                          key: ($schedule_type + "|" + .[0] + "|" + .[1])
                         }
                     ]
                     | group_by(.key)
                     | map(select(length > 1))
                     | if length > 0 then
                         . as $duplicates
-                        | "❌ Validation Failed: Found $$length) duplicate bus schedule(s)\n"
+                        | "❌ Validation Failed: Found \($duplicates | length) duplicate bus schedule(s)\n"
                         + ($duplicates | map(
-                            "\nSchedule Type: $$..schedule_type)\n"
-                            + "  Time: $$..time)\n"
-                            + "  Destination: $$..destination)\n"
-                            + "  Duplicate in buses: $$[.[].bus_name] | join(", "))\n"
+                            "\nSchedule Type: \(.[0].schedule_type)\n"
+                            + "  Time: \(.[0].time)\n"
+                            + "  Destination: \(.[0].destination)\n"
+                            + "  Duplicate in buses: \(map(.bus_name) | join(", "))\n"
                           ) | join(""))
                         + "\nPlease ensure each time+destination combination appears in only one bus route."
                         | error
