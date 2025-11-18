@@ -45,28 +45,29 @@ class ETAPredictor:
 
         # 1. Need exactly 5 data points for the sequence
         if len(vehicle_history_df) < 5:
+            print(f"DEBUG: Not enough history. Has {len(vehicle_history_df)}, need 5.")
             return None
 
-        # 2. Feature Engineering (Must match training logic exactly)
+        print(f"\n--- DEBUG PREDICTION START ({current_route_name}) ---")
+        print(f"DEBUG: Last timestamp: {vehicle_history_df['timestamp'].iloc[-1]}")
+
+        # 2. Feature Engineering
         df = vehicle_history_df.copy()
         
         # Calculate Distance to next stop for each point
-        # Note: This is computationally expensive if done for every request. 
-        # Optimization: Cache route info or calculate in worker.
         distances = []
         for _, row in df.iterrows():
+            # This logic depends on your specific Stops.get_closest_point implementation
             dist_info = Stops.get_closest_point((row['latitude'], row['longitude']))
-            # dist_info structure depends on your Stops.get_closest_point return
-            # Assuming it returns (distance, coords, route_name, polyline_index)
             dist_m = dist_info[0] if dist_info else 0
             distances.append(dist_m)
         
         df['distance_to_next_stop'] = distances
+        print(f"DEBUG: Distances (m): {distances}")
 
-        # Calculate Deltas
+        # Calculate Deltas (Lat/Lon only, Speed delta removed)
         df['lat_delta_1'] = df['latitude'] - df['latitude'].shift(1)
         df['lon_delta_1'] = df['longitude'] - df['longitude'].shift(1)
-        df['speed_delta_1'] = df['speed_mph'] - df['speed_mph'].shift(1)
         
         # Time features
         dt = df['timestamp'].dt
@@ -77,37 +78,41 @@ class ETAPredictor:
         df['day_sin'] = np.sin(2 * np.pi * dt.dayofweek / 7)
         df['day_cos'] = np.cos(2 * np.pi * dt.dayofweek / 7)
 
-        # Fill NaNs created by shifting (use 0 for deltas)
+        # Fill NaNs created by shifting
         df = df.fillna(0)
 
         # 3. Prepare Inputs
+        # Matches training: No speed features
         SEQ_FEATURES = [
-            'distance_to_next_stop', 'speed_mph', 'heading_degrees',
-            'lat_delta_1', 'lon_delta_1', 'speed_delta_1'
+            'distance_to_next_stop', 
+            'heading_degrees',
+            'lat_delta_1', 
+            'lon_delta_1'
         ]
         CTX_FEATURES = ['time_sin', 'time_cos', 'day_sin', 'day_cos']
 
-        # Scale
-        X_seq = self.seq_scaler.transform(df[SEQ_FEATURES].values)
+        print(f"DEBUG: Raw Sequence Data (Tail):\n{df[SEQ_FEATURES].tail(1)}")
+
+        # Pass DataFrame to preserve feature names
+        X_seq = self.seq_scaler.transform(df[SEQ_FEATURES])
         
-        # Context is just the last row
-        last_row = df.iloc[-1]
-        X_ctx = self.ctx_scaler.transform(last_row[CTX_FEATURES].values.reshape(1, -1))
+        # Context is the last row
+        X_ctx = self.ctx_scaler.transform(df.iloc[[-1]][CTX_FEATURES])
 
         # Segment Embedding
-        # NOTE: You need to construct the segment_id (e.g., "From_A_To_B") 
-        # Or pass the raw route_name if that's what you trained on.
-        # This example assumes 'current_route_name' maps to the encoder classes.
         try:
-            # Handle unknown segments safely
             if current_route_name in self.segment_encoder.classes_:
                 seg_idx = self.segment_encoder.transform([current_route_name])
+                print(f"DEBUG: Segment '{current_route_name}' mapped to Index: {seg_idx[0]}")
             else:
-                seg_idx = np.array([0]) # Fallback
-        except:
+                print(f"DEBUG WARNING: Segment '{current_route_name}' NOT FOUND. Fallback to 0.")
+                print(f"DEBUG: Valid classes sample: {self.segment_encoder.classes_[:5]}")
+                seg_idx = np.array([0]) 
+        except Exception as e:
+            print(f"DEBUG ERROR: Encoder failure: {e}")
             seg_idx = np.array([0])
 
-        # Reshape Sequence to (1, 5, 6)
+        # Reshape Sequence
         X_seq = X_seq.reshape(1, 5, len(SEQ_FEATURES))
 
         # 4. Predict
@@ -118,6 +123,12 @@ class ETAPredictor:
         }
         
         predicted_scaled = self.model.predict(inputs, verbose=0)
-        predicted_seconds = self.target_scaler.inverse_transform(predicted_scaled)[0][0]
+        print(f"DEBUG: Raw Model Output (Scaled): {predicted_scaled[0][0]}")
 
-        return max(0, predicted_seconds) # Ensure no negative time
+        predicted_seconds_numpy = self.target_scaler.inverse_transform(predicted_scaled)[0][0]
+        final_val = float(max(0, predicted_seconds_numpy))
+        
+        print(f"DEBUG: Final ETA: {final_val:.2f} seconds")
+        print("--- DEBUG END ---\n")
+
+        return final_val

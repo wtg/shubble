@@ -75,41 +75,38 @@ def get_locations():
             Vehicle, VehicleLocation.vehicle_id == Vehicle.id
         ).all()
 
-    predictor = ETAPredictor() # Get the singleton instance
+    predictor = ETAPredictor() 
     response = {}
     
     for loc, vehicle in results:
-        # ... (Existing closest loop logic) ...
         closest_distance, _, closest_route_name, polyline_index = Stops.get_closest_point(
             (loc.latitude, loc.longitude)
         )
         
-        # --- NEW: Calculate ETA ---
         predicted_eta_seconds = None
         
-        # Only predict if we are on a known route
         if closest_route_name: 
-            # Fetch last 5 locations for this vehicle for LSTM context
-            history = VehicleLocation.query.filter_by(vehicle_id=loc.vehicle_id)\
-                .order_by(VehicleLocation.timestamp.desc())\
-                .limit(5)\
-                .all()
+            # 1. Determine the Segment ID using the new method
+            segment_id = Stops.get_segment_id(closest_route_name, polyline_index)
             
-            # We need 5 points to make a prediction
-            if len(history) == 5:
-                # Convert to DataFrame, sort ascending by time
-                history_df = pd.DataFrame([{
-                    'latitude': h.latitude,
-                    'longitude': h.longitude,
-                    'speed_mph': h.speed_mph if h.speed_mph else 0, # Handle None speeds
-                    'heading_degrees': h.heading_degrees,
-                    'timestamp': h.timestamp
-                } for h in history]).sort_values('timestamp')
+            # Only predict if we successfully identified a segment
+            if segment_id:
+                history = VehicleLocation.query.filter_by(vehicle_id=loc.vehicle_id)\
+                    .order_by(VehicleLocation.timestamp.desc())\
+                    .limit(5)\
+                    .all()
+                
+                if len(history) == 5:
+                    history_df = pd.DataFrame([{
+                        'latitude': h.latitude,
+                        'longitude': h.longitude,
+                        # Note: Speed removed from model, but keeping for dataframe structure is fine
+                        'heading_degrees': h.heading_degrees, 
+                        'timestamp': h.timestamp
+                    } for h in history]).sort_values('timestamp')
 
-                # Run Inference
-                # IMPORTANT: Pass the segment_id or route_name exactly as trained
-                # You might need logic here to format "From_StopA_To_StopB" based on polyline_index
-                predicted_eta_seconds = predictor.predict(history_df, closest_route_name)
+                    # 2. Pass the explicit segment_id to the predictor
+                    predicted_eta_seconds = predictor.predict(history_df, segment_id)
 
         response[loc.vehicle_id] = {
             'name': loc.name,
@@ -120,6 +117,7 @@ def get_locations():
             'speed_mph': loc.speed_mph,
             'route_name': closest_route_name,
             'eta_seconds': predicted_eta_seconds,
+            'segment_id': segment_id if closest_route_name else None,
             'polyline_index': polyline_index,
             'is_ecu_speed': loc.is_ecu_speed,
             'formatted_location': loc.formatted_location,

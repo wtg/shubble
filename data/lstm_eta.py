@@ -4,7 +4,6 @@ import numpy as np
 import tensorflow as tf
 
 # --- 1. SET RANDOM SEEDS FOR REPRODUCIBILITY ---
-# This must be done before any other imports or code
 SEED = 42
 os.environ['PYTHONHASHSEED'] = str(SEED)
 random.seed(SEED)
@@ -37,13 +36,14 @@ from .stop_location import MODELS_DIR
 # --- LSTM-SPECIFIC CONSTANTS ---
 SEQUENCE_LENGTH = 5
 
+# --- MODIFIED: Removed 'speed_mph' and 'speed_delta_1' ---
 SEQ_FEATURES = [
     'distance_to_next_stop', 
-    'speed_mph', 
+    # 'speed_mph',       <-- REMOVED
     'heading_degrees',
     'lat_delta_1',
     'lon_delta_1',
-    'speed_delta_1'
+    # 'speed_delta_1'    <-- REMOVED
 ]
 
 CTX_FEATURES = [
@@ -63,7 +63,9 @@ def create_sliding_window_dataset(df, segment_index_col, sequence_length):
     ctx_scaler = MinMaxScaler()
     target_scaler = MinMaxScaler()
 
-    # Copy unscaled speed before scaling
+    # --- ERROR ANALYSIS PREP ---
+    # We still want speed for the final report, even if the model doesn't use it.
+    # Copy unscaled speed before we do anything else.
     df['unscaled_speed'] = df['speed_mph']
 
     # Scale data
@@ -87,6 +89,8 @@ def create_sliding_window_dataset(df, segment_index_col, sequence_length):
         ctx_data = group[CTX_FEATURES].values
         seg_data = group[segment_index_col].values
         target_data = group[TARGET_NAME].values
+        
+        # Use the unscaled speed for our error analysis array
         speed_data_unscaled = group['unscaled_speed'].values 
 
         for i in range(len(group) - sequence_length):
@@ -131,7 +135,6 @@ def build_and_train_lstm(train_data, test_data, scalers, encoder, n_segments, se
     segment_encoder = encoder
 
     # --- 1. Define Manual Model Architecture ---
-    # This is the 32/16 configuration that gave the best results
     print("Building model with manual parameters (32/16 LSTM units)...")
 
     # Input 1: Sequential
@@ -215,7 +218,7 @@ def build_and_train_lstm(train_data, test_data, scalers, encoder, n_segments, se
     # --- 4. Plot Predictions ---
     print("Generating plots...")
     
-    plot_title = f"Global LSTM Model\nActual vs Predicted (Last 200 samples)"
+    plot_title = f"Global LSTM Model (No Speed Feature)\nActual vs Predicted (Last 200 samples)"
     plt.figure(figsize=(12, 7))
     plt.plot(y_test_flat[-200:], label='Actual ETA', marker='o', markersize=5, linestyle='None')
     plt.plot(y_pred_flat[-200:], label='Predicted ETA', marker='x', markersize=5, linestyle='None')
@@ -366,7 +369,12 @@ def main():
     print(f"Combined {len(all_moving_segments_df)} segments into one "
           f"master DataFrame with {len(master_training_df)} total rows.")
           
+    # --- MODIFIED: Removed 'speed_mph' from cleaning check if it's purely optional, 
+    # but we kept it for error analysis, so we still need to ensure it exists.
     all_model_features = SEQ_FEATURES + CTX_FEATURES + [TARGET_NAME, 'speed_mph']
+    # Note: SEQ_FEATURES no longer contains 'speed_mph', but we manually added it back
+    # to this list to ensure rows with missing speed are dropped, as we need speed for error analysis.
+    
     df_clean = master_training_df.dropna(subset=all_model_features).copy()
     
     print("Encoding 'segment_id' for Embedding layer...")
@@ -393,7 +401,6 @@ def main():
 
     print("Splitting data into train and test sets...")
     
-    # IMPORTANT: Use the exact same random_state as the seed for consistency
     X_seq_train, X_seq_test, \
     X_ctx_train, X_ctx_test, \
     X_seg_train, X_seg_test, \
@@ -405,7 +412,7 @@ def main():
         y,
         speeds, 
         test_size=0.2,
-        random_state=SEED # Use the global seed constant
+        random_state=SEED
     )
 
     train_data = ({
@@ -426,8 +433,8 @@ def main():
         build_and_train_lstm(
             train_data, 
             test_data, 
-            (seq_scaler, ctx_scaler, target_scaler), # Tuple of scalers
-            segment_encoder, # Segment encoder
+            (seq_scaler, ctx_scaler, target_scaler), 
+            segment_encoder, 
             n_segments,
             SEQUENCE_LENGTH
         )

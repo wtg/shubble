@@ -75,7 +75,7 @@ class Stops:
         if closest_data:
             closest_routes = sorted(closest_data, key=lambda x: x[0])
             # Check if closest route is significantly closer than others
-            if len(closest_routes) > 1 and haversine(closest_routes[0][1], closest_routes[1][1]) < 0.020:
+            if len(closest_routes) > 1 and haversine(closest_routes[0][1], closest_routes[1][1]) < 0.050:
                 # If not significantly closer, return None to indicate ambiguity
                 return None, None, None, None
             return closest_routes[0]
@@ -98,6 +98,47 @@ class Stops:
                 if distance < threshold:
                     return route_name, stop
         return None, None
+    @staticmethod
+    def get_segment_id(route_name, current_polyline_index):
+        """
+        Determines the 'From_A_To_B' segment ID based on the vehicle's 
+        current index along the route path.
+        """
+            
+        if route_name not in Stops.routes_data:
+            return None
+
+        route_data = Stops.routes_data[route_name]
+        # Get list of stops dicts: [{'name': 'Union', 'indices': [0, 1]}, ...]
+        stops_list = route_data.get('stops_list', [])
+        
+        if not stops_list:
+            return None
+
+        # We need to find where current_polyline_index fits.
+        # We assume stops_list is ordered by the route direction.
+        
+        last_stop_name = stops_list[-1]['name'] # Default to last if wrapping around
+        next_stop_name = stops_list[0]['name']  # Default to first if wrapping around
+
+        # Iterate to find the specific interval
+        for i, stop in enumerate(stops_list):
+            # Get the 'entry' index of this stop (usually the first index in its list)
+            stop_idx = stop['indices'][0]
+            
+            if stop_idx > current_polyline_index:
+                # We found the stop *ahead* of us
+                next_stop_name = stop['name']
+                # The one before us is the previous in the list (or the very last one if i=0)
+                prev_idx = i - 1 if i > 0 else -1
+                last_stop_name = stops_list[prev_idx]['name']
+                break
+            
+            # If we haven't found a stop > index, then this stop is currently the "last one passed"
+            # We continue the loop. If the loop finishes, it means we are past the last stop
+            # and heading towards the first stop (wrap around).
+
+        return f"From_{last_stop_name}_To_{next_stop_name}"
 
 def haversine(coord1, coord2):
     """
