@@ -96,12 +96,12 @@ type MapKitMapProps = {
   generateRoutes?: boolean;
   selectedRoute?: string | null;
   setSelectedRoute?: (route: string | null) => void;
+  isFullscreen?: boolean;
 };
 
 // @ts-expect-error selectedRoutes is never used
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-export default function MapKitMap({ routeData, vehicles, generateRoutes = false, selectedRoute, setSelectedRoute }: MapKitMapProps) {
-
+export default function MapKitMap({ routeData, vehicles, generateRoutes = false, selectedRoute, setSelectedRoute, isFullscreen = false }: MapKitMapProps) {
   const mapRef = useRef(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const token = import.meta.env.VITE_MAPKIT_KEY;
@@ -413,7 +413,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
   return (
     <div
-      className='map'
+      className={isFullscreen ? 'map-fullscreen' : 'map'}
       ref={mapRef}
     >
     </div>
