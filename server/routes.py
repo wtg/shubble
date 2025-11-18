@@ -1,11 +1,16 @@
-from flask import Blueprint, request, jsonify, send_from_directory
+from flask import Blueprint, request, jsonify, send_from_directory, current_app
 from . import db
 from .models import Vehicle, GeofenceEvent, VehicleLocation
 from pathlib import Path
 from sqlalchemy import func, and_
 from datetime import datetime, date, timezone
 from data.stops import Stops
+from hashlib import sha256
+import hmac
 import logging
+
+from .time_utils import get_campus_start_of_day
+
 logger = logging.getLogger(__name__)
 
 bp = Blueprint('routes', __name__)
@@ -28,7 +33,7 @@ def get_locations():
     today is a 'geofenceEntry'.
     """
     # Start of today for filtering today's geofence events
-    start_of_today = datetime.combine(date.today(), datetime.min.time())
+    start_of_today = get_campus_start_of_day()
 
     # Subquery: latest geofence event today per vehicle
     latest_geofence_events = db.session.query(
@@ -70,7 +75,7 @@ def get_locations():
     response = {}
     for loc, vehicle in results:
         # Get closest loop
-        closest_distance, _, closest_route_name, _ = Stops.get_closest_point(
+        closest_distance, _, closest_route_name, polyline_index = Stops.get_closest_point(
             (loc.latitude, loc.longitude)
         )
         if closest_distance is None:
@@ -85,6 +90,7 @@ def get_locations():
             'heading_degrees': loc.heading_degrees,
             'speed_mph': loc.speed_mph,
             'route_name': route_name,
+            'polyline_index': polyline_index,
             'is_ecu_speed': loc.is_ecu_speed,
             'formatted_location': loc.formatted_location,
             'address_id': loc.address_id,
@@ -101,6 +107,22 @@ def get_locations():
 
 @bp.route('/api/webhook', methods=['POST'])
 def webhook():
+    if secret := current_app.config['SAMSARA_SECRET']:
+        # See https://developers.samsara.com/docs/webhooks#webhook-signatures
+        try:
+            timestamp = request.headers['X-Samsara-Timestamp']
+            signature = request.headers['X-Samsara-Signature']
+
+            prefix = 'v1:{0}:'.format(timestamp)
+            message = bytes(prefix, 'utf-8') + request.data
+            h = hmac.new(secret, message, sha256)
+            expected_signature = 'v1=' + h.hexdigest()
+
+            if expected_signature != signature:
+                return jsonify({'status': 'error', 'message': 'Failed to authenticate request.'}), 401
+        except KeyError as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 400
+
     """
     Handles incoming webhook events for geofence entries/exits.
     Expects JSON payload with event details.
@@ -189,7 +211,7 @@ def webhook():
 @bp.route('/api/today', methods=['GET'])
 def data_today():
     now = datetime.now(timezone.utc)
-    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    start_of_day = get_campus_start_of_day()
     locations_today = VehicleLocation.query.filter(
         and_(
             VehicleLocation.timestamp >= start_of_day,
@@ -231,3 +253,13 @@ def data_today():
                 locations_today_dict[geofence_event.vehicle_id]["exit"] = geofence_event.event_time
 
     return jsonify(locations_today_dict)
+
+@bp.route('/api/routes', methods=['GET'])
+def get_shuttle_routes():
+    root_dir = Path(__file__).parent.parent
+    return send_from_directory(root_dir / 'data', 'routes.json')
+
+@bp.route('/api/schedule', methods=['GET'])
+def get_shuttle_schedule():
+    root_dir = Path(__file__).parent.parent
+    return send_from_directory(root_dir / 'data', 'schedule.json')
