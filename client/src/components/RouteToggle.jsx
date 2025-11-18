@@ -1,7 +1,4 @@
-import { useState, useEffect, useLayoutEffect } from 'react';
 import '../styles/RouteToggle.css';
-import scheduleData from '../data/schedule.json';
-import routeData from '../data/routes.json';
 import { aggregatedSchedule } from '../data/parseSchedule';
 
 export default function RouteToggle({selectedRoute, setSelectedRoute}) {

@@ -1,6 +1,5 @@
-import { useState, useEffect, useLayoutEffect } from 'react';
+import { useState, useEffect } from 'react';
 import '../styles/Schedule.css';
-import scheduleData from '../data/schedule.json';
 import routeData from '../data/routes.json';
 import { aggregatedSchedule } from '../data/parseSchedule';
 import RouteToggle from './RouteToggle';
@@ -15,7 +14,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop
   }
 
   const now = new Date();
-  const [selectedDay, setSelectedDay] = useState(now.getDay());
+  const [selectedDay] = useState(now.getDay());
   const [routeNames, setRouteNames] = useState(Object.keys(aggregatedSchedule[selectedDay]));
   const [stopNames, setStopNames] = useState([]);
   const [schedule, setSchedule] = useState([]);
@@ -43,11 +42,6 @@ export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop
     }
     setStopNames(routeData[safeSelectedRoute].STOPS);
   }, [selectedRoute]);
-
-  // Handle day change from dropdown
-  const handleDayChange = (e) => {
-    setSelectedDay(parseInt(e.target.value));
-  }
 
   // Function to offset schedule time by given minutes
   const offsetTime = (time, offset) => {
