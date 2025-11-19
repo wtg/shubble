@@ -287,6 +287,33 @@ def get_matched_shuttle_schedules():
             "message": str(e)
         }), 500
 
+@bp.route('/api/matched-schedules/recompute', methods=['POST'])
+def recompute_matched_shuttle_schedules():
+    """
+    Recalculation of matched shuttle schedules.
+    So cache can be safely updated
+    """
+
+    try:
+        #Run matching algorithm
+        matched = Schedule.match_shuttles_to_schedules()
+
+        #Store result in cache
+        cache.set("schedule_entries", matched, timeout=300)
+
+        return jsonify({
+            "status": "success",
+            "message": "Schedule matching recomputed and cache updated.",
+            "matchedSchedules": matched
+        }), 200
+
+    except Exception as e:
+        logger.exception(f"Error recomputing matched schedules: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
 
 @bp.route('/api/routes', methods=['GET'])
 def get_shuttle_routes():
