@@ -33,7 +33,7 @@ class Shuttle:
         self.path_index = 0
         self.subpath_index = 0
         self.distance_into_segment = 0
-        self.current_route = None
+        self.next_route = None
 
     def update_state(self):
         match self.state:
@@ -43,8 +43,6 @@ class Shuttle:
                 self.go_to_next_state()
             case _:
                 if not self.follow_path():
-                    if self.state == ShuttleState.LOOPING:
-                        self.set_route(None)
                     self.go_to_next_state()
 
         self.last_updated = time.time()
@@ -221,7 +219,7 @@ class Shuttle:
 
     def get_looping_path(self):
         return Stops.routes_data[
-            self.current_route
+            self.next_route
         ]['ROUTES']
 
     def get_break_path(self):
@@ -240,13 +238,12 @@ class Shuttle:
             raise ValueError(f"Invalid shuttle state: {next_state}")
         self.next_state = next_state
 
-    def set_route(self, route: str):
-        if route is not None:
-            if route not in Stops.routes_data.keys():
-                raise ValueError(f"Invalid shuttle route: {route}")
-            elif route not in Stops.active_routes:
-                raise ValueError(f"Inactive shuttle route: {route}")
-        self.current_route = route
+    def set_next_route(self, next_route: str):
+        if next_route not in Stops.routes_data.keys():
+            raise ValueError(f"Invalid shuttle route: {next_route}")
+        elif next_route not in Stops.active_routes:
+            raise ValueError(f"Inactive shuttle route: {next_route}")
+        self.next_route = next_route
 
     def to_dict(self):
         return {
@@ -258,5 +255,6 @@ class Shuttle:
             "speed": self.speed,
             "path_index": self.path_index,
             "subpath_index": self.subpath_index,
-            "distance_into_segment": self.distance_into_segment
+            "distance_into_segment": self.distance_into_segment,
+            "next_route": self.next_route
         }

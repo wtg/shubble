@@ -20,11 +20,12 @@ export function addShuttle(signal) {
     });
 }
 
-export function setNextState(shuttleId, state, signal) {
+// data and signal are optional
+export function setNextState(shuttleId, state, data, signal) {
     return fetch(`/api/shuttles/${shuttleId}/set-next-state`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ state: state }),
+        body: JSON.stringify({state, data}),
         signal: signal
     });
 }

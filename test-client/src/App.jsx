@@ -58,6 +58,7 @@ function App() {
   const fetchRoutes = async () => {
     const res = await fetch("/api/routes");
     const data = await res.json();
+    console.log(data);
     setRoutes(data);
   }
 
@@ -88,7 +89,7 @@ function App() {
   return (
     <div className="app">
       <h1>Shuttle Manager</h1>
-      <button onClick={api.addShuttle}>Add Shuttle</button>
+      <button onClick={() => api.addShuttle()}>Add Shuttle</button>
 
       <div className="tabs">
         {shuttles.map((shuttle) => (
@@ -121,33 +122,38 @@ function App() {
 
           <h3>Set Next State</h3>
           <div className="state-buttons">
-            {Object.values(STATES).map((state) => (
+            {Object.values(STATES).map(state => (
               <button
                 key={state}
                 disabled={selected.next_state === state}
                 onClick={(() => {
-                  if (selected) api.setNextState(selected.id, state);
+                  if (state === STATES.LOOPING) {
+                    api.setNextState(selected.id, state, {route: routes[0]});
+                  } else {
+                    api.setNextState(selected.id, state);
+                  }
                 })}
               >
                 {state}
               </button>
             ))}
 
-            {selected.next_state === "looping" && (
-              <div className="route-select">
+            {selected.next_state === STATES.LOOPING && (
+              <div className="select-route">
                 <label>
                   Route:
                   <select
-                    value={selected.current_route}
-                    onchange={(e)=>{
-                      // set next state looping with route
+                    // default value is north because clicking looping sets it to north (routes[0])
+                    value={selected.next_route}
+                    onChange={e => {
+                      api.setNextState(selected.id, STATES.LOOPING, {route: e.target.value});
                     }}
                   >
-                    {routes.map(route => {
+                    {routes.map(route => (
                       <option key={route} value={route}>
                         {route}
                       </option>
-                    })}
+                    ))}
                   </select>
                 </label>
               </div>
