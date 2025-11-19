@@ -5,100 +5,113 @@ from scipy.optimize import linear_sum_assignment
 from stops import Stops
 
 
-def load_and_label_stops():
-    """
-    Load data from shuttle.csv file
-    and add 2 new columns route_name and stop_name
-    with data by calling is_at_stop from stops.py 
-    """
-    df = pd.read_csv('data/shubble_2025-10-29.csv')
+class Schedule:
+    cache = {}
 
-    #Check if vehicle is at stop and add its route and stop name to dataset or NULL
-    route, stop = [], []
-    for idx, r in df.iterrows():
+    @classmethod
+    def get_stop_info(cls, row):
+        """
+        Calculate whether Vehicle is at Stop. Return (route_name, stop_name)
+        or (None, None) if not at stop.
+        """
+        coords = (float(row.latitude), float(row.longitude))
+
+        if coords in cls.cache:
+            return cls.cache[coords]
+
         try:
-            rn, sn = Stops.is_at_stop((float(r['latitude']), float(r['longitude'])))
-        except Exception as e: #If Vehicle isn't at Stop add None to route_name and stop_name columns
-            print(f"[ERROR] Stop detection failed at row {idx}: {e}")
+            rn, sn = Stops.is_at_stop(coords)
+        except Exception:
             rn, sn = None, None
-        route.append(rn)
-        stop.append(sn)
 
-    df['route_name'] = route
-    df['stop_name'] = stop
-    df['timestamp'] = pd.to_datetime(df['timestamp'], format='mixed', errors='coerce')
+        cls.cache[coords] = (rn, sn)
+        return rn, sn
 
-    # Filter only rows where at a stop
-    labeled = df.dropna(subset=['route_name', 'stop_name'])[['vehicle_id','timestamp','route_name','stop_name']].copy()
-    return labeled
+    @classmethod
+    def load_and_label_stops(cls):
+        """
+        Load CSV and add new columns route_name and stop_name using is_at_stop().
+        """
+        df = pd.read_csv('data/shubble_2025-10-29.csv')
 
+        df[['route_name', 'stop_name']] = df.apply(
+            lambda r: pd.Series(cls.get_stop_info(r)), axis=1
+        )
 
-def match_shuttles_to_schedules():
-    """
-    Match shuttle vehicle data to the most likely schedule route based on timestamp and stop location.
-    Uses a cost matrix to measure how well each shuttle’s actual stop times align with scheduled times.
-    """
+        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
 
-    # Load labeled shuttle stop data
-    at_stops = load_and_label_stops()
+        labeled = df.dropna(subset=['route_name', 'stop_name'])[
+            ['vehicle_id', 'timestamp', 'route_name', 'stop_name']
+        ].copy()
 
-    with open('data/schedule.json') as f:
-        sched = json.load(f)
+        return labeled
 
-    # Get first timestamp to determine current day
-    first_ts = at_stops['timestamp'].iloc[0]
-    day_name = first_ts.day_name().upper()
+    @classmethod
+    def match_shuttles_to_schedules(cls):
+        """
+        Match shuttle vehicle data to the most likely schedule route based on timestamp 
+        and stop location using Hungarian algorithm.
+        """
+        at_stops = cls.load_and_label_stops()
 
-    # Select correct day schedule (weekday, saturday, sunday)
-    day_key = sched[day_name]
-    routes = sched[day_key]
+        with open('data/schedule.json') as f:
+            sched = json.load(f)
 
-    # Get all unique shuttle IDs
-    shuttles = at_stops['vehicle_id'].unique().tolist()
-    
-    # Combine date from logs with times from schedule
-    date_str = first_ts.strftime("%Y-%m-%d")
-    sched_flat = [
-        (name, [(pd.to_datetime(f"{date_str} {t}"), s) for t, s in times])
-        for name, times in routes.items()
-    ]
+        # Determine the day name from the first timestamp
+        first_ts = pd.to_datetime(at_stops['timestamp'].iloc[0])
+        day_name = first_ts.day_name().upper()
 
-    W = np.zeros((len(shuttles), len(sched_flat)))
+        # Step 1: "MONDAY" → "weekday"
+        day_key = sched[day_name]
 
-    # Compare each shuttle's stop log to each schedule route
-    for i, shuttle in enumerate(shuttles):
-        logs = at_stops[at_stops['vehicle_id'] == shuttle]
-        
-        for j, (schedule_label, stops) in enumerate(sched_flat):
-            # Count matches where route name and timestamps by the minute align
-            matches = sum(
-                (
-                    (
-                        (logs['route_name'] == sn)
-                        & (logs['timestamp'].dt.floor('min') == pd.to_datetime(ts).floor('min'))
-                    ).any()
-                )
-                for ts, sn in stops
-            )
-            #Calculate cost : cost = times shuttle i is at union at scheduled timestamp from schedule j/number of scheduled loops in schedule j
-            cost = 1 - (matches / len(stops))
-            W[i, j] = cost
+        # Step 2: "weekday" → actual bus route dictionary
+        routes = sched[day_key]
 
-    # Use Hungarian algorithm to assign each shuttle to one route
-    row, col = linear_sum_assignment(W)
+        # Unique shuttles
+        shuttles = at_stops['vehicle_id'].unique().tolist()
 
-    # Store best matches in dictionary
-    result = {shuttles[r]: sched_flat[c][0] for r, c in zip(row, col)}
+        # Expand schedule with actual date
+        date_str = first_ts.strftime("%Y-%m-%d")
+        sched_flat = [
+            (name, [(pd.to_datetime(f"{date_str} {t}"), s) for t, s in times])
+            for name, times in routes.items()
+        ]
 
-    # Print results with matching weights
-    for shuttle_idx, route_idx in zip(row, col):
-        shuttle = shuttles[shuttle_idx]
-        route_label = sched_flat[route_idx][0]
-        match_cost = W[shuttle_idx, route_idx]
-        print(f"{route_label} = Shuttle {shuttle} with matching weight {match_cost:.3f}")
+        W = np.zeros((len(shuttles), len(sched_flat)))
 
-    return result
+        # Add minute column for faster matching
+        at_stops['minute'] = at_stops['timestamp'].dt.floor('min')
+
+        # Group logs by shuttle
+        shuttle_groups = {k: v for k, v in at_stops.groupby('vehicle_id')}
+
+        # Build cost matrix
+        for i, shuttle in enumerate(shuttles):
+            logs = shuttle_groups[shuttle]
+            log_pairs = set(zip(logs['route_name'], logs['minute']))
+
+            for j, (_, stops) in enumerate(sched_flat):
+                sched_pairs = {(sn, ts) for ts, sn in stops}
+                matches = len(log_pairs & sched_pairs)
+                
+                cost = 1 - (matches / len(stops))
+                W[i, j] = cost
+
+        # Run Hungarian algorithm
+        row, col = linear_sum_assignment(W)
+
+        # Final dict
+        result = {shuttles[r]: sched_flat[c][0] for r, c in zip(row, col)}
+
+        # Print assignments
+        for r_idx, c_idx in zip(row, col):
+            shuttle = shuttles[r_idx]
+            route_label = sched_flat[c_idx][0]
+            match_cost = W[r_idx, c_idx] * 100
+            print(f"{route_label} = Shuttle {shuttle} with matching accuracy: {match_cost:.3f}%")
+
+        return result
+
 
 if __name__ == "__main__":
-    result = match_shuttles_to_schedules()
-   
+    result = Schedule.match_shuttles_to_schedules()

@@ -24,6 +24,21 @@ class Stops:
         polylines[route_name] = []
         for polyline in route.get('ROUTES', []):
             polylines[route_name].append(np.array(polyline))
+    
+    stops_list = []
+    for route_name, route in routes_data.items():
+        for stop in route.get('STOPS', []):
+            stop_point = route.get(stop)
+            if not stop_point or "COORDINATES" not in stop_point:
+                continue
+            coord = tuple(stop_point["COORDINATES"])
+            stop_name = stop_point.get("NAME", stop)
+            stops_list.append((route_name, stop_name, coord))
+
+    stops_coords = np.array([s[2] for s in stops_list])
+    stops_route_names = [s[0] for s in stops_list]
+    stops_stop_names = [s[1] for s in stops_list]
+
 
     @classmethod
     def get_closest_point(cls, origin_point):
@@ -89,22 +104,15 @@ class Stops:
         :return: A tuple with (the route name if close enough, otherwise None,
                 the stop name if close enough, otherwise None).
         """
-        origin = np.array(origin_point).reshape(1,2)
+        origin = np.array(origin_point).reshape(1, 2)
+        distances = haversine_vectorized(origin, cls.stops_coords)
 
-        for route_name, route in cls.routes_data.items():
-            for stop in route.get('STOPS', []):
-                stop_point = route.get(stop)
-                if not stop_point or "COORDINATES" not in stop_point:
-                    continue
-                
-                stop_obj = np.array(stop_point["COORDINATES"]).reshape(1,2)
-                stop_name = stop_point.get("NAME", stop)
+        idx = np.where(distances < threshold)[0]
+        if len(idx) == 0:
+            return None, None
 
-                distance = haversine_vectorized(origin, stop_obj)[0]
-                if distance < threshold:
-                    return route_name, stop_name
-
-        return None, None
+        nearest = idx[np.argmin(distances[idx])]
+        return cls.stops_route_names[nearest], cls.stops_stop_names[nearest]
 
 def haversine(coord1, coord2):
     """
