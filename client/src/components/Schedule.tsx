@@ -4,6 +4,9 @@ import rawRouteData from '../data/routes.json';
 import rawAggregatedSchedule from '../data/aggregated_schedule.json';
 import type { AggregatedDaySchedule, AggregatedScheduleType } from '../ts/types/schedule';
 import type { ShuttleRouteData, ShuttleStopData } from '../ts/types/route';
+import {buildAllStops, findClosestStop, type Stop, type ClosestStop, } from '../data/ClosestStop';
+
+
 
 const aggregatedSchedule: AggregatedScheduleType = rawAggregatedSchedule as unknown as AggregatedScheduleType;
 
@@ -25,6 +28,9 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
   const [routeNames, setRouteNames] = useState(Object.keys(aggregatedSchedule[selectedDay]));
   const [stopNames, setStopNames] = useState<string[]>([]);
   const [schedule, setSchedule] = useState<AggregatedDaySchedule>(aggregatedSchedule[selectedDay]);
+
+  const [allStops] = useState<Stop[]>(() => buildAllStops(routeData));
+  const [closestStop, setClosestStop] = useState<ClosestStop | null>(null);
 
   // Define safe values to avoid repeated null checks
   const safeSelectedRoute = selectedRoute || routeNames[0];
@@ -76,6 +82,27 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
     return date;
   }
 
+// Use user location and get closest stop to them 
+  useEffect(() => {
+    if (!('geolocation' in navigator)) return;
+  
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {  //get the user's coordinates
+        const userPoint = {
+          lat: pos.coords.latitude,
+          lon: pos.coords.longitude,
+        };
+  
+        const closest = findClosestStop(userPoint, allStops);
+        setClosestStop(closest);
+      },
+      (err) => {
+        console.error('Error getting user location', err);
+      }
+    );
+  }, [allStops]);
+  
+
   // scroll to the current time on route change
   useEffect(() => {
     const scheduleDiv = document.querySelector('.schedule-scroll');
@@ -103,6 +130,11 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
     <div className="p-4">
       <h2>Schedule</h2>
       <div>
+          {closestStop && (
+    <div className="closest-stop-hint">
+      Closest Stop: <strong>{closestStop.name}</strong>
+    </div>
+  )}
         <label htmlFor='weekday-dropdown'>Weekday:</label>
         <select id='weekday-dropdown' className="schedule-dropdown-style" value={selectedDay} onChange={handleDayChange}>
           {
@@ -116,6 +148,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
       </div>
       <div>
         <label htmlFor='loop-dropdown'>Loop:</label>
+        
         <select id='loop-dropdown' className="schedule-dropdown-style" value={safeSelectedRoute} onChange={(e) => setSelectedRoute(e.target.value)}>
           {
             routeNames.map((route, index) =>
@@ -156,9 +189,11 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
                 })
               );
             })()}
+            
           </tbody>
         </table>
       </div>
+
     </div>
   );
 }
