@@ -137,24 +137,19 @@ def build_and_train_lstm(train_data, test_data, scalers, encoder, n_segments, se
     # --- 1. Define Manual Model Architecture ---
     print("Building model with manual parameters (32/16 LSTM units)...")
 
-    # Input 1: Sequential
     seq_input = Input(shape=(sequence_length, len(SEQ_FEATURES)), name='sequential_input')
     lstm_out = LSTM(32, activation='relu', return_sequences=True)(seq_input)
     lstm_out = Dropout(0.2)(lstm_out)
     lstm_out = LSTM(16, activation='relu')(lstm_out)
     
-    # Input 2: Contextual
     ctx_input = Input(shape=(len(CTX_FEATURES),), name='context_input')
     
-    # Input 3: Segment Embedding
     seg_input = Input(shape=(1,), name='segment_input')
     seg_embedding = Embedding(input_dim=n_segments, output_dim=8, name='segment_embedding')(seg_input)
     seg_embedding = Flatten()(seg_embedding)
     
-    # Concatenate
     concatenated = Concatenate()([lstm_out, ctx_input, seg_embedding])
     
-    # Dense Layers
     dense_1 = Dense(32, activation='relu')(concatenated)
     dense_1 = Dropout(0.2)(dense_1)
     dense_2 = Dense(16, activation='relu')(dense_1)
@@ -162,7 +157,6 @@ def build_and_train_lstm(train_data, test_data, scalers, encoder, n_segments, se
     
     model = Model(inputs=[seq_input, ctx_input, seg_input], outputs=output)
     
-    # Explicitly use Adam with default learning rate for consistency
     model.compile(optimizer=Adam(learning_rate=0.001), loss='mean_squared_error')
     model.summary()
 
@@ -188,12 +182,13 @@ def build_and_train_lstm(train_data, test_data, scalers, encoder, n_segments, se
     y_pred = target_scaler.inverse_transform(y_pred_scaled)
     y_test_orig = target_scaler.inverse_transform(y_test.reshape(-1, 1))
     
+    # Flatten for analysis
+    y_test_flat = y_test_orig.squeeze()
+    y_pred_flat = y_pred.squeeze()
+    
     # --- Robust RMSE Calculation ---
     print("\n--- Model Performance Breakdown ---")
     
-    y_test_flat = y_test_orig.squeeze()
-    y_pred_flat = y_pred.squeeze()
-
     moving_mask = (speeds_test > 1)
     stopped_mask = (speeds_test <= 1)
 
@@ -218,7 +213,8 @@ def build_and_train_lstm(train_data, test_data, scalers, encoder, n_segments, se
     # --- 4. Plot Predictions ---
     print("Generating plots...")
     
-    plot_title = f"Global LSTM Model (No Speed Feature)\nActual vs Predicted (Last 200 samples)"
+    # Plot 1: Timeseries
+    plot_title = f"Global LSTM Model\nActual vs Predicted (Last 200 samples)"
     plt.figure(figsize=(12, 7))
     plt.plot(y_test_flat[-200:], label='Actual ETA', marker='o', markersize=5, linestyle='None')
     plt.plot(y_pred_flat[-200:], label='Predicted ETA', marker='x', markersize=5, linestyle='None')
@@ -232,6 +228,7 @@ def build_and_train_lstm(train_data, test_data, scalers, encoder, n_segments, se
     plt.savefig(stop_location.PLOTS_DIR / f'{filename}.png')
     plt.close()
     
+    # Plot 2: Scatter
     plt.figure(figsize=(8, 8))
     plt.scatter(y_test_flat, y_pred_flat, alpha=0.3, s=10)
     min_val = min(y_test_flat.min(), y_pred_flat.min())
@@ -247,29 +244,60 @@ def build_and_train_lstm(train_data, test_data, scalers, encoder, n_segments, se
     plt.savefig(stop_location.PLOTS_DIR / f'{filename}.png')
     plt.close()
 
+    # Plot 3: Standard Residuals
     errors = y_test_flat - y_pred_flat
     plt.figure(figsize=(10, 6))
     plt.scatter(y_pred_flat, errors, alpha=0.3, s=10)
     plt.axhline(0, color='red', linestyle='--', label='No Error')
     plt.xlabel('Predicted ETA (seconds)')
     plt.ylabel('Error (Actual - Predicted)')
-    plt.title('Residual Plot (Error vs. Prediction)')
+    plt.title('Residual Plot (All Data)')
     plt.legend()
     plt.grid()
     plt.tight_layout()
     filename = stop_location._sanitize_filename(f"3_lstm_global_predictions_residuals")
     plt.savefig(stop_location.PLOTS_DIR / f'{filename}.png')
     plt.close()
+
+    # --- NEW PLOT 4: Residuals ignoring "Stopped at Union" ---
+    # 1. Decode segment IDs back to strings (e.g., "From_UNION_To_SAGE")
+    segment_indices = X_test['segment_input'].flatten()
+    decoded_segments = segment_encoder.inverse_transform(segment_indices)
     
+    # 2. Create filter mask
+    # Condition: Segment string contains "UNION" AND Speed <= 1 mph
+    # Note: Adjust "UNION" to match your actual stop name in routes.json (e.g., "STUDENT_UNION")
+    is_at_union = np.char.find(decoded_segments.astype(str), 'UNION') != -1
+    is_stopped = speeds_test <= 1
+    
+    # We want to KEEP data that is NOT (at union AND stopped)
+    mask_clean = is_at_union # ~(is_at_union & is_stopped)
+    
+    y_pred_clean = y_pred_flat[mask_clean]
+    errors_clean = errors[mask_clean]
+    
+    plt.figure(figsize=(10, 6))
+    plt.scatter(y_pred_clean, errors_clean, alpha=0.3, s=10, c='green')
+    plt.axhline(0, color='red', linestyle='--', label='No Error')
+    plt.xlabel('Predicted ETA (seconds)')
+    plt.ylabel('Error (Actual - Predicted)')
+    plt.title('Residual Plot\n(Ignoring buses stopped at Student Union)')
+    plt.legend()
+    plt.grid()
+    plt.tight_layout()
+    filename = stop_location._sanitize_filename(f"4_lstm_residuals_no_union_stop")
+    plt.savefig(stop_location.PLOTS_DIR / f'{filename}.png')
+    plt.close()
+    
+    print(f"Plot 4 created. Removed {len(errors) - len(errors_clean)} points identified as 'Stopped at Union'.")
+
     # --- 5. Save the Model AND Artifacts ---
     print("Saving model and artifacts...")
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     
-    # Save Keras Model
     model_save_path = MODELS_DIR / "global_lstm_eta_model.keras"
     model.save(model_save_path)
     
-    # Save Scalers and Encoder via Joblib
     joblib.dump(seq_scaler, MODELS_DIR / 'seq_scaler.pkl')
     joblib.dump(ctx_scaler, MODELS_DIR / 'ctx_scaler.pkl')
     joblib.dump(target_scaler, MODELS_DIR / 'target_scaler.pkl')
@@ -279,9 +307,7 @@ def build_and_train_lstm(train_data, test_data, scalers, encoder, n_segments, se
     print(f"Scalers and Encoder saved to {MODELS_DIR}")
     
     print(f"Global Model Root Mean Squared Error (RMSE): {rmse_overall:.2f} seconds")
-
-
-# --- MAIN FUNCTION ---
+    
 def main():
     
     print("Starting LSTM ETA Prediction Process (Global Model)...")
@@ -303,6 +329,7 @@ def main():
     df['vehicle_id'] = df['vehicle_id'].astype('category')
     print("Data types optimized.")
     
+    # 1. Run the pipeline to generate segments like 'From_A_To_B'
     separated_dataframes, processed_df = stop_location.process_vehicle_data(df)
     
     print("\n--- Preprocessing Complete ---")
@@ -313,50 +340,20 @@ def main():
         
     stop_location.PLOTS_DIR.mkdir(parents=True, exist_ok=True)
     
-    global_cache = stop_location._ROUTES_DATA_CACHE
-    if global_cache is None:
-        print("ERROR: Route cache is not populated. Cannot validate segments.")
-        route_stop_lists = {}
-    else:
-        route_stop_lists = {
-            route: data["STOPS"] 
-            for route, data in global_cache.items() 
-            if "STOPS" in data
-        }
-    
+    # --- 2. COMBINE DATA (THE FIX) ---
     print("\n--- Combining Segments for Global LSTM Model ---")
     
     all_moving_segments_df = []
     
     for (route_name, segment_id), group_df in separated_dataframes.items():
         
+        # FILTER 1: Still skip 'AT_STOP' data. We only want predictive movement.
         if segment_id.startswith('AT_'):
             continue
         
-        try:
-            parts = segment_id.split('_')
-            if parts[0] == 'From' and parts[1] == parts[3]:
-                continue
-        except IndexError:
-            pass 
-
-        if segment_id.startswith('From_') and route_name in route_stop_lists:
-            try:
-                parts = segment_id.split('_')
-                from_stop = parts[1]
-                to_stop = parts[3]
-                
-                stop_list = route_stop_lists[route_name]
-                
-                if from_stop in stop_list and to_stop in stop_list:
-                    from_index = stop_list.index(from_stop)
-                    to_index = stop_list.index(to_stop)
-                    
-                    if (to_index - from_index) > 1:
-                        continue
-                
-            except (IndexError, ValueError):
-                pass
+        # --- DELETED: The "From_A_To_A" filter ---
+        # --- DELETED: The "Skipped Stop" filter ---
+        # We now accept ALL 'From_X_To_Y' segments.
         
         all_moving_segments_df.append(group_df)
     
@@ -369,26 +366,25 @@ def main():
     print(f"Combined {len(all_moving_segments_df)} segments into one "
           f"master DataFrame with {len(master_training_df)} total rows.")
           
-    # --- MODIFIED: Removed 'speed_mph' from cleaning check if it's purely optional, 
-    # but we kept it for error analysis, so we still need to ensure it exists.
+    # 3. Clean and Encode
     all_model_features = SEQ_FEATURES + CTX_FEATURES + [TARGET_NAME, 'speed_mph']
-    # Note: SEQ_FEATURES no longer contains 'speed_mph', but we manually added it back
-    # to this list to ensure rows with missing speed are dropped, as we need speed for error analysis.
-    
     df_clean = master_training_df.dropna(subset=all_model_features).copy()
     
     print("Encoding 'segment_id' for Embedding layer...")
     segment_encoder = LabelEncoder()
     df_clean['segment_index'] = segment_encoder.fit_transform(df_clean['segment_id'])
-    n_segments = len(segment_encoder.classes_)
-    print(f"Found {n_segments} unique segments.")
     
+    # --- DEBUG: PRINT CLASSES TO VERIFY FIX ---
+    print(f"\n✅ Found {len(segment_encoder.classes_)} unique segments.")
+    print(f"Sample Classes: {segment_encoder.classes_[:10]}\n")
+    
+    n_segments = len(segment_encoder.classes_)
     
     if len(df_clean) < 1000:
         print(f"Not enough clean data ({len(df_clean)} rows) to train global model.")
         return
         
-    # Unpack ALL scalers
+    # 4. Create Dataset
     X_inputs, y, seq_scaler, ctx_scaler, target_scaler, speeds = create_sliding_window_dataset(
         df_clean, 
         'segment_index', 
@@ -429,7 +425,6 @@ def main():
     
     
     try:
-        # Pass all artifacts to build_and_train
         build_and_train_lstm(
             train_data, 
             test_data, 
