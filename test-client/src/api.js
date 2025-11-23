@@ -1,4 +1,4 @@
-// API call wrapper functions
+// api wrappers
 
 export function fetchShuttles() {
     return fetch("/api/shuttles");
@@ -12,6 +12,7 @@ export function deleteEvents(keepShuttles) {
     return fetch(`/api/events/today?keepShuttles=${keepShuttles}`, {method: "DELETE"});
 }
 
+// signal is optional
 export function addShuttle(signal) {
     return fetch("/api/shuttles", {
         method: "POST",
@@ -20,12 +21,13 @@ export function addShuttle(signal) {
     });
 }
 
-// data and signal are optional
-export function setNextState(shuttleId, state, data, signal) {
+// route and signal are optional
+// refactor if more data is ever passed through this endpoint
+export function setNextState(shuttleId, state, route, signal) {
     return fetch(`/api/shuttles/${shuttleId}/set-next-state`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({state, data}),
+        body: JSON.stringify({state, route}),
         signal: signal
     });
 }

@@ -122,7 +122,7 @@ def trigger_action(shuttle_id):
 
         shuttle.set_next_state(desired_state)
         if desired_state == ShuttleState.LOOPING:
-            route = request.json.get("data", {}).get("route")
+            route = request.json.get("route")
             shuttle.set_next_route(route)
 
         logger.info(f"Set shuttle {shuttle_id} next state to {next_state}")

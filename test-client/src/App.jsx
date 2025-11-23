@@ -158,7 +158,7 @@ function App() {
                   <select
                     value=""
                     onChange={e => {
-                      api.setNextState(selected.id, STATES.LOOPING, {route: e.target.value});
+                      api.setNextState(selected.id, STATES.LOOPING, e.target.value);
                       removePending(selected.id);
                     }}
                   >
@@ -197,7 +197,7 @@ function App() {
 
       <h3>JSON Test Case Executor</h3>
       <div className="test-container">
-        <input type="file" accept=".json" onChange={uploadTest}/>
+        <input type="file" accept=".json" onChange={(e) => uploadTest(e)}/>
         <button onClick={() => tester.stopTest()}>Stop Test</button>
       </div>
     </div>
