@@ -11,6 +11,7 @@ function App() {
   const [geofenceCount, setGeofenceCount] = useState(0);
   const [keepShuttles, setKeepShuttles] = useState(false);
   const [routes, setRoutes] = useState([]);
+  const [pendingRouteIds, setPendingRouteIds] = useState([]);
   const shuttlesRef = useRef([]);
   const getShuttles = useCallback(() => shuttlesRef.current, []);
   const testerRef = useRef(null);
@@ -60,9 +61,20 @@ function App() {
     const data = await res.json();
     console.log(data);
     setRoutes(data);
-  }
+  };
 
   const selected = shuttles.find((s) => s.id === selectedId);
+
+  const addPending = (id) => {
+    setPendingRouteIds(prev => {
+      if (prev.includes(id)) return prev;
+      return [...prev, id];
+    });
+  };
+
+  const removePending = (id) => {
+    setPendingRouteIds(prev => prev.filter(pid => pid !== id));
+  };
 
   useEffect(() => { fetchRoutes(); }, []);
 
@@ -126,29 +138,33 @@ function App() {
               <button
                 key={state}
                 disabled={selected.next_state === state}
-                onClick={(() => {
+                onClick={() => {
                   if (state === STATES.LOOPING) {
-                    api.setNextState(selected.id, state, {route: routes[0]});
+                    addPending(selected.id);
                   } else {
+                    removePending(selected.id);
                     api.setNextState(selected.id, state);
                   }
-                })}
+                }}
               >
                 {state}
               </button>
             ))}
 
-            {selected.next_state === STATES.LOOPING && (
+            {pendingRouteIds.includes(selected.id) && (
               <div className="select-route">
                 <label>
                   Route:
                   <select
-                    // default value is north because clicking looping sets it to north (routes[0])
-                    value={selected.next_route}
+                    value=""
                     onChange={e => {
                       api.setNextState(selected.id, STATES.LOOPING, {route: e.target.value});
+                      removePending(selected.id);
                     }}
                   >
+                    <option value="" disabled>
+                      Select route
+                    </option>
                     {routes.map(route => (
                       <option key={route} value={route}>
                         {route}
@@ -168,7 +184,7 @@ function App() {
         <div className="events-today">
           {locationCount} previous shuttle locations and {geofenceCount} previous entry/exit events
         </div>
-        <button onClick={clearEvents}>Clear Events</button>
+        <button onClick={() => clearEvents()}>Clear Events</button>
         <label>
           <input
             type="checkbox"
@@ -181,10 +197,8 @@ function App() {
 
       <h3>JSON Test Case Executor</h3>
       <div className="test-container">
-        <input type="file" accept=".json" onChange={uploadTest}></input>
-        <button onClick={tester.stopTest}>
-          Stop Test
-        </button>
+        <input type="file" accept=".json" onChange={uploadTest}/>
+        <button onClick={() => tester.stopTest()}>Stop Test</button>
       </div>
     </div>
   );
