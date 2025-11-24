@@ -42,6 +42,11 @@ export default [
       "@typescript-eslint/no-unsafe-member-access": "error",
       "@typescript-eslint/no-unsafe-assignment": "warn",
       "@typescript-eslint/no-unsafe-call": "warn",
-    }
+    },
+    settings: {
+      react: {
+        version: "detect",
+      },
+    },
   }
 ];
