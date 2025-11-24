@@ -1,18 +1,29 @@
-name: 'Build and Lint'
+name: Lint Typescript
 
 on:
   push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
 
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: 20
-      - run: npm ci
-      - uses: actions/download-artifact@v4
-        with:
-          name: build-client
-      - run: npm run lint
+          node-version: '22'
+
+      # Run build first to ensure all files exist
+      - name: Build frontend
+        run: npm ci && npm run build
+
+      # Run ESLint + TypeScript checks
+      - name: Run lint
+        run: npm run lint
