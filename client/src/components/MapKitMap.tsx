@@ -6,8 +6,6 @@ import ShuttleIcon from "./ShuttleIcon";
 import type { ShuttleRouteData, ShuttleStopData } from "../ts/types/route";
 import '../styles/MapKitMap.css';
 import type { VehicleInformationMap } from "../ts/types/vehicleLocation";
-import type { Route } from "../ts/types/schedule";
-import { log } from "../ts/logger";
 
 async function generateRoutePolylines(updatedRouteData: ShuttleRouteData) {
   // Use MapKit Directions API to generate polylines for each route segment
@@ -111,7 +109,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
   const token = import.meta.env.VITE_MAPKIT_KEY;
   const [map, setMap] = useState<(mapkit.Map | null)>(null);
   const vehicleOverlays = useRef<Record<string, mapkit.ShuttleAnnotation>>({});
-  
+
 
   const circleWidth = 15;
   const selectedMarkerRef = useRef<mapkit.MarkerAnnotation | null>(null);
@@ -337,7 +335,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
     function displayRouteOverlays(routeData: ShuttleRouteData) {
       // display route overlays
-      for (const [_route, thisRouteData] of Object.entries(routeData)) {
+      for (const [_, thisRouteData] of Object.entries(routeData)) {
         // for route (WEST, NORTH)
         const routePolylines = thisRouteData.ROUTES?.map(
           // for segment (STOP1 -> STOP2, STOP2 -> STOP3, ...)
@@ -391,7 +389,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         const routeKey = vehicle.route_name as keyof typeof routeData;
         const info = routeData[routeKey] as { COLOR?: string };
         return info.COLOR ?? "#444444";
-        
+
       })();
 
       // Render ShuttleIcon JSX to a static SVG string
@@ -405,7 +403,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         existingAnnotation.subtitle = `${vehicle.speed_mph.toFixed(1)} mph`;
 
         // Handle route status updates
-        // If shuttle does not have a route null 
+        // If shuttle does not have a route null
         if (vehicle.route_name === null) {
           // shuttle off-route (exiting)
           if (existingAnnotation.lockedRoute) {

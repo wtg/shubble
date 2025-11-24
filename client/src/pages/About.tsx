@@ -19,7 +19,7 @@ export default function About() {
         return (prevIndex + 1) % words.length;
       });
     }, 2000);
-  }, []);
+  }, [words.length]);
 
   return (
     <div className='about'>
@@ -32,10 +32,10 @@ export default function About() {
         Shubble is an open source project under the Rensselaer Center for Open Source (RCOS).
       </p>
       <p>
-        Have an idea to improve it? Contributions are welcome. Visit our <a href='https://github.com/wtg/shubble' target='_blank'>Github Repository</a> to learn more.
+        Have an idea to improve it? Contributions are welcome. Visit our <a href='https://github.com/wtg/shubble' target='_blank' rel="noreferrer">Github Repository</a> to learn more.
       </p>
       <p>
-        Interested in Shubble's data? Take a look at our
+        Interested in Shubble &apos s data? Take a look at our
         <Link to='/data'>
           <span className = 'link1'>data page</span>
         </Link>.

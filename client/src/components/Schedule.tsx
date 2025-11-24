@@ -23,7 +23,6 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
   const now = new Date();
   const [selectedDay, setSelectedDay] = useState(now.getDay());
   const [routeNames, setRouteNames] = useState(Object.keys(aggregatedSchedule[selectedDay]));
-  const [stopNames, setStopNames] = useState<string[]>([]);
   const [schedule, setSchedule] = useState<AggregatedDaySchedule>(aggregatedSchedule[selectedDay]);
 
   // Define safe values to avoid repeated null checks
@@ -38,13 +37,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
     if (!selectedRoute || !(selectedRoute in aggregatedSchedule[selectedDay])) {
       setSelectedRoute(firstRoute);
     }
-  }, [selectedDay, selectedRoute, setSelectedRoute]);
-
-  // Update stopNames when selectedRoute changes
-  useEffect(() => {
-    if (!safeSelectedRoute || !(safeSelectedRoute in routeData)) return;
-    setStopNames(routeData[safeSelectedRoute as keyof typeof routeData].STOPS);
-  }, [selectedRoute]);
+  }, [selectedDay, selectedRoute, setSelectedRoute, now]);
 
   // Handle day change from dropdown
   const handleDayChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -54,7 +47,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
   const timeToDate = (timeStr: string): Date => {
     const [time, modifier] = timeStr.trim().split(" ");
 
-    // eslint-disable-next-line prefer-const
+
     let [hours, minutes] = time.split(":").map(Number);
     if (modifier.toUpperCase() === "PM" && hours !== 12) {
       hours += 12;

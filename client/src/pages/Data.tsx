@@ -35,7 +35,7 @@ export default function Data() {
         setSelectedShuttleID(Object.keys(shuttleData)[0]);
       }
     }
-  }, [shuttleData]);
+  }, [shuttleData, selectedShuttleID]);
 
   return (
     <>
