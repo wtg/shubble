@@ -11,7 +11,7 @@ function App() {
   const [geofenceCount, setGeofenceCount] = useState(0);
   const [keepShuttles, setKeepShuttles] = useState(false);
   const [routes, setRoutes] = useState([]);
-  const [pendingRouteIds, setPendingRouteIds] = useState([]);
+  const [pendingRouteIds, setPendingRouteIds] = useState(new Set());
   const shuttlesRef = useRef([]);
   const getShuttles = useCallback(() => shuttlesRef.current, []);
   const testerRef = useRef(null);
@@ -42,6 +42,12 @@ function App() {
     }
   };
 
+  const getRoutes = async () => {
+    const res = await api.fetchRoutes();
+    const data = await res.json();
+    setRoutes(data);
+  };
+
   const uploadTest = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -56,27 +62,18 @@ function App() {
     event.target.value = "";
   };
 
-  const fetchRoutes = async () => {
-    const res = await fetch("/api/routes");
-    const data = await res.json();
-    console.log(data);
-    setRoutes(data);
+  // give react a copy (new reference) so it detects the change
+  const addPending = (id) => {
+    setPendingRouteIds(prev => new Set([...prev, id]));
+  };
+
+  const removePending = (id) => {
+    setPendingRouteIds(prev => new Set([...prev].filter(x => x !== id)));
   };
 
   const selected = shuttles.find((s) => s.id === selectedId);
 
-  const addPending = (id) => {
-    setPendingRouteIds(prev => {
-      if (prev.includes(id)) return prev;
-      return [...prev, id];
-    });
-  };
-
-  const removePending = (id) => {
-    setPendingRouteIds(prev => prev.filter(pid => pid !== id));
-  };
-
-  useEffect(() => { fetchRoutes(); }, []);
+  useEffect(() => { getRoutes(); }, []);
 
   useEffect(() => { shuttlesRef.current = shuttles; }, [shuttles]);
 
@@ -143,7 +140,7 @@ function App() {
                     addPending(selected.id);
                   } else {
                     removePending(selected.id);
-                    api.setNextState(selected.id, state);
+                    api.setNextState(selected.id, {state, route: undefined});
                   }
                 }}
               >
@@ -151,14 +148,14 @@ function App() {
               </button>
             ))}
 
-            {pendingRouteIds.includes(selected.id) && (
+            {pendingRouteIds.has(selected.id) && (
               <div className="select-route">
                 <label>
                   Route:
                   <select
                     value=""
                     onChange={e => {
-                      api.setNextState(selected.id, STATES.LOOPING, e.target.value);
+                      api.setNextState(selected.id, {state: STATES.LOOPING, route: e.target.value});
                       removePending(selected.id);
                     }}
                   >
