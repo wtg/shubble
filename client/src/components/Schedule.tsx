@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react';
 import '../styles/Schedule.css';
 import rawRouteData from '../data/routes.json';
-import rawScheduleData from '../data/schedule.json';
 import rawAggregatedSchedule from '../data/aggregated_schedule.json';
-import type { AggregatedDaySchedule, AggregatedScheduleType, ShuttleScheduleData} from '../ts/types/schedule';
+import type { AggregatedDaySchedule, AggregatedScheduleType} from '../ts/types/schedule';
 import type { ShuttleRouteData, ShuttleStopData } from '../ts/types/route';
-import {buildAllStops, findClosestStop, type Stop, type ClosestStop, } from '../data/ClosestStop';
+import {buildAllStops, findClosestStop, type Stop, type ClosestStop, } from '../ts/types/ClosestStop';
 
 
-const scheduleData = rawScheduleData as unknown as ShuttleScheduleData;
+
 const aggregatedSchedule: AggregatedScheduleType = rawAggregatedSchedule as unknown as AggregatedScheduleType;
 
 
@@ -33,12 +32,12 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
   const [allStops, setAllStops] = useState<Stop[]>([]);
   const [closestStop, setClosestStop] = useState<ClosestStop | null>(null);
 
-// Whenever selectedDay changes, recompute today's stops
+  // Whenever selectedDay changes, recompute today's stops
   useEffect(() => {
-    const stopsToday = buildAllStops(routeData, scheduleData, selectedDay);
+    const stopsToday = buildAllStops(routeData, aggregatedSchedule, selectedDay);
     setAllStops(stopsToday);
   }, [selectedDay]);
-
+  
   // Define safe values to avoid repeated null checks
   const safeSelectedRoute = selectedRoute || routeNames[0];
 

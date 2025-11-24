@@ -1,6 +1,5 @@
 import type {ShuttleStopData, RouteDirectionData, ShuttleRouteData } from "./route"; 
-import type {Route, ShuttleScheduleData} from "./schedule"; 
-import {aggregateSchedule} from "./parseSchedule.js";
+import type {Route, AggregatedScheduleType} from "./schedule"; 
 
 
 // a simple point
@@ -62,29 +61,30 @@ routeName: Route, routeData: RouteDirectionData
   return stops;
 }
 
-  
-// creates an array of all valid stops 
+
+// creates an array of all valid stops for a given day
 export function buildAllStops(
-    routesData: ShuttleRouteData,
-    scheduleData: ShuttleScheduleData,
-    dayIndex: number
-  ): Stop[] {
-    const aggregated = aggregateSchedule(scheduleData);
-  
-    // Routes that actually have trips today
-    const todaySchedule = aggregated[dayIndex] as AggregatedDay;
-    const realRoutes = Object.keys(todaySchedule) as Route[];
-  
-    const stops: Stop[] = [];
-  
-    for (const routeName of realRoutes) {
-      const routeData = routesData[routeName];
-      if (!routeData) continue; // schedule references a route we don't have geometry for
-      stops.push(...extractStopsFromRoute(routeName, routeData));
-    }
-  
-    return stops;
+  routesData: ShuttleRouteData,
+  aggregated: AggregatedScheduleType,
+  dayIndex: number
+): Stop[] {
+  // Schedule just for this specific day
+  const todaySchedule = aggregated[dayIndex] as AggregatedDay;
+
+  // Routes that actually have trips today
+  const realRoutes = Object.keys(todaySchedule) as Route[];
+
+  const stops: Stop[] = [];
+
+  for (const routeName of realRoutes) {
+    const routeData = routesData[routeName];
+    if (!routeData) continue; // schedule references a route we don't have geometry for
+    stops.push(...extractStopsFromRoute(routeName, routeData));
   }
+
+  return stops;
+}
+
   
   
   // go through valid stops and compare distance, returning closest stop
