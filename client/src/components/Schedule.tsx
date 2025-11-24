@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import '../styles/Schedule.css';
 import rawRouteData from '../data/routes.json';
+import rawScheduleData from '../data/schedule.json';
 import rawAggregatedSchedule from '../data/aggregated_schedule.json';
-import type { AggregatedDaySchedule, AggregatedScheduleType } from '../ts/types/schedule';
+import type { AggregatedDaySchedule, AggregatedScheduleType, ShuttleScheduleData} from '../ts/types/schedule';
 import type { ShuttleRouteData, ShuttleStopData } from '../ts/types/route';
 import {buildAllStops, findClosestStop, type Stop, type ClosestStop, } from '../data/ClosestStop';
 
 
-
+const scheduleData = rawScheduleData as unknown as ShuttleScheduleData;
 const aggregatedSchedule: AggregatedScheduleType = rawAggregatedSchedule as unknown as AggregatedScheduleType;
 
 
@@ -29,8 +30,14 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
   const [stopNames, setStopNames] = useState<string[]>([]);
   const [schedule, setSchedule] = useState<AggregatedDaySchedule>(aggregatedSchedule[selectedDay]);
 
-  const [allStops] = useState<Stop[]>(() => buildAllStops(routeData));
+  const [allStops, setAllStops] = useState<Stop[]>([]);
   const [closestStop, setClosestStop] = useState<ClosestStop | null>(null);
+
+// Whenever selectedDay changes, recompute today's stops
+  useEffect(() => {
+    const stopsToday = buildAllStops(routeData, scheduleData, selectedDay);
+    setAllStops(stopsToday);
+  }, [selectedDay]);
 
   // Define safe values to avoid repeated null checks
   const safeSelectedRoute = selectedRoute || routeNames[0];
@@ -85,14 +92,14 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
 // Use user location and get closest stop to them 
   useEffect(() => {
     if (!('geolocation' in navigator)) return;
-  
+
     navigator.geolocation.getCurrentPosition(
-      (pos) => {  //get the user's coordinates
+      (pos) => {
         const userPoint = {
           lat: pos.coords.latitude,
           lon: pos.coords.longitude,
         };
-  
+
         const closest = findClosestStop(userPoint, allStops);
         setClosestStop(closest);
       },
@@ -101,7 +108,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
       }
     );
   }, [allStops]);
-  
+
 
   // scroll to the current time on route change
   useEffect(() => {
@@ -131,10 +138,10 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
       <h2>Schedule</h2>
       <div>
           {closestStop && (
-    <div className="closest-stop-hint">
-      Closest Stop: <strong>{closestStop.name}</strong>
-    </div>
-  )}
+          <div className="closest-stop-hint">
+            Closest Stop: <strong>{closestStop.name}</strong>
+          </div>
+         )}
         <label htmlFor='weekday-dropdown'>Weekday:</label>
         <select id='weekday-dropdown' className="schedule-dropdown-style" value={selectedDay} onChange={handleDayChange}>
           {
