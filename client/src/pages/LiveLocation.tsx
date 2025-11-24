@@ -37,7 +37,7 @@ export default function LiveLocation() {
         if (!response.ok) {
           throw new Error('Network response was not ok');
         }
-        const data = await response.json();
+        const data = await response.json() as VehicleInformationMap;
         setLocation(data);
       } catch (error) {
         console.error('Error fetching location:', error);

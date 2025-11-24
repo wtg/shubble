@@ -18,7 +18,7 @@ export default function Data() {
       if (!response.ok) {
         throw new Error('Network response was not ok');
       }
-      const data = await response.json();
+      const data = await response.json() as VehicleInformationMap;
       setShuttleData(data);
     } catch (error) {
       console.error('Error fetching shuttleData:', error);

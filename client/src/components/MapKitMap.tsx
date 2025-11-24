@@ -358,7 +358,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
     if (generateRoutes) {
       // generate polylines for routes
-      const routeDataCopy = JSON.parse(JSON.stringify(routeData)); // deep copy to avoid mutating original
+      const routeDataCopy = JSON.parse(JSON.stringify(routeData)) as ShuttleRouteData;
       generateRoutePolylines(routeDataCopy).then((updatedRouteData) => {
         displayRouteOverlays(updatedRouteData);
         map.addOverlays(overlays);

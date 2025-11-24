@@ -102,6 +102,7 @@ declare namespace mapkit {
     // -------------------
     interface ShuttleAnnotation extends ImageAnnotation {
       lockedRoute?: string | null;
+      url: Record<number, string>;
     }
 
     // -------------------
