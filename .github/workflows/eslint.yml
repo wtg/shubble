@@ -14,5 +14,5 @@ jobs:
       - run: npm ci
       - uses: actions/download-artifact@v4
         with:
-          name: client-build
+          name: build-client
       - run: npm run lint
