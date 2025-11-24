@@ -77,6 +77,34 @@ declare namespace mapkit {
     }
 
     // -------------------
+    // Image Annotations
+    // -------------------
+    interface ImageAnnotationOptions {
+      title?: string;
+      subtitle?: string;
+      url?: Record<number, string>;
+      size?: { width: number; height: number };
+      anchorOffset?: DOMPoint;
+    }
+
+    class ImageAnnotation {
+      constructor(coordinate: Coordinate, options?: ImageAnnotationOptions);
+      coordinate: Coordinate;
+      title?: string;
+      subtitle?: string;
+      url?: Record<number, string>;
+      size?: { width: number; height: number };
+      anchorOffset?: DOMPoint;
+    }
+
+    // -------------------
+    // Shuttle-specific annotation extension
+    // -------------------
+    interface ShuttleAnnotation extends ImageAnnotation {
+      lockedRoute?: string | null;
+    }
+  
+    // -------------------
     // Directions
     // -------------------
     interface DirectionsOptions {
