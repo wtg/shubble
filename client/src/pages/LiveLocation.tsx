@@ -10,6 +10,8 @@ import routeData from '../data/routes.json';
 import type { VehicleInformationMap } from '../ts/types/vehicleLocation';
 import type { ShuttleRouteData } from '../ts/types/route';
 import aggregatedSchedule from '../data/aggregated_schedule.json';
+import type { AggregatedScheduleType } from '../ts/types/schedule';
+const typedAggregatedSchedule = aggregatedSchedule as AggregatedScheduleType;
 
 export default function LiveLocation() {
 
@@ -21,10 +23,10 @@ export default function LiveLocation() {
 
   // Filter routeData to only include routes present in aggregatedSchedule
   useEffect(() => {
-    // TODO: figure out how to make this type correct...
+    // TODO: figure out how to clean up this type...
     setFilteredRouteData(
       Object.fromEntries(
-        Object.entries(routeData).filter(([routeName]) => aggregatedSchedule.some(daySchedule => routeName in daySchedule))
+        Object.entries(routeData).filter(([routeName]) => typedAggregatedSchedule.some(daySchedule => routeName in daySchedule))
       ) as unknown as ShuttleRouteData
     );
   }, []);
