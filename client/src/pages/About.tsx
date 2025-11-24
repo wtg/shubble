@@ -22,28 +22,28 @@ export default function About() {
   }, []);
 
   return (
-    <div className='about'>
-      <h1>Making Shuttles</h1>
-      <h1><span className='word-rotator'>{words[wordIndex]}</span></h1>
-      <p>
-        Shubble is the latest shuttle tracker, which is built using Mapkit JS, React, and Flask.
-      </p>
-      <p>
-        Shubble is an open source project under the Rensselaer Center for Open Source (RCOS).
-      </p>
-      <p>
-        Have an idea to improve it? Contributions are welcome. Visit our <a href='https://github.com/wtg/shubble' target='_blank'>Github Repository</a> to learn more.
-      </p>
-      <p>
-        Interested in Shubble's data? Take a look at our
-        <Link to='/data'>
-          <span className = 'link1'>data page</span>
-        </Link>.
-      </p>
-      <div className='small'>
-        <p>
-          &copy; 2025 SHUBBLE
-        </p>
+    <div id ="grad">
+      <div className="about-wrapper">
+        <div className="about-left">
+          <p className="about-small-title">Making Shuttles</p>
+          <h1 className="about-main-header"><span className='word-rotator'>{words[wordIndex]}</span></h1>
+          <div className="about-description">
+            <h1>Track RPI shuttles with live location and view schedules with Shubble.<br /><br /><br /></h1>
+            <p>
+              Shubble is an open source project under the Rensselaer Center for Open Source (RCOS).<br />
+              Have an idea to improve it? Contributions are welcome!<br /> 
+              Visit our <a href='https://github.com/wtg/shubble' target='_blank'>Github Repository</a> to learn more.<br />
+              Interested in Shubble's data? Take a look at our
+              <Link to='/data'>
+                <span className = 'link1'>data page</span>
+              </Link>.
+            </p>
+          </div>
+        </div>
+
+        <div className="about-right">
+          <img src="/RPIStudentUnionv2.png" alt="RPI Student Union" className="about-image" />
+        </div>
       </div>
     </div>
   )

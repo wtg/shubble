@@ -4,30 +4,109 @@
     font-weight: bold;
     text-decoration: underline;
     text-decoration-color: #206ef9;
+    font-weight: 700;
+}
+
+/* Gradient background covering the entire about section */
+#grad {
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(to bottom right, #FFF 0%, rgba(174, 195, 254, .8) 100%);
+}
+
+/* Wrapper covers the whole about page section */
+.about-wrapper {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+
+/* 40% LEFT SIDE */
+.about-left {
+  flex: 0 0 45%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  margin-bottom: 0px;
+}
+
+.about-left p {
+  margin: 0px;
+
+}
+
+.about-left h1 {
+  margin: 0px;
+}
+
+/* Top small text */
+.about-small-title {
+  font-size: 1.8rem;
+  font-weight: 700;
+  padding-left: 20px;
+}
+
+/* Main header text */
+.about-main-header {
+  font-size: 5rem;
+  padding-left: 20px;
+}
+
+/* Description text */
+.about-description {
+  padding: 20px 0px 0px 20px;
+}
+
+.about-description h1 {
+  font-size: 1.2rem;
+  font-weight: 500;
 }
 
 
-
-.about {
-    padding: 10px;
+.about-description p {
+  font-size: 1rem;
+  font-weight: normal;
 }
+
+
+.about-right {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Image styling */
+.about-image {
+  width: 60%; /* adjust as needed */
+  /*max-width: 50vw;*/
+  border-radius: 15px;
+  border: 5px solid #436F9F;
+  object-fit: cover;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 900px) {
+  .about-wrapper {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .about-left, .about-right {
+    flex: none;
+    width: 100%;
+  }
+
+  .about-image {
+    width: 60%;
+  }
+}
+
 
 .link1{
     margin-left: .6ch;
 }
 
-.about h1 {
-    font-size: 2.5em;
-    font-weight: 700;
-    text-align: center;
-    
-}
-.about p {
-    font-size: 1.3em;
-    text-align: left;
-    padding: 5px;
-
-}
 
 @media (max-width: 1025px){
     /* Mobile View < 1025px */
