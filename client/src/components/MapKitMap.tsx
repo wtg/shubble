@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useMemo, useEffect, useRef, useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import '../styles/MapKitMap.css';
 import ShuttleIcon from "./ShuttleIcon";
@@ -106,14 +106,13 @@ type MapKitMapProps = {
 export default function MapKitMap({ routeData, vehicles, generateRoutes = false, selectedRoute, setSelectedRoute, isFullscreen = false }: MapKitMapProps) {
   const mapRef = useRef(null);
   const [mapLoaded, setMapLoaded] = useState(false);
-  const token = import.meta.env.VITE_MAPKIT_KEY;
+  const token = useMemo(() => { return (import.meta.env.VITE_MAPKIT_KEY || '') as string; }, []);
   const [map, setMap] = useState<(mapkit.Map | null)>(null);
   const vehicleOverlays = useRef<Record<string, mapkit.ShuttleAnnotation>>({});
 
 
   const circleWidth = 15;
   const selectedMarkerRef = useRef<mapkit.MarkerAnnotation | null>(null);
-  const overlays: mapkit.Overlay[] = [];
 
   // source: https://developer.apple.com/documentation/mapkitjs/loading-the-latest-version-of-mapkit-js
   const setupMapKitJs = async () => {
@@ -136,7 +135,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
       setMapLoaded(true);
     };
     mapkitScript();
-  }, []);
+  }, [token]);
 
   // create the map
   useEffect(() => {
@@ -296,13 +295,14 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         map._hoverCleanup();
       }
     };
-  }, [mapLoaded]);
+  }, [map, mapLoaded, setSelectedRoute]);
 
   // add fixed details to the map
   // includes routes and stops
   useEffect(() => {
     if (!map || !routeData) return;
 
+    const overlays: mapkit.Overlay[] = [];
 
     // display stop overlays
     for (const [route, thisRouteData] of Object.entries(routeData)) {
@@ -369,7 +369,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
       map.addOverlays(overlays);
     }
 
-  }, [map, routeData]);
+  }, [map, routeData, generateRoutes]);
 
   // display vehicles on map
   useEffect(() => {

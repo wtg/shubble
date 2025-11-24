@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import '../styles/Schedule.css';
 import rawRouteData from '../data/routes.json';
 import rawAggregatedSchedule from '../data/aggregated_schedule.json';
@@ -20,7 +20,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
     throw new Error('setSelectedRoute must be a function');
   }
 
-  const now = new Date();
+  const now = useMemo(() => new Date(), []);
   const [selectedDay, setSelectedDay] = useState(now.getDay());
   const [routeNames, setRouteNames] = useState(Object.keys(aggregatedSchedule[selectedDay]));
   const [schedule, setSchedule] = useState<AggregatedDaySchedule>(aggregatedSchedule[selectedDay]);
@@ -28,16 +28,19 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
   // Define safe values to avoid repeated null checks
   const safeSelectedRoute = selectedRoute || routeNames[0];
 
-  // Update schedule and routeNames when selectedDay changes
   useEffect(() => {
     setSchedule(aggregatedSchedule[selectedDay]);
+  }, [selectedDay]);
+
+  // Update schedule and routeNames when selectedDay changes
+  useEffect(() => {
     setRouteNames(Object.keys(aggregatedSchedule[selectedDay]));
     // If parent hasn't provided a selectedRoute yet, pick the first available one
     const firstRoute = Object.keys(aggregatedSchedule[selectedDay])[0];
     if (!selectedRoute || !(selectedRoute in aggregatedSchedule[selectedDay])) {
       setSelectedRoute(firstRoute);
     }
-  }, [selectedDay, selectedRoute, setSelectedRoute, now]);
+  }, [selectedDay, selectedRoute, setSelectedRoute]);
 
   // Handle day change from dropdown
   const handleDayChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -87,7 +90,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
     if (currentTimeRow) {
       currentTimeRow.scrollIntoView({ behavior: "auto" });
     }
-  }, [selectedRoute, selectedDay, schedule]);
+  }, [selectedRoute, selectedDay, schedule, now]);
 
 
   const daysOfTheWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
