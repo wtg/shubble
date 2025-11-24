@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "node data/parseSchedule.js && shx cp -r data/ client/src/ && vite",
     "build": "node data/parseSchedule.js && shx cp -r data/ client/src/ && vite build",
-    "lint": "eslint .",
+    "lint": "npm run lint:eslint && npm run lint:ts",
+    "lint:eslint": "eslint .",
+    "lint:ts": "tsc --project tsconfig.app.json --noEmit",
     "preview": "vite preview"
   },
   "dependencies": {
