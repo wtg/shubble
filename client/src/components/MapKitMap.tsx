@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useMemo, useEffect, useRef, useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import '../styles/MapKitMap.css';
 import ShuttleIcon from "./ShuttleIcon";
@@ -6,8 +6,6 @@ import ShuttleIcon from "./ShuttleIcon";
 import type { ShuttleRouteData, ShuttleStopData } from "../ts/types/route";
 import '../styles/MapKitMap.css';
 import type { VehicleInformationMap } from "../ts/types/vehicleLocation";
-import type { Route } from "../ts/types/schedule";
-import { log } from "../ts/logger";
 
 async function generateRoutePolylines(updatedRouteData: ShuttleRouteData) {
   // Use MapKit Directions API to generate polylines for each route segment
@@ -108,14 +106,13 @@ type MapKitMapProps = {
 export default function MapKitMap({ routeData, vehicles, generateRoutes = false, selectedRoute, setSelectedRoute, isFullscreen = false }: MapKitMapProps) {
   const mapRef = useRef(null);
   const [mapLoaded, setMapLoaded] = useState(false);
-  const token = import.meta.env.VITE_MAPKIT_KEY;
+  const token = useMemo(() => { return (import.meta.env.VITE_MAPKIT_KEY || '') as string; }, []);
   const [map, setMap] = useState<(mapkit.Map | null)>(null);
   const vehicleOverlays = useRef<Record<string, mapkit.ShuttleAnnotation>>({});
-  
+
 
   const circleWidth = 15;
   const selectedMarkerRef = useRef<mapkit.MarkerAnnotation | null>(null);
-  const overlays: mapkit.Overlay[] = [];
 
   // source: https://developer.apple.com/documentation/mapkitjs/loading-the-latest-version-of-mapkit-js
   const setupMapKitJs = async () => {
@@ -138,7 +135,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
       setMapLoaded(true);
     };
     mapkitScript();
-  }, []);
+  }, [token]);
 
   // create the map
   useEffect(() => {
@@ -298,13 +295,14 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         map._hoverCleanup();
       }
     };
-  }, [mapLoaded]);
+  }, [map, mapLoaded, setSelectedRoute]);
 
   // add fixed details to the map
   // includes routes and stops
   useEffect(() => {
     if (!map || !routeData) return;
 
+    const overlays: mapkit.Overlay[] = [];
 
     // display stop overlays
     for (const [route, thisRouteData] of Object.entries(routeData)) {
@@ -337,7 +335,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
     function displayRouteOverlays(routeData: ShuttleRouteData) {
       // display route overlays
-      for (const [_route, thisRouteData] of Object.entries(routeData)) {
+      for (const [_, thisRouteData] of Object.entries(routeData)) {
         // for route (WEST, NORTH)
         const routePolylines = thisRouteData.ROUTES?.map(
           // for segment (STOP1 -> STOP2, STOP2 -> STOP3, ...)
@@ -360,7 +358,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
     if (generateRoutes) {
       // generate polylines for routes
-      const routeDataCopy = JSON.parse(JSON.stringify(routeData)); // deep copy to avoid mutating original
+      const routeDataCopy = JSON.parse(JSON.stringify(routeData)) as ShuttleRouteData;
       generateRoutePolylines(routeDataCopy).then((updatedRouteData) => {
         displayRouteOverlays(updatedRouteData);
         map.addOverlays(overlays);
@@ -371,7 +369,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
       map.addOverlays(overlays);
     }
 
-  }, [map, routeData]);
+  }, [map, routeData, generateRoutes]);
 
   // display vehicles on map
   useEffect(() => {
@@ -391,7 +389,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         const routeKey = vehicle.route_name as keyof typeof routeData;
         const info = routeData[routeKey] as { COLOR?: string };
         return info.COLOR ?? "#444444";
-        
+
       })();
 
       // Render ShuttleIcon JSX to a static SVG string
@@ -405,7 +403,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         existingAnnotation.subtitle = `${vehicle.speed_mph.toFixed(1)} mph`;
 
         // Handle route status updates
-        // If shuttle does not have a route null 
+        // If shuttle does not have a route null
         if (vehicle.route_name === null) {
           // shuttle off-route (exiting)
           if (existingAnnotation.lockedRoute) {
