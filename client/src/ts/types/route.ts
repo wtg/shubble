@@ -6,9 +6,9 @@ export type ShuttleStopData = {
     NAME: string;
 }
 
-type RoutePolylines = [number, number][][];
+export type RoutePolylines = [number, number][][];
 
-type RouteDirectionData = {
+export type RouteDirectionData = {
     COLOR: string;
     STOPS: string[];
     POLYLINE_STOPS: string[];
