@@ -2,7 +2,11 @@ import pandas as pd
 import numpy as np
 import json
 from scipy.optimize import linear_sum_assignment
+from server.models import VehicleLocation
 from stops import Stops
+from datetime import datetime, timezone
+from server.time_utils import get_campus_start_of_day
+from server import db
 
 
 class Schedule:
@@ -32,16 +36,38 @@ class Schedule:
         """
         Load CSV and add new columns route_name and stop_name using is_at_stop().
         """
-        df = pd.read_csv('data/shubble_2025-10-29.csv')
+        start = get_campus_start_of_day()
+        now = datetime.now(timezone.utc)
 
-        df[['route_name', 'stop_name']] = df.apply(
+        rows = (
+            db.session.query(VehicleLocation)
+            .filter(
+                VehicleLocation.timestamp >= start,
+                VehicleLocation.timestamp <= now
+            )
+            .order_by(VehicleLocation.timestamp.asc())
+            .all()
+        )
+
+        if not rows:
+            return pd.DataFrame(columns=['vehicle_id','timestamp','route_name','stop_name'])
+
+        df = pd.DataFrame([
+            {
+                'vehicle_id': r.vehicle_id,
+                'timestamp': r.timestamp,
+                'latitude': float(r.latitude) if r.latitude is not None else None,
+                'longitude': float(r.longitude) if r.longitude is not None else None
+            }
+            for r in rows
+        ])
+
+        df[['route_name','stop_name']] = df.apply(
             lambda r: pd.Series(cls.get_stop_info(r)), axis=1
         )
 
-        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
-
-        labeled = df.dropna(subset=['route_name', 'stop_name'])[
-            ['vehicle_id', 'timestamp', 'route_name', 'stop_name']
+        labeled = df.dropna(subset=['route_name','stop_name'])[
+            ['vehicle_id','timestamp','route_name','stop_name']
         ].copy()
 
         return labeled
