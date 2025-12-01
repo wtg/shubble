@@ -1,4 +1,4 @@
-name: Lint Typescript
+name: Run Build and Lint Typescript
 
 on:
   push:
