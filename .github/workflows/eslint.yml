@@ -2,11 +2,6 @@ name: Run Build and Lint Typescript
 
 on:
   push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
 
 jobs:
   lint:
