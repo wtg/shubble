@@ -102,8 +102,9 @@ declare namespace mapkit {
     // -------------------
     interface ShuttleAnnotation extends ImageAnnotation {
       lockedRoute?: string | null;
+      url: Record<number, string>;
     }
-  
+
     // -------------------
     // Directions
     // -------------------
@@ -121,7 +122,10 @@ declare namespace mapkit {
     }
 
     class Directions {
-      route(options: DirectionsOptions, callback: (error: any, data: DirectionsRouteData) => void): void;
+      route(
+        options: DirectionsOptions,
+        callback: (error: Error | null, data: DirectionsRouteData) => void
+      ): void;
     }
 
     // -------------------
@@ -144,7 +148,7 @@ declare namespace mapkit {
       overlay?: Overlay;
     }
 
-    type MapEventHandler = (event: MapSelectEvent | MapDeselectEvent | any) => void;
+    type MapEventHandler = (event: MapSelectEvent | MapDeselectEvent) => void;
 
     type MapEventName =
       | "select"
