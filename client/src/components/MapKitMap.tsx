@@ -139,7 +139,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
   // create the map
   useEffect(() => {
-    if (mapContainerRef.current && mapRef.current && mapLoaded) {
+    if (mapContainerRef.current && mapLoaded) {
 
       // center on RPI
       const center = new mapkit.Coordinate(42.730216, -73.675690);
@@ -300,7 +300,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
   // add fixed details to the map
   // includes routes and stops
   useEffect(() => {
-    if (!mapRef.current || !routeData) return;
+    if (!mapLoaded || !mapRef.current || !routeData) return;
 
     const overlays: mapkit.Overlay[] = [];
 
@@ -371,7 +371,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
       mapRef.current.addOverlays(overlays);
     }
 
-  }, [routeData, generateRoutes]);
+  }, [routeData, generateRoutes, mapLoaded]);
 
   // display vehicles on map
   useEffect(() => {
