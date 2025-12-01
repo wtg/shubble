@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import '../styles/MapKitMap.css';
 import ShuttleIcon from "./ShuttleIcon";
@@ -104,10 +104,10 @@ type MapKitMapProps = {
 // @ts-expect-error selectedRoutes is never used
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export default function MapKitMap({ routeData, vehicles, generateRoutes = false, selectedRoute, setSelectedRoute, isFullscreen = false }: MapKitMapProps) {
-  const mapRef = useRef(null);
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<mapkit.Map | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
-  const token = useMemo(() => { return (import.meta.env.VITE_MAPKIT_KEY || '') as string; }, []);
-  const [map, setMap] = useState<(mapkit.Map | null)>(null);
+  const token = (import.meta.env.VITE_MAPKIT_KEY || '') as string;
   const vehicleOverlays = useRef<Record<string, mapkit.ShuttleAnnotation>>({});
 
 
@@ -139,7 +139,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
   // create the map
   useEffect(() => {
-    if (mapLoaded) {
+    if (mapContainerRef.current && mapRef.current && mapLoaded) {
 
       // center on RPI
       const center = new mapkit.Coordinate(42.730216, -73.675690);
@@ -158,7 +158,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
       };
 
       // create the map
-      const thisMap = new mapkit.Map(mapRef.current!, mapOptions);
+      const thisMap = new mapkit.Map(mapContainerRef.current, mapOptions);
       // set zoom and boundary limits
       thisMap.setCameraZoomRangeAnimated(
         new mapkit.CameraZoomRange(200, 3000),
@@ -286,21 +286,21 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         // thisMap.element.removeEventListener('mousemove', _);
       };
 
-      setMap(thisMap);
+      mapRef.current = thisMap;
     }
 
     // Cleanup on component unmount
     return () => {
-      if (map && map._hoverCleanup) {
-        map._hoverCleanup();
+      if (mapRef.current && mapRef.current._hoverCleanup) {
+        mapRef.current._hoverCleanup();
       }
     };
-  }, [mapLoaded]);
+  }, [mapLoaded, setSelectedRoute]);
 
   // add fixed details to the map
   // includes routes and stops
   useEffect(() => {
-    if (!map || !routeData) return;
+    if (!mapRef.current || !routeData) return;
 
     const overlays: mapkit.Overlay[] = [];
 
@@ -361,19 +361,22 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
       const routeDataCopy = JSON.parse(JSON.stringify(routeData)) as ShuttleRouteData;
       generateRoutePolylines(routeDataCopy).then((updatedRouteData) => {
         displayRouteOverlays(updatedRouteData);
-        map.addOverlays(overlays);
+        if (mapRef.current) {
+          mapRef.current.addOverlays(overlays);
+        }
       });
     } else {
       // use pre-generated polylines
       displayRouteOverlays(routeData);
-      map.addOverlays(overlays);
+      mapRef.current.addOverlays(overlays);
     }
 
-  }, [map, routeData, generateRoutes]);
+  }, [routeData, generateRoutes]);
 
   // display vehicles on map
   useEffect(() => {
-    if (!map || !vehicles) return;
+    if (!mapRef.current || !vehicles) return;
+    const map = mapRef.current;
 
     Object.keys(vehicles).forEach((key) => {
       const vehicle = vehicles[key];
@@ -446,14 +449,14 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         delete vehicleOverlays.current[key];
       }
     });
-  }, [map, vehicles, routeData]);
+  }, [vehicles, routeData]);
 
 
 
   return (
     <div
       className={isFullscreen ? 'map-fullscreen' : 'map'}
-      ref={mapRef}
+      ref={mapContainerRef}
     >
     </div>
   );
