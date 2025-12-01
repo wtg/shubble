@@ -295,7 +295,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         map._hoverCleanup();
       }
     };
-  }, [map, mapLoaded, setSelectedRoute]);
+  }, [mapLoaded]);
 
   // add fixed details to the map
   // includes routes and stops
