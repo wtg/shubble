@@ -31,7 +31,6 @@ export default function Navigation({ GIT_REV }: { GIT_REV: string }) {
 
       <div className="App">
         {config.isStaging && <WarningBanner bannerText="This is a staging domain. Please visit our official website!" bannerLink="https://shuttles.rpi.edu" gitRev={GIT_REV} />}
-        <WarningBanner bannerText='Shuttles will not be running today, December 2nd, 2025'/>
         <Outlet />
 
         <div className="small feedback-container">
