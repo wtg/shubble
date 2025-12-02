@@ -1,8 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import '../styles/MapKitMap.css';
-import ShuttleIcon from "./ShuttleIcon";
-
 import type { ShuttleRouteData, ShuttleStopData } from "../ts/types/route";
 import '../styles/MapKitMap.css';
 import type { VehicleInformationMap } from "../ts/types/vehicleLocation";
@@ -100,19 +96,19 @@ type MapKitMapProps = {
   generateRoutes?: boolean;
   selectedRoute?: string | null;
   setSelectedRoute?: (route: string | null) => void;
-  isFullscreen?: boolean;
+  selectedStop?: string;
+  setSelectedStop?: (stop: string) => void;
 };
 
 // @ts-expect-error selectedRoutes is never used
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-export default function MapKitMap({ routeData, vehicles, generateRoutes = false, selectedRoute, setSelectedRoute, isFullscreen = false }: MapKitMapProps) {
+export default function MapKitMap({ routeData, vehicles, generateRoutes = false, selectedRoute, setSelectedRoute, selectedStop, setSelectedStop }: MapKitMapProps) {
+
   const mapRef = useRef(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const token = import.meta.env.VITE_MAPKIT_KEY;
   const [map, setMap] = useState<(mapkit.Map | null)>(null);
-  const vehicleOverlays = useRef<Record<string, mapkit.ShuttleAnnotation>>({});
-  
-
+  const vehicleOverlays = useRef<Record<string, mapkit.MarkerAnnotation>>({});
   const circleWidth = 15;
   const selectedMarkerRef = useRef<mapkit.MarkerAnnotation | null>(null);
   const overlays: mapkit.Overlay[] = [];
@@ -120,7 +116,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
   // source: https://developer.apple.com/documentation/mapkitjs/loading-the-latest-version-of-mapkit-js
   const setupMapKitJs = async () => {
     if (!window.mapkit || window.mapkit.loadedLibraries.length === 0) {
-      await new Promise(resolve => { window.initMapKit = () => resolve(null); });
+      await new Promise(resolve => { window.initMapKit = resolve });
       delete window.initMapKit;
     }
   };
@@ -204,7 +200,9 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
           if (isDesktop) {
             // Desktop: handle schedule change
             const routeKey = e.overlay.routeKey;
+            const stopKey = e.overlay.stopKey;
             if (setSelectedRoute && routeKey) setSelectedRoute(routeKey);
+            if (setSelectedStop && stopKey) setSelectedStop(stopKey);
           }
         }
       });
@@ -354,7 +352,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
             return polyline;
           }
         ).filter(p => p !== null);
-        overlays.push(...routePolylines as mapkit.Overlay[]);
+        overlays.push(...routePolylines);
       }
     }
 
@@ -377,84 +375,49 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
   useEffect(() => {
     if (!map || !vehicles) return;
 
-    Object.keys(vehicles).forEach((key) => {
+    Object.keys(vehicles).map((key) => {
       const vehicle = vehicles[key];
-      const coordinate = new window.mapkit.Coordinate(vehicle.latitude, vehicle.longitude);
-
-      const existingAnnotation = vehicleOverlays.current[key];
-
-      // Build SVG dynamically using ShuttleIcon component
-      const routeColor = (() => {
-        if (!routeData || !vehicle.route_name || vehicle.route_name === "UNCLEAR") {
-          return "#444444";
-        }
-        const routeKey = vehicle.route_name as keyof typeof routeData;
-        const info = routeData[routeKey] as { COLOR?: string };
-        return info.COLOR ?? "#444444";
-        
-      })();
-
-      // Render ShuttleIcon JSX to a static SVG string
-      const svgString = renderToStaticMarkup(<ShuttleIcon color={routeColor} size={25} />);
-      const svgShuttle = `data:image/svg+xml;base64,${btoa(svgString)}`;
-
-      // --- Update or create annotation ---
-      if (existingAnnotation) {
-        // existing vehicle — update position and subtitle
-        existingAnnotation.coordinate = coordinate;
-        existingAnnotation.subtitle = `${vehicle.speed_mph.toFixed(1)} mph`;
-
-        // Handle route status updates
-        // If shuttle does not have a route null 
-        if (vehicle.route_name === null) {
-          // shuttle off-route (exiting)
-          if (existingAnnotation.lockedRoute) {
-            existingAnnotation.lockedRoute = null;
-            existingAnnotation.url = { 1: svgShuttle };
-          }
-        } else if (vehicle.route_name !== "UNCLEAR" && vehicle.route_name !== existingAnnotation.lockedRoute) {
-          existingAnnotation.lockedRoute = vehicle.route_name;
-          existingAnnotation.url = { 1: svgShuttle };
-        }
+      const coordinate = new mapkit.Coordinate(vehicle.latitude, vehicle.longitude);
+      if (key in vehicleOverlays.current) {
+        // old vehicle: update coordinate
+        log(`Updating vehicle ${key} to ${vehicle.latitude}, ${vehicle.longitude}`);
+        vehicleOverlays.current[key].coordinate = coordinate;
+        vehicleOverlays.current[key].subtitle = `${vehicle.speed_mph} mph`;
       } else {
-        const annotationOptions = {
+        // new vehicle: add to map
+        log(`Adding vehicle ${key} to ${vehicle.latitude}, ${vehicle.longitude}`);
+        const annotation = new mapkit.MarkerAnnotation(coordinate, {
           title: vehicle.name,
-          subtitle: `${vehicle.speed_mph.toFixed(1)} mph`,
-          url: { 1: svgShuttle },
-          size: { width: 25, height: 25 },
-          anchorOffset: new DOMPoint(0, -13),
-        };
-
-        // create shuttle object
-        const annotation = new window.mapkit.ImageAnnotation(coordinate, annotationOptions) as mapkit.ShuttleAnnotation;
-
-
-        // lock route if known
-        if (vehicle.route_name !== "UNCLEAR" && vehicle.route_name !== null) {
-          annotation.lockedRoute = vehicle.route_name;
-        }
-
-        // add shuttle to map
+          subtitle: `${vehicle.speed_mph} mph`,
+          color: vehicle.route_name && vehicle.route_name !== "UNCLEAR" && routeData ? routeData[vehicle.route_name as Route].COLOR : '#444444',
+          glyphImage: { 1: 'shubble20.png' },
+          selectedGlyphImage: { 1: 'shubble20.png', 2: 'shubble40.png' },
+        });
         map.addAnnotation(annotation);
         vehicleOverlays.current[key] = annotation;
       }
+
+      if (vehicle.route_name !== "UNCLEAR") {
+        vehicleOverlays.current[key].color = vehicle.route_name && routeData ? routeData[vehicle.route_name as Route].COLOR : '#444444';
+      }
     });
 
-    // --- Remove stale vehicles ---
     const currentVehicleKeys = new Set(Object.keys(vehicles));
+
+    // Remove vehicles no longer in response
     Object.keys(vehicleOverlays.current).forEach((key) => {
       if (!currentVehicleKeys.has(key)) {
+        log(`Removing vehicle ${key}`);
         map.removeAnnotation(vehicleOverlays.current[key]);
         delete vehicleOverlays.current[key];
       }
     });
-  }, [map, vehicles, routeData]);
 
-
+  }, [map, vehicles]);
 
   return (
     <div
-      className={isFullscreen ? 'map-fullscreen' : 'map'}
+      className='map'
       ref={mapRef}
     >
     </div>

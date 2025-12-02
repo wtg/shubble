@@ -12,12 +12,17 @@ const routeData = rawRouteData as unknown as ShuttleRouteData;
 type ScheduleProps = {
   selectedRoute: string | null;
   setSelectedRoute: (route: string | null) => void;
+  selectedStop: string;
+  setSelectedStop: (stop: string) => void;
 };
 
-export default function Schedule({ selectedRoute, setSelectedRoute }: ScheduleProps) {
+export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop, setSelectedStop }: ScheduleProps) {
   // Validate props once at the top
   if (typeof setSelectedRoute !== 'function') {
     throw new Error('setSelectedRoute must be a function');
+  }
+  if (typeof setSelectedStop !== 'function') {
+    throw new Error('setSelectedStop must be a function');
   }
 
   const now = new Date();
@@ -27,6 +32,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
   const [schedule, setSchedule] = useState<AggregatedDaySchedule>(aggregatedSchedule[selectedDay]);
 
   // Define safe values to avoid repeated null checks
+  const safeSelectedStop = selectedStop || "all";
   const safeSelectedRoute = selectedRoute || routeNames[0];
 
   // Update schedule and routeNames when selectedDay changes
@@ -40,9 +46,12 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
     }
   }, [selectedDay, selectedRoute, setSelectedRoute]);
 
-  // Update stopNames when selectedRoute changes
+  // Update stopNames and selectedStop when selectedRoute changes
   useEffect(() => {
     if (!safeSelectedRoute || !(safeSelectedRoute in routeData)) return;
+    if (selectedStop && !(selectedStop in routeData[safeSelectedRoute as keyof typeof routeData])) {
+      setSelectedStop("all");
+    }
     setStopNames(routeData[safeSelectedRoute as keyof typeof routeData].STOPS);
   }, [selectedRoute]);
 
@@ -94,7 +103,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
     if (currentTimeRow) {
       currentTimeRow.scrollIntoView({ behavior: "auto" });
     }
-  }, [selectedRoute, selectedDay, schedule]);
+  }, [selectedRoute, selectedDay, selectedStop, schedule]);
 
 
   const daysOfTheWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -126,6 +135,19 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
           }
         </select>
       </div>
+      <div>
+        <label htmlFor='stop-dropdown'>Stop:</label>
+        <select id='stop-dropdown' className="schedule-dropdown-style" value={safeSelectedStop} onChange={(e) => setSelectedStop(e.target.value)}>
+          <option value="all">All Stops</option>
+          {
+            stopNames.map((stop, index) =>
+              <option key={index} value={stop}>
+                {(routeData[safeSelectedRoute as keyof typeof routeData][stop] as ShuttleStopData)?.NAME}
+              </option>
+            )
+          }
+        </select>
+      </div>
       <div className="schedule-scroll">
         <table>
           <thead>
@@ -139,22 +161,37 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
               const route = routeData[routeKey];
               const times = schedule[routeKey];
 
-              return times.map((time, index) =>
-                route.STOPS.map((stop, sidx) => {
-                  const stopData = route[stop] as ShuttleStopData;
+              if (safeSelectedStop === "all") {
+                return times.map((time, index) =>
+                  route.STOPS.map((stop, sidx) => {
+                    const stopData = route[stop] as ShuttleStopData;
+                    const displayTime = offsetTime(time, stopData.OFFSET).toLocaleTimeString(
+                      undefined,
+                      { timeStyle: "short" }
+                    );
+                    return (
+                      <tr key={`${index}-${sidx}`}>
+                        <td className={sidx === 0 ? "outdented" : "indented-time"}>
+                          {displayTime} {stopData.NAME}
+                        </td>
+                      </tr>
+                    );
+                  })
+                );
+              } else {
+                const stopData = route[safeSelectedStop] as ShuttleStopData;
+                return times.map((time, index) => {
                   const displayTime = offsetTime(time, stopData.OFFSET).toLocaleTimeString(
                     undefined,
                     { timeStyle: "short" }
                   );
                   return (
-                    <tr key={`${index}-${sidx}`}>
-                      <td className={sidx === 0 ? "outdented" : "indented-time"}>
-                        {sidx === 0 ? displayTime : ""} {stopData.NAME}
-                      </td>
+                    <tr key={index}>
+                      <td className="outdented">{displayTime}</td>
                     </tr>
                   );
-                })
-              );
+                });
+              }
             })()}
           </tbody>
         </table>

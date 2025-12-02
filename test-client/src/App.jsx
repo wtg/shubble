@@ -1,8 +1,7 @@
-import { useEffect, useState, useCallback, useRef } from "react";
-import * as api from "./api.js";
-import { STATES } from "./utils.js";
-import Tester from "./AutoTest.js";
+import { useEffect, useState } from "react";
 import "./App.css";
+
+const NEXT_STATES = ["waiting", "entering", "looping", "on_break", "exiting"];
 
 function App() {
   const [shuttles, setShuttles] = useState([]);
@@ -10,72 +9,58 @@ function App() {
   const [locationCount, setLocationCount] = useState(0);
   const [geofenceCount, setGeofenceCount] = useState(0);
   const [keepShuttles, setKeepShuttles] = useState(false);
-  const [routes, setRoutes] = useState([]);
-  const [pendingRouteIds, setPendingRouteIds] = useState(new Set());
-  const shuttlesRef = useRef([]);
-  const getShuttles = useCallback(() => shuttlesRef.current, []);
-  const testerRef = useRef(null);
 
-  if (!testerRef.current) {
-    testerRef.current = Tester(getShuttles);
-  }
-  const tester = testerRef.current;
-
-  // call api, then update the frontend's representation
-  const updateShuttles = async () => {
-    const res = await api.fetchShuttles();
+  const fetchShuttles = async () => {
+    const res = await fetch("/api/shuttles");
     const data = await res.json();
     setShuttles(data);
+    console.log("Fetched shuttles:", data);
   };
 
-  const updateEvents = async () => {
-    const res = await api.fetchEvents();
+  const addShuttle = async () => {
+    await fetch("/api/shuttles", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    await fetchShuttles();
+  };
+
+  const setNextState = async (nextState) => {
+    if (!selectedId) return;
+    await fetch(`/api/shuttles/${selectedId}/set-next-state`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ state: nextState }),
+    });
+    await fetchShuttles();
+  };
+
+  const fetchEvents = async () => {
+    const res = await fetch("/api/events/today");
     const data = await res.json();
     setLocationCount(data.locationCount);
     setGeofenceCount(data.geofenceCount);
-  };
+  }
 
   const clearEvents = async () => {
-    await api.deleteEvents(keepShuttles);
+    await fetch(`/api/events/today?keepShuttles=${keepShuttles}`, {method: "DELETE"});
     if (!keepShuttles) {
       setSelectedId(null);
     }
+    console.log("Cleared events for today");
   };
 
-  const getRoutes = async () => {
-    const res = await api.fetchRoutes();
-    const data = await res.json();
-    setRoutes(data);
-  };
+  useEffect(() => {
+    fetchEvents();
+    const interval = setInterval(fetchEvents, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
-  const uploadTest = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    await api.deleteEvents(false);
-    setSelectedId(null);
-
-    const text = await file.text();
-    const json = JSON.parse(text);
-    await tester.startTest(json);
-    // reset the chosen file after the test finishes
-    event.target.value = "";
-  };
-
-  // give react a copy (new reference) so it detects the change
-  const addPending = (id) => {
-    setPendingRouteIds(prev => new Set([...prev, id]));
-  };
-
-  const removePending = (id) => {
-    setPendingRouteIds(prev => new Set([...prev].filter(x => x !== id)));
-  };
-
-  const selected = shuttles.find((s) => s.id === selectedId);
-
-  useEffect(() => { getRoutes(); }, []);
-
-  useEffect(() => { shuttlesRef.current = shuttles; }, [shuttles]);
+  useEffect(() => {
+    fetchShuttles();
+    const interval = setInterval(fetchShuttles, 100);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (shuttles.length > 0 && !selectedId) {
@@ -83,22 +68,12 @@ function App() {
     }
   }, [shuttles]);
 
-  useEffect(() => {
-    updateShuttles();
-    const interval = setInterval(updateShuttles, 100);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    updateEvents();
-    const interval = setInterval(updateEvents, 1000);
-    return () => clearInterval(interval);
-  }, []);
+  const selected = shuttles.find((s) => s.id === selectedId);
 
   return (
     <div className="app">
       <h1>Shuttle Manager</h1>
-      <button onClick={() => api.addShuttle()}>Add Shuttle</button>
+      <button onClick={addShuttle}>Add Shuttle</button>
 
       <div className="tabs">
         {shuttles.map((shuttle) => (
@@ -131,46 +106,15 @@ function App() {
 
           <h3>Set Next State</h3>
           <div className="state-buttons">
-            {Object.values(STATES).map(state => (
+            {NEXT_STATES.map((state) => (
               <button
                 key={state}
                 disabled={selected.next_state === state}
-                onClick={() => {
-                  if (state === STATES.LOOPING) {
-                    addPending(selected.id);
-                  } else {
-                    removePending(selected.id);
-                    api.setNextState(selected.id, {state, route: undefined});
-                  }
-                }}
+                onClick={() => setNextState(state)}
               >
                 {state}
               </button>
             ))}
-
-            {pendingRouteIds.has(selected.id) && (
-              <div className="select-route">
-                <label>
-                  Route:
-                  <select
-                    value=""
-                    onChange={e => {
-                      api.setNextState(selected.id, {state: STATES.LOOPING, route: e.target.value});
-                      removePending(selected.id);
-                    }}
-                  >
-                    <option value="" disabled>
-                      Select route
-                    </option>
-                    {routes.map(route => (
-                      <option key={route} value={route}>
-                        {route}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-            )}
           </div>
         </div>
       ) : (
@@ -181,7 +125,7 @@ function App() {
         <div className="events-today">
           {locationCount} previous shuttle locations and {geofenceCount} previous entry/exit events
         </div>
-        <button onClick={() => clearEvents()}>Clear Events</button>
+        <button onClick={clearEvents}>Clear Events</button>
         <label>
           <input
             type="checkbox"
@@ -190,12 +134,6 @@ function App() {
           />
           Keep Shuttles
         </label>
-      </div>
-
-      <h3>JSON Test Case Executor</h3>
-      <div className="test-container">
-        <input type="file" accept=".json" onChange={(e) => uploadTest(e)}/>
-        <button onClick={() => tester.stopTest()}>Stop Test</button>
       </div>
     </div>
   );

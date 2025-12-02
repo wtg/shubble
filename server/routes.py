@@ -20,7 +20,6 @@ bp = Blueprint('routes', __name__)
 @bp.route('/schedule')
 @bp.route('/about')
 @bp.route('/data')
-@bp.route('/map')
 @bp.route('/generate-static-routes')
 def serve_react():
     # serve the React app's index.html for all main routes
