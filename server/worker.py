@@ -8,6 +8,7 @@ import os
 import logging
 from datetime import datetime, date, timedelta
 import math
+from data.schedules import Schedule
 
 # Logging config
 numeric_level = logging._nameToLevel.get(Config.LOG_LEVEL.upper(), logging.INFO)
@@ -156,11 +157,18 @@ def update_locations(app):
 
 def run_worker():
     logger.info('Worker started...')
+    last_schedule_update = datetime.utcnow()
 
     while True:
         try:
             with app.app_context():
                 update_locations(app)
+
+                now = datetime.utcnow()
+                if (now - last_schedule_update).total_seconds() >= 3600:
+                    matched = Schedule.match_shuttles_to_schedules()
+                    cache.set("schedule_entries", matched, timeout=3600)
+                    last_schedule_update = now
         except Exception as e:
             logger.exception(f'Error in worker loop: {e}')
         time.sleep(5)
