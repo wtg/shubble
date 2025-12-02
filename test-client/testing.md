@@ -10,13 +10,15 @@ Each test case should be in JSON format.
 - The event object may have additional data depending on the type. For example, `duration` for `on_break` and `waiting`, and `route` for `looping`.
 
 ## Additional Notes
-- Each shuttle's id must match its internal id representation, a zero-padded 15 digit string. "000000000000001" is shuttle 1.
+- Each shuttle's id must match its internal id representation, a zero-padded 15 digit string. For example, "000000000000001" is shuttle 1.
 
-- Route selection for `looping` is not yet implemented. This will be addressed in issue #193.
+- `duration` (seconds) must be an integer >= 0.
 
-- `duration` (in seconds) must be an integer >= 0.
+- `on_break` and `waiting` are treated as equivalent states. This is because currently, the test server converts `on_break` to `waiting` on the next state.
 
-- `on_break` and `waiting` are treated as equivalent states in the automated testing module. This is because currently in the test server, `on_break` is converted to `waiting` on the next state.
+- HTTP errors can very occasionally cause the test case to fail. Rerunning it will usually work.
+
+- There may be subtle timing issues if the test suite tab is unfocused for too long. This is due to background tab throttling, which affects setTimeout and setInterval. This shouldn't affect correctness though.
 
 ## Simple Test Case Example
 ```
@@ -33,7 +35,11 @@ Each test case should be in JSON format.
                     "duration": 30
                 },
                 {
-                    "type": "entering"
+                    "type": "looping",
+                    "route": "NORTH"
+                },
+                {
+                    "type": "exiting"
                 }
             ]
         }

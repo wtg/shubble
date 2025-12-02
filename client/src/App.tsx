@@ -18,8 +18,6 @@ import config from "./ts/config";
 
 function App() {
   const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
-  const now = new Date();
-  const [selectedDay, setSelectedDay] = useState(now.getDay());
   const GIT_REV = (import.meta.env.GIT_REV || 'unknown') as string;
   const routeData = rawRouteData as unknown as ShuttleRouteData;
 
@@ -34,23 +32,25 @@ function App() {
   }, []);
 
   return (
-    <Router>
-      <Routes>
-        {/* with header and footer */}
-        <Route element={<Navigation GIT_REV={GIT_REV} />} >
-          <Route index element={<LiveLocation />} />
-          <Route path='/schedule' element={<Schedule selectedRoute={selectedRoute} setSelectedRoute={setSelectedRoute} selectedDay={selectedDay} setSelectedDay={setSelectedDay} />} />
-          <Route path='/about' element={<About />} />
-          <Route path='/data' element={<Data />} />
-          <Route path='/generate-static-routes' element={<MapKitMap routeData={routeData} vehicles={null} generateRoutes={true} />} />
-        </Route>
+    <>
+      <Router>
+        <Routes>
+          {/* with header and footer */}
+          <Route element={<Navigation GIT_REV={GIT_REV} />} >
+            <Route index element={<LiveLocation />} />
+            <Route path='/schedule' element={<Schedule selectedRoute={selectedRoute} setSelectedRoute={setSelectedRoute} />} />
+            <Route path='/about' element={<About />} />
+            <Route path='/data' element={<Data />} />
+            <Route path='/generate-static-routes' element={<MapKitMap routeData={routeData} vehicles={null} generateRoutes={true} />} />
+          </Route>
 
-        {/* without header and footer */}
-        <Route>
-          <Route path='/map' element={<MapKitMap routeData={routeData} vehicles={null} generateRoutes={false} selectedRoute={selectedRoute} setSelectedRoute={setSelectedRoute} isFullscreen={true} />} />
-        </Route>
-      </Routes>
-    </Router>
+          {/* without header and footer */}
+          <Route>
+            <Route path='/map' element={<MapKitMap routeData={routeData} vehicles={null} generateRoutes={false} selectedRoute={selectedRoute} setSelectedRoute={setSelectedRoute} isFullscreen={true} />} />
+          </Route>
+        </Routes>
+      </Router>
+    </>
   );
 }
 
