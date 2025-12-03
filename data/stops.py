@@ -26,7 +26,7 @@ class Stops:
             polylines[route_name].append(np.array(polyline))
 
     @classmethod
-    def get_closest_point(cls, origin_point):
+    def get_closest_point(cls, origin_point, threshold=0.020):
         """
         Find the closest point on any polyline to the given origin point.
         :param origin_point: A tuple or list with (latitude, longitude) coordinates.
@@ -74,7 +74,7 @@ class Stops:
         if closest_data:
             closest_routes = sorted(closest_data, key=lambda x: x[0])
             # Check if closest route is significantly closer than others
-            if len(closest_routes) > 1 and haversine(closest_routes[0][1], closest_routes[1][1]) < 0.020:
+            if len(closest_routes) > 1 and haversine(closest_routes[0][1], closest_routes[1][1]) < threshold:
                 # If not significantly closer, return None to indicate ambiguity
                 return None, None, None, None
 
