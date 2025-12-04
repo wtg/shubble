@@ -321,6 +321,7 @@ def run_worker():
             with app.app_context():
                 update_locations(app)
 
+                # Recompute matched schedules once per hour
                 now = datetime.utcnow()
                 if (now - last_schedule_update).total_seconds() >= 3600:
                     matched = Schedule.match_shuttles_to_schedules()
@@ -329,6 +330,7 @@ def run_worker():
 
         except Exception as e:
             logger.exception(f'Error in worker loop: {e}')
+
         time.sleep(5)
 
 if __name__ == '__main__':

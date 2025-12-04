@@ -6,38 +6,46 @@ from server.models import VehicleLocation
 from stops import Stops
 from datetime import datetime, timezone
 from server.time_utils import get_campus_start_of_day
-from server import db
-
+from server import db, cache
 
 class Schedule:
-    cache = {}
 
     @classmethod
     def get_stop_info(cls, row):
         """
         Calculate whether Vehicle is at Stop. Return (route_name, stop_name)
-        or (None, None) if not at stop.
+        or (None, None) if not at stop using Redis to cache repeated coordinate lookups.
         """
         coords = (float(row.latitude), float(row.longitude))
+        key = f"coords:{coords[0]}:{coords[1]}"
 
-        if coords in cls.cache:
-            return cls.cache[coords]
+        # Try Redis cache first
+        cached = cache.get(key)
+        if cached:
+            return cached
 
         try:
-            rn, sn = Stops.is_at_stop(coords)
+            route_name, stop_name = Stops.is_at_stop(coords)
         except Exception:
-            rn, sn = None, None
+            route_name, stop_name = None, None
 
-        cls.cache[coords] = (rn, sn)
-        return rn, sn
+        # Store in Redis
+        cache.set(key, (route_name, stop_name), timeout=60 * 60 * 24)
+        return route_name, stop_name
 
     @classmethod
     def load_and_label_stops(cls):
         """
-        Load CSV and add new columns route_name and stop_name using is_at_stop().
+        Load DB rows and add new columns route_name and stop_name using is_at_stop().
+        Uses Redis to cache labeled stop results
         """
         start = get_campus_start_of_day()
         now = datetime.now(timezone.utc)
+
+        cache_key = f"labeled_stops:{start.date()}"
+        cached_df = cache.get(cache_key)
+        if cached_df is not None:
+            return cached_df
 
         rows = (
             db.session.query(VehicleLocation)
@@ -50,7 +58,9 @@ class Schedule:
         )
 
         if not rows:
-            return pd.DataFrame(columns=['vehicle_id','timestamp','route_name','stop_name'])
+            empty_df = pd.DataFrame(columns=['vehicle_id','timestamp','route_name','stop_name'])
+            cache.set(cache_key, empty_df, timeout=60 * 10)
+            return empty_df
 
         df = pd.DataFrame([
             {
@@ -62,6 +72,7 @@ class Schedule:
             for r in rows
         ])
 
+        # Add route_name and stop_name columns
         df[['route_name','stop_name']] = df.apply(
             lambda r: pd.Series(cls.get_stop_info(r)), axis=1
         )
@@ -70,45 +81,53 @@ class Schedule:
             ['vehicle_id','timestamp','route_name','stop_name']
         ].copy()
 
+        # Cache for the duration of the day
+        cache.set(cache_key, labeled, timeout=60 * 10)
         return labeled
 
     @classmethod
     def match_shuttles_to_schedules(cls):
         """
-        Match shuttle vehicle data to the most likely schedule route based on timestamp 
-        and stop location using Hungarian algorithm.
+        Match shuttle vehicle data to the most likely schedule route
+        based on timestamp and stop location using the Hungarian algorithm.
+
+        Redis caching prevents recomputation for one hour.
         """
+        cached = cache.get("schedule_entries")
+        if cached is not None:
+            return cached
+
         at_stops = cls.load_and_label_stops()
 
-        with open('data/schedule.json') as f:
-            sched = json.load(f)
+        sched = Stops.schedule_data
 
-        # Determine the day name from the first timestamp
+        # Determine day from first timestamp
         first_ts = pd.to_datetime(at_stops['timestamp'].iloc[0])
         day_name = first_ts.day_name().upper()
-
-        # Step 1: "MONDAY" → "weekday"
         day_key = sched[day_name]
 
-        # Step 2: "weekday" → actual bus route dictionary
+        #Get routes for the day
         routes = sched[day_key]
 
-        # Unique shuttles
+        #Get Unique shuttles that are at stops
         shuttles = at_stops['vehicle_id'].unique().tolist()
 
         # Expand schedule with actual date
         date_str = first_ts.strftime("%Y-%m-%d")
         sched_flat = [
-            (name, [(pd.to_datetime(f"{date_str} {t}"), s) for t, s in times])
+            (
+                name,
+                [(pd.to_datetime(f"{date_str} {t}"), s) for t, s in times]
+            )
             for name, times in routes.items()
         ]
 
         W = np.zeros((len(shuttles), len(sched_flat)))
 
-        # Add minute column for faster matching
+        # Precompute minute-aligned timestamps
         at_stops['minute'] = at_stops['timestamp'].dt.floor('min')
 
-        # Group logs by shuttle
+        # Group logs
         shuttle_groups = {k: v for k, v in at_stops.groupby('vehicle_id')}
 
         # Build cost matrix
@@ -117,27 +136,26 @@ class Schedule:
             log_pairs = set(zip(logs['route_name'], logs['minute']))
 
             for j, (_, stops) in enumerate(sched_flat):
-                sched_pairs = {(sn, ts) for ts, sn in stops}
+                # Build schedule pairs
+                sched_pairs = {(stop_name, time_stamp) for time_stamp, stop_name in stops}
+
+                # Compute matches
                 matches = len(log_pairs & sched_pairs)
-                
+
+                # Cost = 0 means perfect match, 1 means no match
                 cost = 1 - (matches / len(stops))
                 W[i, j] = cost
 
-        # Run Hungarian algorithm
+        # Hungarian algorithm
         row, col = linear_sum_assignment(W)
 
-        # Final dict
+        # Generate result dictionary
         result = {shuttles[r]: sched_flat[c][0] for r, c in zip(row, col)}
 
-        # Print assignments
-        for r_idx, c_idx in zip(row, col):
-            shuttle = shuttles[r_idx]
-            route_label = sched_flat[c_idx][0]
-            match_cost = W[r_idx, c_idx] * 100
-            print(f"{route_label} = Shuttle {shuttle} with matching accuracy: {match_cost:.3f}%")
+        # Cache results for 1 hour
+        cache.set("schedule_entries", result, timeout=3600)
 
         return result
-
-
+    
 if __name__ == "__main__":
     result = Schedule.match_shuttles_to_schedules()

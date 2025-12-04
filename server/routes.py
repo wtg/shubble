@@ -276,20 +276,24 @@ def get_aggregated_shuttle_schedule():
     return send_from_directory(root_dir / 'data', 'aggregated_schedule.json')
 
 @bp.route('/api/matched-schedules', methods=['GET'])
-@cache.cached(timeout=300, key_prefix="schedule_entries")
 def get_matched_shuttle_schedules():
     """
-    Match currently-active shuttles (those inside the geofence)
-    to their most likely schedule route. Returns:
-    dictionary of each vehicle matched to a schedule
-    
+    Return cached matched schedules if available,
+    otherwise compute using Schedule.match_shuttles_to_schedules().
     """
 
     try:
-        #Run matching algorithm
+        # Get cached result written by worker or recompute if missing
+        cached = cache.get("schedule_entries")
+        if cached is not None:
+            return jsonify({
+                "status": "success",
+                "matchedSchedules": cached
+            }), 200
+
+        # Fallback compute and cache using Schedule logic
         matched = Schedule.match_shuttles_to_schedules()
 
-        #Return JSON
         return jsonify({
             "status": "success",
             "matchedSchedules": matched
@@ -302,18 +306,18 @@ def get_matched_shuttle_schedules():
             "message": str(e)
         }), 500
 
+
 @bp.route('/api/matched-schedules/recompute', methods=['POST'])
 def recompute_matched_shuttle_schedules():
     """
-    Recalculation of matched shuttle schedules.
-    So cache can be safely updated
+    Manually recompute and immediately update Redis cache.
     """
 
     try:
-        #Run matching algorithm
+        # Run matching algorithm
         matched = Schedule.match_shuttles_to_schedules()
 
-        #Store result in cache
+        # Store result in cache
         cache.set("schedule_entries", matched, timeout=300)
 
         return jsonify({
@@ -328,3 +332,4 @@ def recompute_matched_shuttle_schedules():
             "status": "error",
             "message": str(e)
         }), 500
+
