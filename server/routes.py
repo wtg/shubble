@@ -6,6 +6,7 @@ from sqlalchemy import func, and_
 from sqlalchemy.dialects import postgresql
 from datetime import datetime, date, timezone
 from data.stops import Stops
+from data.schedules import Schedule
 from hashlib import sha256
 import hmac
 import logging
@@ -273,3 +274,57 @@ def get_shuttle_schedule():
 def get_aggregated_shuttle_schedule():
     root_dir = Path(__file__).parent.parent
     return send_from_directory(root_dir / 'data', 'aggregated_schedule.json')
+
+@bp.route('/api/matched-schedules', methods=['GET'])
+@cache.cached(timeout=300, key_prefix="schedule_entries")
+def get_matched_shuttle_schedules():
+    """
+    Match currently-active shuttles (those inside the geofence)
+    to their most likely schedule route. Returns:
+    dictionary of each vehicle matched to a schedule
+    
+    """
+
+    try:
+        #Run matching algorithm
+        matched = Schedule.match_shuttles_to_schedules()
+
+        #Return JSON
+        return jsonify({
+            "status": "success",
+            "matchedSchedules": matched
+        }), 200
+
+    except Exception as e:
+        logger.exception(f"Error in matched schedule endpoint: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+@bp.route('/api/matched-schedules/recompute', methods=['POST'])
+def recompute_matched_shuttle_schedules():
+    """
+    Recalculation of matched shuttle schedules.
+    So cache can be safely updated
+    """
+
+    try:
+        #Run matching algorithm
+        matched = Schedule.match_shuttles_to_schedules()
+
+        #Store result in cache
+        cache.set("schedule_entries", matched, timeout=300)
+
+        return jsonify({
+            "status": "success",
+            "message": "Schedule matching recomputed and cache updated.",
+            "matchedSchedules": matched
+        }), 200
+
+    except Exception as e:
+        logger.exception(f"Error recomputing matched schedules: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
