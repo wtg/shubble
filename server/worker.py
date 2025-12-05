@@ -157,20 +157,22 @@ def update_locations(app):
 
 def run_worker():
     logger.info('Worker started...')
-    last_schedule_update = datetime.utcnow()
+    last_location_count = 0
 
     while True:
         try:
             with app.app_context():
                 update_locations(app)
 
-                # Recompute matched schedules once per hour
-                now = datetime.utcnow()
-                if (now - last_schedule_update).total_seconds() >= 3600:
+                # Recompute matched schedules if data has changed
+                current_location_count = VehicleLocation.query.count()
+
+                if current_location_count != last_location_count:
                     matched = Schedule.match_shuttles_to_schedules()
                     cache.set("schedule_entries", matched, timeout=3600)
-                    last_schedule_update = now
 
+                last_location_count = current_location_count
+                   
         except Exception as e:
             logger.exception(f'Error in worker loop: {e}')
 
