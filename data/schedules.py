@@ -1,12 +1,15 @@
 import pandas as pd
 import numpy as np
 import json
+import logging
 from scipy.optimize import linear_sum_assignment
 from server.models import VehicleLocation
 from data.stops import Stops
 from datetime import datetime, timezone
 from server.time_utils import get_campus_start_of_day
 from server import db, cache
+
+logger = logging.getLogger(__name__)
 
 class Schedule:
 
@@ -102,6 +105,12 @@ class Schedule:
         sched = Stops.schedule_data
 
         # Determine day from first timestamp
+        required_cols = {"vehicle_id", "timestamp", "route_name"}
+
+        if at_stops.empty or not required_cols.issubset(at_stops.columns):
+            logger.warning("at_stops is missing required data returning empty match.")
+            return {}
+
         first_ts = pd.to_datetime(at_stops['timestamp'].iloc[0])
         day_name = first_ts.day_name().upper()
         day_key = sched[day_name]
