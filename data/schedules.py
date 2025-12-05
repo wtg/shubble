@@ -84,6 +84,9 @@ class Schedule:
             ['vehicle_id','timestamp','route_name','stop_name']
         ].copy()
 
+        if labeled.empty:
+            return {} #No shuttles matched stops
+
         # Cache for the duration of the day
         cache.set(cache_key, labeled, timeout=60 * 10)
         return labeled
@@ -136,12 +139,20 @@ class Schedule:
         # Precompute minute-aligned timestamps
         at_stops['minute'] = at_stops['timestamp'].dt.floor('min')
 
+       
         # Group logs
         shuttle_groups = {k: v for k, v in at_stops.groupby('vehicle_id')}
 
+        
+
         # Build cost matrix
         for i, shuttle in enumerate(shuttles):
-            logs = shuttle_groups[shuttle]
+            
+            logs = shuttle_groups.get(shuttle)
+            if logs is None or logs.empty:
+                W[i] = 1  #No data for shuttle
+                continue
+
             log_pairs = set(zip(logs['route_name'], logs['minute']))
 
             for j, (_, stops) in enumerate(sched_flat):
