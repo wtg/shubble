@@ -278,56 +278,36 @@ def get_aggregated_shuttle_schedule():
 @bp.route('/api/matched-schedules', methods=['GET'])
 def get_matched_shuttle_schedules():
     """
-    Return cached matched schedules if available,
-    otherwise compute using Schedule.match_shuttles_to_schedules().
+    Return cached matched schedules unless force_recompute=true,
+    in which case recompute and update the cache.
     """
 
     try:
-        # Get cached result written by worker or recompute if missing
-        cached = cache.get("schedule_entries")
-        if cached is not None:
-            return jsonify({
-                "status": "success",
-                "matchedSchedules": cached
-            }), 200
+        # Parse URL argument, default False
+        force_recompute = request.args.get("force_recompute", "false").lower() == "true"
 
-        # Fallback compute and cache using Schedule logic
+        # If not forcing recompute, try cache first
+        if not force_recompute:
+            cached = cache.get("schedule_entries")
+            if cached is not None:
+                return jsonify({
+                    "status": "success",
+                    "matchedSchedules": cached,
+                    "source": "cache"
+                }), 200
+
+        # Otherwise compute fresh and overwrite cache
         matched = Schedule.match_shuttles_to_schedules()
+        cache.set("schedule_entries", matched, timeout=3600)
 
         return jsonify({
             "status": "success",
-            "matchedSchedules": matched
+            "matchedSchedules": matched,
+            "source": "recomputed" if force_recompute else "fallback_computed"
         }), 200
 
     except Exception as e:
         logger.exception(f"Error in matched schedule endpoint: {e}")
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
-
-
-@bp.route('/api/matched-schedules/recompute', methods=['POST'])
-def recompute_matched_shuttle_schedules():
-    """
-    Manually recompute and immediately update Redis cache.
-    """
-
-    try:
-        # Run matching algorithm
-        matched = Schedule.match_shuttles_to_schedules()
-
-        # Store result in cache
-        cache.set("schedule_entries", matched, timeout=300)
-
-        return jsonify({
-            "status": "success",
-            "message": "Schedule matching recomputed and cache updated.",
-            "matchedSchedules": matched
-        }), 200
-
-    except Exception as e:
-        logger.exception(f"Error recomputing matched schedules: {e}")
         return jsonify({
             "status": "error",
             "message": str(e)
