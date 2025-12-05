@@ -3,7 +3,7 @@ import numpy as np
 import json
 from scipy.optimize import linear_sum_assignment
 from server.models import VehicleLocation
-from stops import Stops
+from data.stops import Stops
 from datetime import datetime, timezone
 from server.time_utils import get_campus_start_of_day
 from server import db, cache
