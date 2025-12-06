@@ -146,6 +146,7 @@ def update_locations(app):
             if new_records_added > 0:
                 db.session.commit()
                 cache.delete('vehicle_locations')
+                cache.delete("schedule_entries")
                 logger.info(f'Updated locations for {len(current_vehicle_ids)} vehicles - {new_records_added} new records')
             else:
                 logger.info(f'No new location data for {len(current_vehicle_ids)} vehicles')
@@ -157,7 +158,6 @@ def update_locations(app):
 
 def run_worker():
     logger.info('Worker started...')
-    last_location_count = 0
 
     while True:
         try:
@@ -165,13 +165,9 @@ def run_worker():
                 update_locations(app)
 
                 # Recompute matched schedules if data has changed
-                current_location_count = VehicleLocation.query.count()
-
-                if current_location_count != last_location_count:
+                if cache.get("schedule_entries") is None:
                     matched = Schedule.match_shuttles_to_schedules()
                     cache.set("schedule_entries", matched, timeout=3600)
-
-                last_location_count = current_location_count
                    
         except Exception as e:
             logger.exception(f'Error in worker loop: {e}')
