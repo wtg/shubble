@@ -7,6 +7,7 @@ import requests
 import os
 import logging
 from datetime import datetime, date, timedelta
+from data.schedules import Schedule
 import math
 
 # Logging config
@@ -145,6 +146,7 @@ def update_locations(app):
             if new_records_added > 0:
                 db.session.commit()
                 cache.delete('vehicle_locations')
+                cache.delete("schedule_entries")
                 logger.info(f'Updated locations for {len(current_vehicle_ids)} vehicles - {new_records_added} new records')
             else:
                 logger.info(f'No new location data for {len(current_vehicle_ids)} vehicles')
@@ -161,8 +163,15 @@ def run_worker():
         try:
             with app.app_context():
                 update_locations(app)
+
+                # Recompute matched schedules if data has changed
+                if cache.get("schedule_entries") is None:
+                    matched = Schedule.match_shuttles_to_schedules()
+                    cache.set("schedule_entries", matched, timeout=3600)
+                   
         except Exception as e:
             logger.exception(f'Error in worker loop: {e}')
+
         time.sleep(5)
 
 if __name__ == '__main__':

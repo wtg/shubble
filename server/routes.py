@@ -6,6 +6,7 @@ from sqlalchemy import func, and_
 from sqlalchemy.dialects import postgresql
 from datetime import datetime, date, timezone
 from data.stops import Stops
+from data.schedules import Schedule
 from hashlib import sha256
 import hmac
 import logging
@@ -273,3 +274,42 @@ def get_shuttle_schedule():
 def get_aggregated_shuttle_schedule():
     root_dir = Path(__file__).parent.parent
     return send_from_directory(root_dir / 'data', 'aggregated_schedule.json')
+
+@bp.route('/api/matched-schedules', methods=['GET'])
+def get_matched_shuttle_schedules():
+    """
+    Return cached matched schedules unless force_recompute=true,
+    in which case recompute and update the cache.
+    """
+
+    try:
+        # Parse URL argument, default False
+        force_recompute = request.args.get("force_recompute", "false").lower() == "true"
+
+        # If not forcing recompute, try cache first
+        if not force_recompute:
+            cached = cache.get("schedule_entries")
+            if cached is not None:
+                return jsonify({
+                    "status": "success",
+                    "matchedSchedules": cached,
+                    "source": "cache"
+                }), 200
+
+        # Otherwise compute fresh and overwrite cache
+        matched = Schedule.match_shuttles_to_schedules()
+        cache.set("schedule_entries", matched, timeout=3600)
+
+        return jsonify({
+            "status": "success",
+            "matchedSchedules": matched,
+            "source": "recomputed" if force_recompute else "fallback_computed"
+        }), 200
+
+    except Exception as e:
+        logger.exception(f"Error in matched schedule endpoint: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
