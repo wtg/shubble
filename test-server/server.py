@@ -122,6 +122,69 @@ def trigger_action(shuttle_id):
         logger.info(f"Set shuttle {shuttle_id} next state to {next_state}")
         return jsonify(shuttle.to_dict())
 
+@app.route("/api/events/today", methods=["GET"])
+def get_events_today():
+    start_of_today = get_campus_start_of_day()
+    loc_count = db.session.query(VehicleLocation).filter(VehicleLocation.timestamp >= start_of_today).count()
+    geo_count = db.session.query(GeofenceEvent).filter(GeofenceEvent.event_time >= start_of_today).count()
+    return jsonify({
+        'locationCount': loc_count,
+        'geofenceCount': geo_count
+    })
+
+@app.route("/api/events/today", methods=["DELETE"])
+def clear_events_today():
+    keep_shuttles = request.args.get("keepShuttles", "false").lower() == "true"
+    start_of_today = get_campus_start_of_day()
+
+    db.session.query(VehicleLocation).filter(VehicleLocation.timestamp >= start_of_today).delete()
+    logger.info(f"Deleted vehicle location events past {start_of_today}")
+
+    if not keep_shuttles:
+        db.session.query(GeofenceEvent).filter(GeofenceEvent.event_time >= start_of_today).delete()
+        logger.info(f"Deleted geofence events past {start_of_today}")
+
+        global shuttle_counter
+        with shuttle_lock:
+            shuttles.clear()
+            shuttle_counter = 1
+        logger.info(f"Deleted all shuttles")
+    else:
+        '''
+        Delete all geofence events >= start_of_today except for: each vehicle's latest one (if it
+        is a geofenceEntry. geofenceExits are still deleted). This allows all currently running
+        shuttles to keep running in the test suite.
+        '''
+
+        # Get today's geofence events
+        today_events = db.session.query(GeofenceEvent).filter(
+            GeofenceEvent.event_time >= start_of_today
+        ).subquery()
+        # Get latest event per vehicle from today's geofence events
+        latest_times = db.session.query(
+            today_events.c.vehicle_id,
+            func.max(today_events.c.event_time).label("latest_time")
+        ).group_by(today_events.c.vehicle_id).subquery()
+        # Join back to get the full event row, select to keep only geofenceEntry, project on id
+        latest_entries = db.session.query(today_events.c.id).join(
+            latest_times,
+            and_(
+                today_events.c.vehicle_id == latest_times.c.vehicle_id,
+                today_events.c.event_time == latest_times.c.latest_time
+            )
+        ).filter(today_events.c.event_type == 'geofenceEntry').subquery()
+        # Delete all in today_events that aren't in latest_entries
+        db.session.query(GeofenceEvent).filter(
+            GeofenceEvent.id.in_(db.session.query(today_events.c.id))
+        ).filter(
+            ~GeofenceEvent.id.in_(db.session.query(latest_entries.c.id))
+        ).delete()
+
+        logger.info(f"Deleted geofence events past {start_of_today} except for currently running shuttles")
+
+    db.session.commit()
+    return "", 204
+
 # --- Frontend Serving ---
 @app.route("/")
 @app.route("/<path:path>")
@@ -131,12 +194,49 @@ def serve_frontend(path=""):
     else:
         return send_from_directory(app.static_folder, "index.html")
 
+@app.route('/fleet/vehicles/stats')
+def mock_stats():
+    vehicle_ids = request.args.get('vehicleIds', '').split(',')
+    after = request.args.get('after')
+
+    logger.info(f'[MOCK API] Received stats snapshot request for vehicles {vehicle_ids} after={after}')
+
+    # update timestamps
+    with shuttle_lock:
+        data = []
+        for shuttle_id in vehicle_ids:
+            if shuttle_id in shuttles:
+                # add error to location
+                lat, lon = shuttles[shuttle_id].location
+                lat += np.random.normal(0, 0.00008)
+                lon += np.random.normal(0, 0.00008)
+                data.append({
+                    'id': shuttle_id,
+                    'name': shuttle_id[-3:],
+                    'gps': {
+                        'latitude': lat,
+                        'longitude': lon,
+                        'time': datetime.fromtimestamp(shuttles[shuttle_id].last_updated).isoformat(timespec='seconds').replace('+00:00', 'Z'),
+                        'speedMilesPerHour': shuttles[shuttle_id].speed,
+                        'headingDegrees': 90,
+                        'reverseGeo': {'formattedLocation': 'Test Location'}
+                    }
+                })
+
+        return jsonify({
+            'data': data,
+            'pagination': {
+                'hasNextPage': False,
+                'endCursor': 'fake-token-next'
+            }
+        })
+
 @app.route('/fleet/vehicles/stats/feed')
 def mock_feed():
     vehicle_ids = request.args.get('vehicleIds', '').split(',')
     after = request.args.get('after')
 
-    logger.info(f'[MOCK API] Received stats request for vehicles {vehicle_ids} after={after}')
+    logger.info(f'[MOCK API] Received stats feed request for vehicles {vehicle_ids} after={after}')
 
     # update timestamps
     with shuttle_lock:

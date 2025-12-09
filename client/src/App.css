@@ -8,7 +8,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   flex-grow: 1;
   box-sizing: border-box;
   width: 100%;
@@ -157,3 +157,12 @@ footer {
   background-color: #d9d9d9;
   width: 1200px;
 }
+
+/*shubble text link styling*/
+.site-title,
+.site-title:link,
+.site-title:visited {
+  color: var(--text-color);
+  text-decoration: none; /* remove underline */
+}
+
