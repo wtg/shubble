@@ -32,3 +32,25 @@
 th.schedule-header {
     text-align: left;
 }
+@media (min-width: 1025px) {
+    h2 {
+    /* display:block; */
+    font-family: "Karla", sans-serif;
+    font-weight: bold;
+    font-size:30px;
+    margin-bottom: 10px;
+    margin-top:10px
+    }
+}
+
+
+@media (max-width: 1024px) {
+
+    .p-4 {
+        margin-top: 80px;
+        padding: 20px;
+    }
+    
+    
+
+}

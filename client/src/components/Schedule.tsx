@@ -92,7 +92,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
     });
 
     if (currentTimeRow) {
-      currentTimeRow.scrollIntoView({ behavior: "auto" });
+      // currentTimeRow.scrollIntoView({ behavior: "auto" });
     }
   }, [selectedRoute, selectedDay, schedule]);
 
@@ -101,9 +101,10 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
 
   return (
     <div className="p-4">
-      <h2>Schedule</h2>
-      <div>
-        <label htmlFor='weekday-dropdown'>Weekday:</label>
+      <h2>Today's schedule</h2>
+      <LoopToggle />
+      {/* <div className='p-3'>
+        <label for='weekday-dropdown'>Weekday:</label>
         <select id='weekday-dropdown' className="schedule-dropdown-style" value={selectedDay} onChange={handleDayChange}>
           {
             daysOfTheWeek.map((day, index) =>
@@ -113,14 +114,27 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
             )
           }
         </select>
-      </div>
-      <div>
-        <label htmlFor='loop-dropdown'>Loop:</label>
+      </div> */}
+      {/* <div>
+        <label for='loop-dropdown'>Loop:</label>
         <select id='loop-dropdown' className="schedule-dropdown-style" value={safeSelectedRoute} onChange={(e) => setSelectedRoute(e.target.value)}>
           {
             routeNames.map((route, index) =>
               <option key={index} value={route}>
                 {route}
+              </option>
+            )
+          }
+        </select>
+      </div> */}
+      <div>
+        <label for='stop-dropdown'>Stop:</label>
+        <select id='stop-dropdown' className="schedule-dropdown-style" value={safeSelectedStop} onChange={(e) => setSelectedStop(e.target.value)}>
+          <option value="all">All Stops</option>
+          {
+            stopNames.map((stop, index) =>
+              <option key={index} value={stop}>
+                {routeData[safeSelectedRoute][stop]?.NAME}
               </option>
             )
           }

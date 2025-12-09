@@ -11,6 +11,7 @@ import type { VehicleInformationMap } from '../ts/types/vehicleLocation';
 import type { ShuttleRouteData } from '../ts/types/route';
 import aggregatedSchedule from '../data/aggregated_schedule.json';
 
+
 export default function LiveLocation() {
 
   const [location, setLocation] = useState<VehicleInformationMap | null>(null);
@@ -63,7 +64,7 @@ export default function LiveLocation() {
         selectedRoute={selectedRoute}
         setSelectedRoute={setSelectedRoute}
       />
-      <div className="schedule-table">
+      <div className="schedule-table schedule-embedded">
         <Schedule
           selectedRoute={selectedRoute}
           setSelectedRoute={setSelectedRoute}

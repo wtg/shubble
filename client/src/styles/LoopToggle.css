@@ -1,0 +1,52 @@
+/* want 2 north button classes, one for on and off*/
+
+button {
+   width: 140px;
+   height: 36px;
+   border-radius: 0;
+   border-width: 0;
+   font-family: "Karla", sans-serif;
+   color:white;
+}
+
+.north-off {
+   background-color:red;
+   opacity: 0.42;
+   font-size: 20px;
+   box-shadow: inset 1px 4px 4px rgba(0, 0, 0, 0.4);
+}
+
+.north-on {
+   background-color: red;
+   font-size: 24px;
+   font-weight:bold;
+   box-shadow: 5px 5px 10px rgba(0, 0, 0, 0.20);
+}
+
+.west-off {
+   background-color: blue;
+   opacity:0.3;
+   font-size:20px;
+   box-shadow: inset 1px 4px 4px rgba(0, 0, 0, 0.4);
+}
+
+.west-on {
+   background-color: blue;
+   font-size: 24px;
+   font-weight: bold;
+   box-shadow: 5px 5px 10px rgba(0, 0, 0, 0.20);
+}
+
+.toggle-div {
+   display: flex;
+   flex-direction: row;
+}
+
+@media (max-width: 1024px) {
+   .toggle-div {
+    justify-content: center;
+    align-items: center;
+    margin: 0 auto;
+    width: fit-content;
+  }
+}
