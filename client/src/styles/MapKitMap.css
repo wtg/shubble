@@ -1,6 +1,6 @@
 .map {
-    width: 800px;
-    height: 500px;
+    width: 760px;
+    height: 450px;
     touch-action: manipulation;
     -webkit-overflow-scrolling: touch;
     background-color: #f0f0f0;
@@ -26,3 +26,4 @@
         height: 350px;
     }
 }
+

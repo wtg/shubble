@@ -9,6 +9,7 @@ import "../styles/LiveLocation.css";
 import routeData from '../data/routes.json';
 import { aggregatedSchedule } from '../data/parseSchedule';
 
+
 export default function LiveLocation() {
 
   const [location, setLocation] = useState(null);
@@ -63,7 +64,7 @@ export default function LiveLocation() {
         selectedStop={selectedStop}
         setSelectedStop={setSelectedStop}
       />
-      <div className="schedule-table">
+      <div className="schedule-table schedule-embedded">
         <Schedule
           selectedRoute={selectedRoute}
           setSelectedRoute={setSelectedRoute}

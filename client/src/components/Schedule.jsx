@@ -3,6 +3,8 @@ import '../styles/Schedule.css';
 import scheduleData from '../data/schedule.json';
 import routeData from '../data/routes.json';
 import { aggregatedSchedule } from '../data/parseSchedule';
+import LoopToggle from './LoopToggle';
+
 
 export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop, setSelectedStop }) {
   // Validate props once at the top
@@ -87,7 +89,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop
     });
 
     if (currentTimeRow) {
-      currentTimeRow.scrollIntoView({ behavior: "auto" });
+      // currentTimeRow.scrollIntoView({ behavior: "auto" });
     }
   }, [selectedRoute, selectedDay, selectedStop, schedule]);
 
@@ -96,8 +98,9 @@ export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop
 
   return (
     <div className="p-4">
-      <h2>Schedule</h2>
-      <div>
+      <h2>Today's schedule</h2>
+      <LoopToggle />
+      {/* <div className='p-3'>
         <label for='weekday-dropdown'>Weekday:</label>
         <select id='weekday-dropdown' className="schedule-dropdown-style" value={selectedDay} onChange={handleDayChange}>
           {
@@ -108,8 +111,8 @@ export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop
             )
           }
         </select>
-      </div>
-      <div>
+      </div> */}
+      {/* <div>
         <label for='loop-dropdown'>Loop:</label>
         <select id='loop-dropdown' className="schedule-dropdown-style" value={safeSelectedRoute} onChange={(e) => setSelectedRoute(e.target.value)}>
           {
@@ -120,7 +123,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute, selectedStop
             )
           }
         </select>
-      </div>
+      </div> */}
       <div>
         <label for='stop-dropdown'>Stop:</label>
         <select id='stop-dropdown' className="schedule-dropdown-style" value={safeSelectedStop} onChange={(e) => setSelectedStop(e.target.value)}>

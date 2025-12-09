@@ -19,3 +19,55 @@
     }
 }
 
+
+@media (max-width: 1024px) {
+  /* mobile mode*/
+
+  .live-location-div {
+    position: relative;
+    top: 60px;
+    
+    width: 90%;
+    height:90%;
+    justify-content:left;
+    flex-direction: column;         /* Stack vertically */
+    align-items: center;            /* Center content */
+    gap: 20px;
+    padding: 10px;
+    /* border: 2px solid lightgray; */
+    /* box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1); */
+    margin-top: 0;     
+
+  }
+
+  .map{
+    border-radius: 14px;
+  }
+
+  .mk-map-view.mk-disable-all-gestures{
+    /* background: #fff; */
+    border-radius: 14px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+  }
+  
+  .schedule-table {
+    display: block;
+    position: absolute;
+    background-color: white;
+    margin-top: 400px;
+    width: 80%;
+    height: 50%;
+  }
+
+  /* Only apply these styles when schedule is embedded in LiveLocation */
+  .schedule-embedded .p-4 {
+    width: 80%;
+    height: 80%;
+    font-size: 80%;
+    margin-top: -60px;
+  }
+
+  .schedule-embedded h2 {
+    margin-left: -25px;
+  }
+}
