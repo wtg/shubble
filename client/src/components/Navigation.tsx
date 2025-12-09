@@ -7,7 +7,7 @@ export default function Navigation({ GIT_REV }: { GIT_REV: string }) {
   return (
     <>
       <header>
-        <Link to='/' className='site-title'>SHUBBLE</Link>
+        <Link to='/' className='title'>SHUBBLE</Link>
         <nav className='big'>
           <ul>
             <li>
@@ -58,6 +58,7 @@ export default function Navigation({ GIT_REV }: { GIT_REV: string }) {
           </ul>
         </nav>
         <div className='big'>
+          <div class='line'></div>
           <div className='big-footer'>
             <div className='git-copy'>
               <a href='https://github.com/wtg/shubble' target='_blank'>

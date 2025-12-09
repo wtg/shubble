@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import '../styles/Schedule.css';
 import rawRouteData from '../data/routes.json';
 import rawAggregatedSchedule from '../data/aggregated_schedule.json';
+import RouteToggle from './RouteToggle';
 import type { AggregatedDaySchedule, AggregatedScheduleType } from '../ts/types/schedule';
-import type { ShuttleRouteData, ShuttleStopData } from '../ts/types/route';
+import type { ShuttleRouteData } from '../ts/types/route';
 
 const aggregatedSchedule: AggregatedScheduleType = rawAggregatedSchedule as unknown as AggregatedScheduleType;
 
@@ -14,17 +15,19 @@ type ScheduleProps = {
   setSelectedRoute: (route: string | null) => void;
 };
 
-export default function Schedule({ selectedRoute, setSelectedRoute }: ScheduleProps) {
+export default function Schedule() {
   // Validate props once at the top
-  if (typeof setSelectedRoute !== 'function') {
-    throw new Error('setSelectedRoute must be a function');
-  }
+  // if (typeof setSelectedRoute !== 'function') {
+  //   throw new Error('setSelectedRoute must be a function');
+  // }
 
   const now = new Date();
-  const [selectedDay, setSelectedDay] = useState(now.getDay());
+  const [selectedDay] = useState(now.getDay());
   const [routeNames, setRouteNames] = useState(Object.keys(aggregatedSchedule[selectedDay]));
   const [stopNames, setStopNames] = useState<string[]>([]);
   const [schedule, setSchedule] = useState<AggregatedDaySchedule>(aggregatedSchedule[selectedDay]);
+  const [selectedStop, setSelectedStop] = useState("all");
+  const [selectedRoute, setSelectedRoute] = useState(routeNames[0]);
 
   // Define safe values to avoid repeated null checks
   const safeSelectedRoute = selectedRoute || routeNames[0];
@@ -39,17 +42,6 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
       setSelectedRoute(firstRoute);
     }
   }, [selectedDay, selectedRoute, setSelectedRoute]);
-
-  // Update stopNames when selectedRoute changes
-  useEffect(() => {
-    if (!safeSelectedRoute || !(safeSelectedRoute in routeData)) return;
-    setStopNames(routeData[safeSelectedRoute as keyof typeof routeData].STOPS);
-  }, [selectedRoute]);
-
-  // Handle day change from dropdown
-  const handleDayChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setSelectedDay(parseInt(e.target.value));
-  }
 
   const timeToDate = (timeStr: string): Date => {
     const [time, modifier] = timeStr.trim().split(" ");
@@ -69,6 +61,23 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
     return dateObj;
   }
 
+  // Update stopNames when selectedRoute changes
+  useEffect(() => {
+    if (!safeSelectedRoute || !(safeSelectedRoute in routeData)) return;
+    setStopNames(routeData[safeSelectedRoute as keyof typeof routeData].STOPS);
+  }, [selectedRoute]);
+
+  useEffect(() => {
+    setSchedule(aggregatedSchedule[selectedDay]);
+    setRouteNames(Object.keys(aggregatedSchedule[selectedDay]));
+  }, [selectedDay]);
+   useEffect(() => {
+    if (!(selectedStop in rawRouteData[selectedRoute])) {
+      setSelectedStop("all");
+    }
+    setStopNames(routeData[selectedRoute].STOPS);
+  }, [selectedRoute]);
+
   // Function to offset schedule time by given minutes
   const offsetTime = (time: string, offset: number) => {
     const date = timeToDate(time);
@@ -81,7 +90,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
     const scheduleDiv = document.querySelector('.schedule-scroll');
     if (!scheduleDiv) return;
 
-    if (selectedDay !== now.getDay()) return; // only scroll if viewing today's schedule
+    // if (selectedDay !== now.getDay()) return; // only scroll if viewing today's schedule
     const currentTimeRow = Array.from(scheduleDiv.querySelectorAll('td.outdented')).find(td => {
       const timeStr = td.textContent?.trim();
 
@@ -94,33 +103,22 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
     if (currentTimeRow) {
       currentTimeRow.scrollIntoView({ behavior: "auto" });
     }
-  }, [selectedRoute, selectedDay, schedule]);
+  }, [selectedRoute, selectedDay, selectedStop]);
 
-
-  const daysOfTheWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
   return (
     <div className="p-4">
-      <h2>Schedule</h2>
+      <h2>Today's schedule</h2>
+      <RouteToggle selectedRoute={selectedRoute} setSelectedRoute={setSelectedRoute} />
+      
       <div>
-        <label htmlFor='weekday-dropdown'>Weekday:</label>
-        <select id='weekday-dropdown' className="schedule-dropdown-style" value={selectedDay} onChange={handleDayChange}>
+        <label htmlFor='stop-dropdown'>Filter stops: </label>
+        <select id='stop-dropdown' className="schedule-dropdown-style" value={selectedStop} onChange={(e) => setSelectedStop(e.target.value)}>
+          <option value="all">All Stops</option>
           {
-            daysOfTheWeek.map((day, index) =>
-              <option key={index} value={index}>
-                {day}
-              </option>
-            )
-          }
-        </select>
-      </div>
-      <div>
-        <label htmlFor='loop-dropdown'>Loop:</label>
-        <select id='loop-dropdown' className="schedule-dropdown-style" value={safeSelectedRoute} onChange={(e) => setSelectedRoute(e.target.value)}>
-          {
-            routeNames.map((route, index) =>
-              <option key={index} value={route}>
-                {route}
+            stopNames.map((stop, index) =>
+              <option key={index} value={stop}>
+                {rawRouteData[safeSelectedRoute][stop]?.NAME}
               </option>
             )
           }
