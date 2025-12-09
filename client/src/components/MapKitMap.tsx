@@ -7,7 +7,13 @@ import type { ShuttleRouteData, ShuttleStopData } from "../ts/types/route";
 import '../styles/MapKitMap.css';
 import type { VehicleInformationMap } from "../ts/types/vehicleLocation";
 import type { Route } from "../ts/types/schedule";
+
 import { log } from "../ts/logger";
+import {
+  type Coordinate,
+  findNearestPointOnPolyline,
+  moveAlongPolyline
+} from "../ts/mapUtils";
 
 async function generateRoutePolylines(updatedRouteData: ShuttleRouteData) {
   // Use MapKit Directions API to generate polylines for each route segment
@@ -110,8 +116,18 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
   const [mapLoaded, setMapLoaded] = useState(false);
   const token = import.meta.env.VITE_MAPKIT_KEY;
   const [map, setMap] = useState<(mapkit.Map | null)>(null);
+
   const vehicleOverlays = useRef<Record<string, mapkit.ShuttleAnnotation>>({});
-  
+
+  // Animation state
+  const flattenedRoutesRef = useRef<Record<string, Coordinate[]>>({});
+  const vehicleAnimationStates = useRef<Record<string, {
+    lastUpdateTime: number;
+    polylineIndex: number;
+    currentPoint: Coordinate;
+  }>>({});
+  const animationFrameId = useRef<number | null>(null);
+
 
   const circleWidth = 15;
   const selectedMarkerRef = useRef<mapkit.MarkerAnnotation | null>(null);
@@ -211,8 +227,8 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
       thisMap.addEventListener("deselect", () => {
         // remove any selected stop/marker annotation on when deselected
         if (selectedMarkerRef.current) {
-         thisMap.removeAnnotation(selectedMarkerRef.current);
-         selectedMarkerRef.current = null;
+          thisMap.removeAnnotation(selectedMarkerRef.current);
+          selectedMarkerRef.current = null;
         }
       });
 
@@ -245,8 +261,8 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
             // Check if mouse is within overlay radius
             const region = thisMap.region;
             if (region) {
-              const centerX = mapRect.width * (centerLng - region.center.longitude + region.span.longitudeDelta/2) / region.span.longitudeDelta;
-              const centerY = mapRect.height * (region.center.latitude - centerLat + region.span.latitudeDelta/2) / region.span.latitudeDelta;
+              const centerX = mapRect.width * (centerLng - region.center.longitude + region.span.longitudeDelta / 2) / region.span.longitudeDelta;
+              const centerY = mapRect.height * (region.center.latitude - centerLat + region.span.latitudeDelta / 2) / region.span.latitudeDelta;
 
               const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
               if (distance < circleWidth) { // Within hover radius
@@ -373,6 +389,27 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
   }, [map, routeData]);
 
+  // Flatten routes for animation usage whenever routeData changes
+  useEffect(() => {
+    if (!routeData) return;
+    const flattened: Record<string, Coordinate[]> = {};
+
+    for (const [routeKey, data] of Object.entries(routeData)) {
+      if (data.ROUTES) {
+        // ROUTES is array of segments (coordinate arrays). Flatten them into one long line.
+        // Each point is [lat, lon]
+        const points: Coordinate[] = [];
+        data.ROUTES.forEach(segment => {
+          segment.forEach(pt => {
+            points.push({ latitude: pt[0], longitude: pt[1] });
+          });
+        });
+        flattened[routeKey] = points;
+      }
+    }
+    flattenedRoutesRef.current = flattened;
+  }, [routeData]);
+
   // display vehicles on map
   useEffect(() => {
     if (!map || !vehicles) return;
@@ -391,7 +428,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         const routeKey = vehicle.route_name as keyof typeof routeData;
         const info = routeData[routeKey] as { COLOR?: string };
         return info.COLOR ?? "#444444";
-        
+
       })();
 
       // Render ShuttleIcon JSX to a static SVG string
@@ -440,6 +477,46 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
       }
     });
 
+    // --- Update Animation State for new/updated vehicles ---
+    const now = Date.now();
+    Object.keys(vehicles).forEach((key) => {
+      const vehicle = vehicles[key];
+      // If we don't have a route for this vehicle, we can't animate along a path nicely. 
+      // We'll just rely on the API updates or maybe simple linear extrapolation later?
+      // For now, let's only set up animation if we have a valid route.
+      if (!vehicle.route_name || !flattenedRoutesRef.current[vehicle.route_name]) return;
+
+      const routePolyline = flattenedRoutesRef.current[vehicle.route_name];
+      const vehicleCoord = { latitude: vehicle.latitude, longitude: vehicle.longitude };
+
+      // Check if we already have state
+      let animState = vehicleAnimationStates.current[key];
+
+      // If no state, or if the vehicle has jumped significantly (re-snap), or route changed
+      // Here we effectively "re-sync" with the server every time we get an update.
+      // This might cause a "jump" back if our animation drifted.
+      // To make it smooth, one might blend. But given the request is to "animate... at that speed",
+      // snapping to the authoritative position on update is safer to avoid accumulating large errors.
+
+      const snapToPolyline = () => {
+        const { index, point } = findNearestPointOnPolyline(vehicleCoord, routePolyline);
+        vehicleAnimationStates.current[key] = {
+          lastUpdateTime: now,
+          polylineIndex: index,
+          currentPoint: point // Start from the projected point on the line
+        };
+      };
+
+      if (!animState) {
+        snapToPolyline();
+      } else {
+        // Update the timestamp so we don't simulate massive jumps if we haven't rendered in a while
+        // But we DO want to process the *new* authoritative location.
+        // Simple strategy: Always "re-anchor" to the latest server data.
+        snapToPolyline();
+      }
+    });
+
     // --- Remove stale vehicles ---
     const currentVehicleKeys = new Set(Object.keys(vehicles));
     Object.keys(vehicleOverlays.current).forEach((key) => {
@@ -449,6 +526,69 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
       }
     });
   }, [map, vehicles, routeData]);
+
+
+  // --- Animation Loop ---
+  useEffect(() => {
+    // We use setTimeout/setInterval or requestAnimationFrame. The user "Considered" setTimeout.
+    // We will use requestAnimationFrame for smoothness, but structure it to calculate delta
+    // similar to how one might with setTimeout.
+
+    let lastFrameTime = Date.now();
+
+    const animate = () => {
+      const now = Date.now();
+      const dt = now - lastFrameTime; // ms
+      lastFrameTime = now;
+
+      // Avoid huge jumps if tab was backgrounded
+      if (dt > 1000) {
+        animationFrameId.current = requestAnimationFrame(animate);
+        return;
+      }
+
+      Object.keys(vehicleAnimationStates.current).forEach(key => {
+        const animState = vehicleAnimationStates.current[key];
+        const vehicle = vehicles?.[key];
+        const annotation = vehicleOverlays.current[key];
+
+        if (!vehicle || !annotation || !animState) return;
+        if (!vehicle.route_name || !flattenedRoutesRef.current[vehicle.route_name]) return;
+
+        const routePolyline = flattenedRoutesRef.current[vehicle.route_name];
+
+        // Calculate distance to move: Speed (mph) * time (hours)
+        // 1 mph = 0.44704 m/s
+        const speedMps = vehicle.speed_mph * 0.44704;
+        const distanceMeters = speedMps * (dt / 1000);
+
+        if (distanceMeters <= 0) return;
+
+        // Move along polyline
+        const { index, point } = moveAlongPolyline(
+          routePolyline,
+          animState.polylineIndex,
+          animState.currentPoint,
+          distanceMeters
+        );
+
+        // Update state
+        animState.polylineIndex = index;
+        animState.currentPoint = point;
+
+        // Update MapKit annotation
+        annotation.coordinate = new mapkit.Coordinate(point.latitude, point.longitude);
+      });
+
+      animationFrameId.current = requestAnimationFrame(animate);
+    };
+
+    animationFrameId.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
+    };
+  }, [vehicles]); // Restart loop if vehicles change? Not strictly necessary if refs are used, but ensures we have latest `vehicles` closure if needed. Actually with refs we don't need to dependency on vehicles often if we read from ref, but here we read `vehicles` prop.
 
 
 
