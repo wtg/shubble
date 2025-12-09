@@ -122,9 +122,12 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
   // Animation state
   const flattenedRoutesRef = useRef<Record<string, Coordinate[]>>({});
   const vehicleAnimationStates = useRef<Record<string, {
-    lastUpdateTime: number;
+    lastUpdateTime: number; // local time when we received the update
     polylineIndex: number;
     currentPoint: Coordinate;
+    currentSpeed: number; // mph
+    acceleration: number; // mph per second
+    lastServerTime: number; // server timestamp of the data
   }>>({});
   const animationFrameId = useRef<number | null>(null);
 
@@ -489,31 +492,53 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
       const routePolyline = flattenedRoutesRef.current[vehicle.route_name];
       const vehicleCoord = { latitude: vehicle.latitude, longitude: vehicle.longitude };
 
+      const serverTime = new Date(vehicle.timestamp).getTime();
+
       // Check if we already have state
       let animState = vehicleAnimationStates.current[key];
 
-      // If no state, or if the vehicle has jumped significantly (re-snap), or route changed
-      // Here we effectively "re-sync" with the server every time we get an update.
-      // This might cause a "jump" back if our animation drifted.
-      // To make it smooth, one might blend. But given the request is to "animate... at that speed",
-      // snapping to the authoritative position on update is safer to avoid accumulating large errors.
-
       const snapToPolyline = () => {
         const { index, point } = findNearestPointOnPolyline(vehicleCoord, routePolyline);
+        // Default acceleration to 0 if we don't have enough history
         vehicleAnimationStates.current[key] = {
           lastUpdateTime: now,
           polylineIndex: index,
-          currentPoint: point // Start from the projected point on the line
+          currentPoint: point,
+          currentSpeed: vehicle.speed_mph,
+          acceleration: 0,
+          lastServerTime: serverTime
         };
       };
 
       if (!animState) {
         snapToPolyline();
       } else {
-        // Update the timestamp so we don't simulate massive jumps if we haven't rendered in a while
-        // But we DO want to process the *new* authoritative location.
-        // Simple strategy: Always "re-anchor" to the latest server data.
-        snapToPolyline();
+        // Calculate acceleration based on change in speed over change in server time
+        const dtServerSeconds = (serverTime - animState.lastServerTime) / 1000;
+
+        // Only calculate acceleration if we have a valid time delta and it's not too old or future
+        if (dtServerSeconds > 0 && dtServerSeconds < 60) {
+          const dv = vehicle.speed_mph - animState.currentSpeed; // change in mph
+          // Only update acceleration if change is significant to avoid jitter from minor fluctuations
+          // But for now, let's take it raw.
+          const newAccel = dv / dtServerSeconds;
+
+          // Update state, but keep the position "snapped" to the latest authoritative location
+          // to prevent drift.
+          const { index, point } = findNearestPointOnPolyline(vehicleCoord, routePolyline);
+
+          vehicleAnimationStates.current[key] = {
+            lastUpdateTime: now,
+            polylineIndex: index,
+            currentPoint: point,
+            currentSpeed: vehicle.speed_mph, // Reset speed to authoritative
+            acceleration: newAccel,
+            lastServerTime: serverTime
+          };
+        } else {
+          // Reset if time jump is weird
+          snapToPolyline();
+        }
       }
     });
 
@@ -557,10 +582,25 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
         const routePolyline = flattenedRoutesRef.current[vehicle.route_name];
 
-        // Calculate distance to move: Speed (mph) * time (hours)
+        // Update speed based on acceleration
+        // v = u + at
+        // dt is in ms, so dt/1000 is seconds
+        const dtSeconds = dt / 1000;
+
+        // We'll update the *currentSpeed* in the state effectively
+        // but we normally wouldn't mutate state in a render loop like this without care.
+        // Since we are using refs, muting is okay.
+
+        animState.currentSpeed += animState.acceleration * dtSeconds;
+
+        // Clamp speed. Can't go backwards (unless we want to support that? prob not for a shuttle)
+        if (animState.currentSpeed < 0) animState.currentSpeed = 0;
+
+        // Calculate distance to move: Average speed * time would be better, or just current speed
+        // d = v*t (using updated speed)
         // 1 mph = 0.44704 m/s
-        const speedMps = vehicle.speed_mph * 0.44704;
-        const distanceMeters = speedMps * (dt / 1000);
+        const speedMps = animState.currentSpeed * 0.44704;
+        const distanceMeters = speedMps * dtSeconds;
 
         if (distanceMeters <= 0) return;
 
@@ -578,6 +618,8 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
         // Update MapKit annotation
         annotation.coordinate = new mapkit.Coordinate(point.latitude, point.longitude);
+        // Optional debugging: Update subtitle to show predicted speed?
+        // annotation.subtitle = `${animState.currentSpeed.toFixed(1)} mph (pred)`;
       });
 
       animationFrameId.current = requestAnimationFrame(animate);
