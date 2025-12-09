@@ -209,6 +209,7 @@ def webhook():
         logger.exception(f'Error processing webhook data: {e}')
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+# see DATA_TODAY.md for more information
 @bp.route('/api/today', methods=['GET'])
 def data_today():
     now = datetime.now(timezone.utc)
