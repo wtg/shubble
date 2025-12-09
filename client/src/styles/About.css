@@ -2,7 +2,6 @@
 .word-rotator {
     color: #206ef9;
     font-weight: bold;
-    text-decoration: underline;
     text-decoration-color: #206ef9;
     font-weight: 700;
 }
@@ -21,6 +20,7 @@
   flex-direction: column;
   justify-content: center;
   margin-bottom: 0px;
+  padding-left: 60px;
 }
 
 .about-left p {
@@ -36,18 +36,15 @@
 .about-small-title {
   font-size: 1.8rem;
   font-weight: 700;
-  padding-left: 20px;
 }
 
 /* Main header text */
 .about-main-header {
   font-size: 4rem;
-  padding-left: 20px;
 }
 
 /* Description text */
 .about-description {
-  padding: 20px 0px 0px 20px;
 }
 
 .about-description h1 {
@@ -90,10 +87,16 @@
     align-items: center;
   }
 
-  .about-left, .about-right {
+  .about-right {
     flex: none;
     width: 100%;
     margin: 0;
+    padding: 0;
+  }
+  .about-left {
+    flex: none;
+    width: 100%;
+    margin-top: 20px;
     padding: 0;
   }
 

@@ -27,7 +27,7 @@ export default function About() {
         <p className="about-small-title">Making Shuttles</p>
         <h1 className="about-main-header"><span className='word-rotator'>{words[wordIndex]}</span></h1>
         <div className="about-description">
-          <h1>Track RPI shuttles with live location and view schedules with Shubble.<br /><br /></h1>
+          <h1>Track RPI shuttles in real time and view schedules seamlessly with Shubble<br /><br /></h1>
           <p>
             Shubble is an open source project under the Rensselaer Center for Open Source (RCOS).<br />
             Have an idea to improve it? Contributions are welcome!<br /> 
