@@ -1,21 +1,6 @@
 import type {ShuttleStopData, RouteDirectionData, ShuttleRouteData } from "./route"; 
-import type {Route, AggregatedScheduleType} from "./schedule"; 
+import type {Route, AggregatedScheduleType, Point, Stop} from "./schedule"; 
 
-
-// a simple point
-export interface Point {
-    lat: number;
-    lon: number;
-  }
-  
-// A stop in stops array
-export interface Stop {
-    id: string;
-    name: string;
-    lat: number;
-    lon: number;
-    route: string;
-  }
 
 // A stop with its distance from the user + a distance in km 
 export type ClosestStop = Stop & { distanceKm: number };
@@ -68,18 +53,25 @@ export function buildAllStops(
   aggregated: AggregatedScheduleType,
   dayIndex: number
 ): Stop[] {
-  // Schedule just for this specific day
   const todaySchedule = aggregated[dayIndex] as AggregatedDay;
-
-  // Routes that actually have trips today
   const realRoutes = Object.keys(todaySchedule) as Route[];
 
   const stops: Stop[] = [];
+  const seenCoords = new Set<string>(); // key: "lat,lon"
 
   for (const routeName of realRoutes) {
     const routeData = routesData[routeName];
-    if (!routeData) continue; // schedule references a route we don't have geometry for
-    stops.push(...extractStopsFromRoute(routeName, routeData));
+    if (!routeData) continue;
+
+    const routeStops = extractStopsFromRoute(routeName, routeData);
+
+    for (const stop of routeStops) {
+      const coordKey = `${stop.lat.toFixed(6)},${stop.lon.toFixed(6)}`;
+      if (seenCoords.has(coordKey)) continue; // already have a stop at this location
+
+      seenCoords.add(coordKey);
+      stops.push(stop);
+    }
   }
 
   return stops;
