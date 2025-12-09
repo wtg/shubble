@@ -6,6 +6,7 @@ import logging
 
 from server.time_utils import get_campus_start_of_day
 from .shuttle import Shuttle, ShuttleState
+from data.stops import Stops
 from datetime import datetime, date
 from server.models import Vehicle, GeofenceEvent, VehicleLocation
 from server.config import Config
@@ -16,6 +17,7 @@ import numpy as np
 shuttles = {}
 shuttle_counter = 1
 shuttle_lock = Lock()
+route_names = Stops.active_routes
 
 logger = logging.getLogger(__name__)
 
@@ -119,8 +121,16 @@ def trigger_action(shuttle_id):
             return {"error": "Invalid action"}, 400
 
         shuttle.set_next_state(desired_state)
+        if desired_state == ShuttleState.LOOPING:
+            route = request.json.get("route")
+            shuttle.set_next_route(route)
+
         logger.info(f"Set shuttle {shuttle_id} next state to {next_state}")
         return jsonify(shuttle.to_dict())
+
+@app.route("/api/routes", methods=["GET"])
+def get_routes():
+    return jsonify(sorted(list(route_names)))
 
 @app.route("/api/events/today", methods=["GET"])
 def get_events_today():
