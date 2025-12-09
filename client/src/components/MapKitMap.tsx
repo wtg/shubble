@@ -497,6 +497,12 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
       // Check if we already have state
       let animState = vehicleAnimationStates.current[key];
 
+      // If the server data hasn't changed (cached response), ignore this update
+      // and let the client-side prediction continue running.
+      if (animState && animState.lastServerTime === serverTime) {
+        return;
+      }
+
       const snapToPolyline = () => {
         const { index, point } = findNearestPointOnPolyline(vehicleCoord, routePolyline);
         // Default acceleration to 0 if we don't have enough history
