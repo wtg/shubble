@@ -248,3 +248,12 @@ footer {
 .banner * {
   margin: 5px;
 }
+
+/*shubble text link styling*/
+.site-title,
+.site-title:link,
+.site-title:visited {
+  color: var(--text-color);
+  text-decoration: none; /* remove underline */
+}
+

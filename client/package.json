@@ -1,5 +1,6 @@
 {
   "name": "client",
+  "type": "module",
   "private": true,
   "scripts": {
     "dev": "cd .. && npm run dev",

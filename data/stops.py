@@ -92,7 +92,8 @@ class Stops:
         for route_name, route in cls.routes_data.items():
             for stop in route.get('STOPS', []):
                 stop_point = np.array(route[stop]['COORDINATES'])
-                distance = haversine_vectorized(origin_point, stop_point)[0]
+
+                distance = haversine(tuple(origin_point), tuple(stop_point))
                 if distance < threshold:
                     return route_name, stop
         return None, None
@@ -143,8 +144,9 @@ def haversine_vectorized(coords1, coords2):
     distances : ndarray, shape (N,)
         Great-circle distances in kilometers.
     """
-    coords1 = np.asarray(coords1, dtype=float)
-    coords2 = np.asarray(coords2, dtype=float)
+    # Accept either single (lat,lon) pairs or arrays of pairs. Normalize to 2-D arrays.
+    coords1 = np.atleast_2d(np.asarray(coords1, dtype=float))
+    coords2 = np.atleast_2d(np.asarray(coords2, dtype=float))
 
     # Earth radius in kilometers
     R = 6371.0

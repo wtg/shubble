@@ -1,12 +1,14 @@
+from . import create_app, db, cache, Config
 from .time_utils import get_campus_start_of_day
-from . import create_app, db, Config
 from .models import VehicleLocation, GeofenceEvent
 from sqlalchemy import func, and_
 import time
 import requests
 import os
 import logging
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
+from data.schedules import Schedule
+import math
 
 # Logging config
 numeric_level = logging._nameToLevel.get(Config.LOG_LEVEL.upper(), logging.INFO)
@@ -17,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 app = create_app()
 
+@cache.cached(timeout=300, key_prefix="vehicles_in_geofence")
 def get_vehicles_in_geofence():
     """
     Returns a set of vehicle_ids where the latest geofence event from today
@@ -46,36 +49,30 @@ def get_vehicles_in_geofence():
 
     return {row.vehicle_id for row in latest_entries}
 
-def update_locations(after_token, previous_vehicle_ids, app):
+def update_locations(app):
     """
     Fetches and updates vehicle locations for vehicles currently in the geofence.
     Uses pagination token to fetch subsequent pages.
-    Returns updated after_token and current vehicle IDs.
     """
     # Get the current list of vehicles in the geofence
     current_vehicle_ids = get_vehicles_in_geofence()
 
-    # If vehicle list changed, reset pagination token
-    if current_vehicle_ids != previous_vehicle_ids:
-        logger.info('Vehicle list changed; resetting after_token')
-        after_token = None
-
     # No vehicles to update
     if not current_vehicle_ids:
         logger.info('No vehicles in geofence to update')
-        return after_token, current_vehicle_ids
+        return
 
     headers = {'Accept': 'application/json'}
     # Determine API URL based on environment
     if app.config['ENV'] == 'development':
-        url = 'http://localhost:4000/fleet/vehicles/stats/feed'
+        url = 'http://localhost:4000/fleet/vehicles/stats'
     else:
         api_key = os.environ.get('API_KEY')
         if not api_key:
             logger.error('API_KEY not set')
-            return after_token, current_vehicle_ids
+            return
         headers['Authorization'] = f'Bearer {api_key}'
-        url = 'https://api.samsara.com/fleet/vehicles/stats/feed'
+        url = 'https://api.samsara.com/fleet/vehicles/stats'
 
     url_params = {
         'vehicleIds': ','.join(current_vehicle_ids),
@@ -84,6 +81,9 @@ def update_locations(after_token, previous_vehicle_ids, app):
 
     try:
         has_next_page = True
+        after_token = None
+        new_records_added = 0
+        
         while has_next_page:
             # Add pagination token if present
             if after_token:
@@ -94,9 +94,7 @@ def update_locations(after_token, previous_vehicle_ids, app):
             # Handle non-200 responses
             if response.status_code != 200:
                 logger.error(f'API error: {response.status_code} {response.text}')
-                if 'message' in response.text and 'Parameters differ' in response.text:
-                    return None, current_vehicle_ids
-                return after_token, current_vehicle_ids
+                return
 
             data = response.json()
             # Handle pagination
@@ -109,27 +107,24 @@ def update_locations(after_token, previous_vehicle_ids, app):
                 # Process each vehicle's GPS data
                 vehicle_id = vehicle.get('id')
                 vehicle_name = vehicle.get('name')
-                gps_data_list = vehicle.get('gps', [])
+                gps = vehicle.get('gps')
 
-                if not vehicle_id or not gps_data_list:
+                if not vehicle_id or not gps:
                     continue
 
-                # Use the first GPS entry (most recent)
-                gps = gps_data_list[0]
                 timestamp_str = gps.get('time')
                 if not timestamp_str:
                     continue
                 # Convert ISO 8601 string to datetime
                 timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
 
-                # Check if this location already exists
                 exists = VehicleLocation.query.filter_by(
                     vehicle_id=vehicle_id,
                     timestamp=timestamp
                 ).first()
                 if exists:
-                    continue
-
+                    continue  # Skip if record already exists
+                
                 # Create and add new VehicleLocation
                 loc = VehicleLocation(
                     vehicle_id=vehicle_id,
@@ -145,26 +140,38 @@ def update_locations(after_token, previous_vehicle_ids, app):
                     address_name=gps.get('address', {}).get('name'),
                 )
                 db.session.add(loc)
+                new_records_added += 1
 
-            db.session.commit()
-            logger.info(f'Updated locations for {len(current_vehicle_ids)} vehicles')
+            # Only commit and invalidate cache if we actually added new records
+            if new_records_added > 0:
+                db.session.commit()
+                cache.delete('vehicle_locations')
+                cache.delete("schedule_entries")
+                logger.info(f'Updated locations for {len(current_vehicle_ids)} vehicles - {new_records_added} new records')
+            else:
+                logger.info(f'No new location data for {len(current_vehicle_ids)} vehicles')
 
     except requests.RequestException as e:
         logger.error(f'Failed to fetch locations: {e}')
 
-    return after_token, current_vehicle_ids
+    return
 
 def run_worker():
     logger.info('Worker started...')
-    after_token = None
-    previous_vehicle_ids = set()
 
     while True:
         try:
             with app.app_context():
-                after_token, previous_vehicle_ids = update_locations(after_token, previous_vehicle_ids, app)
+                update_locations(app)
+
+                # Recompute matched schedules if data has changed
+                if cache.get("schedule_entries") is None:
+                    matched = Schedule.match_shuttles_to_schedules()
+                    cache.set("schedule_entries", matched, timeout=3600)
+                   
         except Exception as e:
             logger.exception(f'Error in worker loop: {e}')
+
         time.sleep(5)
 
 if __name__ == '__main__':
