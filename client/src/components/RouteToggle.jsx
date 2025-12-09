@@ -1,9 +1,9 @@
 import '../styles/RouteToggle.css';
-import { aggregatedSchedule } from '../data/parseSchedule';
+import rawAggregatedSchedule from '../data/aggregated_schedule.json';
 
 export default function RouteToggle({selectedRoute, setSelectedRoute}) {
    const today = new Date();
-   const keys = Object.keys(aggregatedSchedule[today.getDay()])
+   const keys = Object.keys(rawAggregatedSchedule[today.getDay()])
 
    // const [active, setActive] = useState("north");
    return(
