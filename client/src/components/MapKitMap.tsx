@@ -12,7 +12,8 @@ import { log } from "../ts/logger";
 import {
   type Coordinate,
   findNearestPointOnPolyline,
-  moveAlongPolyline
+  moveAlongPolyline,
+  calculateDistanceAlongPolyline
 } from "../ts/mapUtils";
 
 async function generateRoutePolylines(updatedRouteData: ShuttleRouteData) {
@@ -516,31 +517,57 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
       if (!animState) {
         snapToPolyline();
       } else {
-        // Calculate acceleration based on change in speed over change in server time
-        const dtServerSeconds = (serverTime - animState.lastServerTime) / 1000;
+        // --- PREDICTION SMOOTHING ---
+        // Instead of accelerating, we predict where the shuttle *should* be in 5 seconds
+        // and set the speed exactly right to get there.
 
-        // Only calculate acceleration if we have a valid time delta and it's not too old or future
-        if (dtServerSeconds > 0 && dtServerSeconds < 60) {
-          const dv = vehicle.speed_mph - animState.currentSpeed; // change in mph
-          // Only update acceleration if change is significant to avoid jitter from minor fluctuations
-          // But for now, let's take it raw.
-          const newAccel = dv / dtServerSeconds;
+        const PREDICTION_WINDOW_SECONDS = 5;
 
-          // Update state, but keep the position "snapped" to the latest authoritative location
-          // to prevent drift.
-          const { index, point } = findNearestPointOnPolyline(vehicleCoord, routePolyline);
+        // 1. Where is the shuttle according to the server NOW?
+        // (vehicleCoord)
 
+        // 2. Where will it be in 5 seconds if it keeps going at server speed?
+        // Server speed is in mph -> convert to meters/sec
+        // 1 mph = 0.44704 m/s
+        const serverProjecedDistMeters = (vehicle.speed_mph * 0.44704) * PREDICTION_WINDOW_SECONDS;
+
+        // Calculate that projected point on the route
+        const { index: serverIndex, point: serverPoint } = findNearestPointOnPolyline(vehicleCoord, routePolyline);
+
+        const { index: targetIndex, point: targetPoint } = moveAlongPolyline(
+          routePolyline,
+          serverIndex,
+          serverPoint,
+          serverProjecedDistMeters
+        );
+
+        // 3. How far is that Target Point from our CURRENT VISUAL position?
+        const distToTarget = calculateDistanceAlongPolyline(
+          routePolyline,
+          animState.polylineIndex,
+          animState.currentPoint,
+          targetIndex,
+          targetPoint
+        );
+
+        // 4. Calculate the speed needed to cover that distance in 5 seconds
+        // Speed = Dist / Time
+        const smoothSpeedMps = distToTarget / PREDICTION_WINDOW_SECONDS;
+        const smoothSpeedMph = smoothSpeedMps / 0.44704;
+
+        // 5. Update state
+        // We do NOT snap the position. We just update the speed.
+        // Unless the distance is crazy (e.g. > 500m), which means something glitchy happened or route changed.
+        if (distToTarget > 500) {
+          snapToPolyline();
+        } else {
           vehicleAnimationStates.current[key] = {
             lastUpdateTime: now,
-            polylineIndex: index,
-            currentPoint: point,
-            currentSpeed: vehicle.speed_mph, // Reset speed to authoritative
-            acceleration: newAccel,
+            polylineIndex: animState.polylineIndex,
+            currentPoint: animState.currentPoint,
+            currentSpeed: smoothSpeedMph,
             lastServerTime: serverTime
           };
-        } else {
-          // Reset if time jump is weird
-          snapToPolyline();
         }
       }
     });
