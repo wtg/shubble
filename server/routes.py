@@ -9,37 +9,43 @@ from data.stops import Stops
 from hashlib import sha256
 import hmac
 import logging
+import json
+import pandas as pd
 from .services.eta_predictor import ETAPredictor
 from .time_utils import get_campus_start_of_day
-import pandas as pd
-
+import numpy as np
 logger = logging.getLogger(__name__)
 
 bp = Blueprint('routes', __name__)
 
-@bp.route('/')
-@bp.route('/schedule')
-@bp.route('/about')
-@bp.route('/data')
-@bp.route('/map')
-@bp.route('/generate-static-routes')
-def serve_react():
-    # serve the React app's index.html for all main routes
-    root_dir = Path(__file__).parent.parent / 'client' / 'dist'
-    return send_from_directory(root_dir, 'index.html')
+# --- LOAD STATIC DATA ---
+# Load the inter-stop times (Historical Medians) once at startup
+INTER_STOP_TIMES = {}
+ROUTES_CONFIG = {}
 
-@bp.route('/api/locations', methods=['GET'])
-@cache.cached(timeout=300, key_prefix="vehicle_locations")
-def get_locations():
+data_dir = Path(__file__).parent.parent / '../data'
+try:
+    with open(data_dir / 'inter_stop_times.json') as f:
+        INTER_STOP_TIMES = json.load(f)
+except FileNotFoundError:
+    logger.warning("inter_stop_times.json not found! Future ETAs will be inaccurate.")
+
+try:
+    with open(data_dir / 'routes.json') as f:
+        ROUTES_CONFIG = json.load(f)
+except FileNotFoundError:
+    logger.error("routes.json not found! Cannot determine stop sequences.")
+
+# --- HELPER FUNCTIONS ---
+
+
+def _get_active_vehicles():
     """
-    Returns the latest location for each vehicle currently inside the geofence.
-    The vehicle is considered inside the geofence if its latest geofence event
-    today is a 'geofenceEntry'.
+    Reusable query logic to get vehicles currently inside the geofence.
     """
-    # Start of today for filtering today's geofence events
     start_of_today = get_campus_start_of_day()
 
-    # Subquery: latest geofence event today per vehicle
+    # 1. Find latest geofence event for each vehicle today
     latest_geofence_events = db.session.query(
         GeofenceEvent.vehicle_id,
         func.max(GeofenceEvent.event_time).label('latest_time')
@@ -47,7 +53,7 @@ def get_locations():
         GeofenceEvent.event_time >= start_of_today
     ).group_by(GeofenceEvent.vehicle_id).subquery()
 
-    # Join to get full geofence event rows where event is geofenceEntry
+    # 2. Filter for vehicles where the last event was an 'Entry'
     geofence_entries = db.session.query(GeofenceEvent.vehicle_id).join(
         latest_geofence_events,
         and_(
@@ -56,7 +62,7 @@ def get_locations():
         )
     ).filter(GeofenceEvent.event_type == 'geofenceEntry').subquery()
 
-    # Subquery: latest vehicle location per vehicle
+    # 3. Get the most recent location ping for those vehicles
     latest_locations = db.session.query(
         VehicleLocation.vehicle_id,
         func.max(VehicleLocation.timestamp).label('latest_time')
@@ -64,17 +70,45 @@ def get_locations():
         VehicleLocation.vehicle_id.in_(db.session.query(geofence_entries.c.vehicle_id))
     ).group_by(VehicleLocation.vehicle_id).subquery()
 
-    # Join to get full location and vehicle info for vehicles in geofence
-    results = db.session.query(VehicleLocation, Vehicle).join(
-            latest_locations,
-            and_(
-                VehicleLocation.vehicle_id == latest_locations.c.vehicle_id,
-                VehicleLocation.timestamp == latest_locations.c.latest_time
-            )
-        ).join(
-            Vehicle, VehicleLocation.vehicle_id == Vehicle.id
-        ).all()
+    # 4. Return the full objects
+    return db.session.query(VehicleLocation, Vehicle).join(
+        latest_locations,
+        and_(
+            VehicleLocation.vehicle_id == latest_locations.c.vehicle_id,
+            VehicleLocation.timestamp == latest_locations.c.latest_time
+        )
+    ).join(
+        Vehicle, VehicleLocation.vehicle_id == Vehicle.id
+    ).all()
 
+def _get_ordered_stops_for_route(route_name):
+    """
+    Returns the list of stop IDs for a given route from routes.json.
+    e.g. ['STUDENT_UNION', 'COLONIE', 'GEORGIAN', ...]
+    """
+    if route_name in ROUTES_CONFIG and 'STOPS' in ROUTES_CONFIG[route_name]:
+        return ROUTES_CONFIG[route_name]['STOPS']
+    return []
+
+# --- ROUTES ---
+
+@bp.route('/')
+@bp.route('/schedule')
+@bp.route('/about')
+@bp.route('/data')
+@bp.route('/map')
+@bp.route('/generate-static-routes')
+def serve_react():
+    root_dir = Path(__file__).parent.parent / 'client' / 'dist'
+    return send_from_directory(root_dir, 'index.html')
+
+@bp.route('/api/locations', methods=['GET'])
+@cache.cached(timeout=5, key_prefix="vehicle_locations")
+def get_locations():
+    """
+    Returns the latest location for each active vehicle + ETA to the *immediate* next stop.
+    """
+    results = _get_active_vehicles()
     predictor = ETAPredictor() 
     response = {}
     
@@ -84,13 +118,13 @@ def get_locations():
         )
         
         predicted_eta_seconds = None
+        segment_id = None
         
         if closest_route_name: 
-            # 1. Determine the Segment ID using the new method
             segment_id = Stops.get_segment_id(closest_route_name, polyline_index)
             
-            # Only predict if we successfully identified a segment
             if segment_id:
+                # Fetch recent history for this vehicle for the ML model
                 history = VehicleLocation.query.filter_by(vehicle_id=loc.vehicle_id)\
                     .order_by(VehicleLocation.timestamp.desc())\
                     .limit(5)\
@@ -100,12 +134,12 @@ def get_locations():
                     history_df = pd.DataFrame([{
                         'latitude': h.latitude,
                         'longitude': h.longitude,
-                        # Note: Speed removed from model, but keeping for dataframe structure is fine
                         'heading_degrees': h.heading_degrees, 
-                        'timestamp': h.timestamp
+                        'timestamp': h.timestamp,
+                        # Pass speed if your model uses it
+                        'speed_mph': h.speed_mph 
                     } for h in history]).sort_values('timestamp')
 
-                    # 2. Pass the explicit segment_id to the predictor
                     predicted_eta_seconds = predictor.predict(history_df, segment_id)
 
         response[loc.vehicle_id] = {
@@ -117,20 +151,131 @@ def get_locations():
             'speed_mph': loc.speed_mph,
             'route_name': closest_route_name,
             'eta_seconds': predicted_eta_seconds,
-            'segment_id': segment_id if closest_route_name else None,
+            'segment_id': segment_id,
             'polyline_index': polyline_index,
-            'is_ecu_speed': loc.is_ecu_speed,
             'formatted_location': loc.formatted_location,
-            'address_id': loc.address_id,
-            'address_name': loc.address_name,
             'license_plate': vehicle.license_plate,
             'vin': vehicle.vin,
-            'asset_type': vehicle.asset_type,
-            'gateway_model': vehicle.gateway_model,
-            'gateway_serial': vehicle.gateway_serial,
         }
 
     return jsonify(response)
+
+@bp.route('/api/stops/etas', methods=['GET'])
+@cache.cached(timeout=10, key_prefix="all_stop_etas")
+def get_all_stop_etas():
+    results = _get_active_vehicles()
+    best_etas = {} 
+    predictor = ETAPredictor()
+
+    for loc, vehicle in results:
+        # 1. Identify where the bus is
+        closest_dist, _, route_name, polyline_index = Stops.get_closest_point(
+            (loc.latitude, loc.longitude)
+        )
+        
+        if not route_name: continue
+
+        # 2. Determine the Next Stop Target
+        segment_id = Stops.get_segment_id(route_name, polyline_index)
+        next_stop_id = None  # Initialize variable
+
+        if segment_id:
+            if "_To_" in segment_id:
+                # "From_UNION_To_COLONIE" -> "COLONIE"
+                next_stop_id = segment_id.split("_To_")[1]
+            elif segment_id.startswith("AT_"):
+                # "AT_UNION" -> Look up what comes after UNION
+                current_at = segment_id.replace("AT_", "")
+                _, public_stops = Stops.get_route_sequence(route_name)
+                if current_at in public_stops:
+                    idx = public_stops.index(current_at)
+                    next_stop_id = public_stops[(idx + 1) % len(public_stops)]
+
+        if not next_stop_id: continue
+
+        # 3. Calculate Prediction (with "Arrival Clamp")
+        predicted_seconds = None
+        
+        # Get coordinates to check if we are basically already there
+        stop_lat, stop_lon = Stops.get_stop_coords(route_name, next_stop_id)
+        
+        if stop_lat:
+            # Calculate distance in meters (approx)
+            # 1 deg lat = 111,139 meters
+            dist_sq = (loc.latitude - stop_lat)**2 + (loc.longitude - stop_lon)**2
+            dist_meters = np.sqrt(dist_sq) * 111139
+            
+            # CLAMP: If within 40m, force 0 seconds
+            if dist_meters < 40:
+                predicted_seconds = 0
+        
+        # If not clamped (or coords missing), use ML model
+        if predicted_seconds is None:
+            history = VehicleLocation.query.filter_by(vehicle_id=loc.vehicle_id)\
+                .order_by(VehicleLocation.timestamp.desc())\
+                .limit(5).all()
+            
+            if len(history) == 5:
+                history_df = pd.DataFrame([{
+                    'latitude': h.latitude,
+                    'longitude': h.longitude,
+                    'heading_degrees': h.heading_degrees, 
+                    'timestamp': h.timestamp
+                } for h in history]).sort_values('timestamp')
+                
+                raw_pred = predictor.predict(history_df, segment_id)
+                
+                # SANITY CHECK: If model says > 20 mins (1200s), ignore it
+                if raw_pred and (raw_pred < 0 or raw_pred > 1200):
+                    predicted_seconds = 60
+                else:
+                    predicted_seconds = raw_pred
+
+        if predicted_seconds is None: continue
+
+        # 4. Propagate this ETA to all subsequent stops
+        
+        # Get full route info (including ghosts for calculation)
+        all_stops, public_stops = Stops.get_route_sequence(route_name)
+        
+        if not all_stops: continue
+
+        # Initialize accumulator
+        current_eta = predicted_seconds
+
+        # Find where we are in the FULL chain
+        try:
+            start_index = all_stops.index(next_stop_id)
+        except ValueError:
+            continue
+
+        # Loop through the route (wrapping around)
+        num_stops = len(all_stops)
+        for k in range(num_stops):
+            i = (start_index + k) % num_stops
+            curr_stop = all_stops[i]
+            
+            # A. SAVE: If this is a real public stop, record the ETA
+            if curr_stop in public_stops:
+                # Use int() to keep JSON clean
+                if curr_stop not in best_etas or current_eta < best_etas[curr_stop]:
+                    best_etas[curr_stop] = int(current_eta)
+
+            # B. ACCUMULATE: Add time to get to the next stop
+            next_i = (i + 1) % num_stops
+            next_stop = all_stops[next_i]
+            
+            travel_time = 30 # Default for unknown/ghost links
+            if curr_stop in INTER_STOP_TIMES and next_stop in INTER_STOP_TIMES[curr_stop]:
+                travel_time = INTER_STOP_TIMES[curr_stop][next_stop]
+            
+            # Add dwell time only for real stops
+            dwell = 15 if curr_stop in public_stops else 0
+            
+            current_eta += (travel_time + dwell)
+
+    return jsonify(best_etas)
+
 @bp.route('/api/webhook', methods=['POST'])
 def webhook():
     if secret := current_app.config['SAMSARA_SECRET']:

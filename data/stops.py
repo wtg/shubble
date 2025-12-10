@@ -77,6 +77,20 @@ class Stops:
         for polyline in route.get('ROUTES', []):
             polylines[route_name].append(np.array(polyline))
 
+    @staticmethod
+    def get_route_sequence(route_name):
+        """
+        Returns a tuple: (all_stops, public_stops)
+        - all_stops: Includes ghosts (used for calculation)
+        - public_stops: Only real stops (used for final JSON output)
+        """
+        # Safety check if the route exists
+        if route_name in Stops.routes_data:
+            data = Stops.routes_data[route_name]
+            # Return tuple of (Polyline List, Public Stop List)
+            return data.get('POLYLINE_STOPS', []), data.get('STOPS', [])
+
+        return [], []
     @classmethod
     def _find_best_match_unfiltered(cls, point_np):
         """Private helper to find the single closest node to a point."""
@@ -269,3 +283,51 @@ class Stops:
                 break
             
         return f"From_{last_stop_name}_To_{next_stop_name}"
+    
+    @staticmethod
+    def get_next_stop_name(route_name, polyline_index):
+        """
+        Returns the name of the next stop on the route based on current polyline index.
+        """
+        if route_name not in Stops.routes_data:
+            return None
+        
+        route_data = Stops.routes_data[route_name]
+        
+        # 1. Collect all stops and their offsets
+        stop_offsets = []
+        # We check both the STOPS list and the stop definitions
+        # to ensure we get the offsets correct.
+        for stop_key, stop_info in route_data.items():
+            if isinstance(stop_info, dict) and 'OFFSET' in stop_info and 'NAME' in stop_info:
+                # We use the stop_key (e.g., 'STUDENT_UNION') as the identifier
+                stop_offsets.append((stop_info['OFFSET'], stop_key))
+        
+        # 2. Sort by offset (order of appearance on route)
+        stop_offsets.sort()
+        
+        # 3. Find the first stop with an offset greater than our current index
+        for offset, stop_key in stop_offsets:
+            if offset > polyline_index:
+                return stop_key
+        
+        # 4. If we are past the last stop, the "next" stop is the first one (Loop)
+        if stop_offsets:
+             return stop_offsets[0][1]
+             
+        return None
+    
+    @staticmethod
+    def get_stop_coords(route_name, stop_name):
+        """Returns (lat, lon) for a given stop name."""
+        if route_name in Stops.routes_data:
+            # The stop definition (e.g. "STUDENT_UNION": {...}) is directly 
+            # under the route object, NOT inside the 'STOPS' list.
+            route_data = Stops.routes_data[route_name]
+            
+            if stop_name in route_data:
+                coords = route_data[stop_name].get('COORDINATES')
+                if coords and len(coords) >= 2:
+                    return coords[0], coords[1]
+                    
+        return None, None

@@ -1,0 +1,133 @@
+{
+  "ACADEMY_HALL": {
+    "BLITMAN": 338,
+    "CITY_STATION": 249,
+    "FEDERAL_6TH": 396,
+    "GHOST_STOP_2": 70,
+    "HEFFNER_HOUSE": 206,
+    "POLYTECHNIC": 69,
+    "STUDENT_UNION": 53
+  },
+  "BLITMAN": {
+    "CHASAN": 49,
+    "CITY_STATION": 435,
+    "FEDERAL_6TH": 38,
+    "HEFFNER_HOUSE": 1532,
+    "POLYTECHNIC": 1258,
+    "WEST_HALL": 92
+  },
+  "CHASAN": {
+    "BLITMAN": 158,
+    "FEDERAL_6TH": 116,
+    "GHOST_STOP_1": 476,
+    "WEST_HALL": 173
+  },
+  "CITY_STATION": {
+    "BLITMAN": 53,
+    "CHASAN": 125,
+    "HEFFNER_HOUSE": 187,
+    "POLYTECHNIC": 158
+  },
+  "COLONIE": {
+    "GEORGIAN": 72,
+    "GHOST_STOP_1": 49,
+    "GHOST_STOP_2": 152,
+    "HEFFNER_HOUSE": 742,
+    "HOUSTON_FIELD_HOUSE": 508,
+    "STAC_1": 105,
+    "STUDENT_UNION": 323
+  },
+  "ECAV": {
+    "GHOST_STOP_2": 133,
+    "HOUSTON_FIELD_HOUSE": 45,
+    "STUDENT_UNION": 132
+  },
+  "FEDERAL_6TH": {
+    "BLITMAN": 49,
+    "CITY_STATION": 72,
+    "GHOST_STOP_2": 121,
+    "HEFFNER_HOUSE": 99,
+    "STUDENT_UNION": 229,
+    "WEST_HALL": 51
+  },
+  "GEORGIAN": {
+    "COLONIE": 112,
+    "STAC_1": 38,
+    "STAC_2": 65,
+    "STUDENT_UNION": 1033
+  },
+  "GHOST_STOP_1": {
+    "COLONIE": 71,
+    "GEORGIAN": 33,
+    "GHOST_STOP_2": 1057,
+    "STAC_1": 66,
+    "STUDENT_UNION": 1373
+  },
+  "GHOST_STOP_2": {
+    "ACADEMY_HALL": 66,
+    "COLONIE": 116,
+    "FEDERAL_6TH": 129,
+    "HEFFNER_HOUSE": 103,
+    "HOUSTON_FIELD_HOUSE": 86,
+    "POLYTECHNIC": 136,
+    "STAC_1": 653,
+    "STUDENT_UNION": 48
+  },
+  "HEFFNER_HOUSE": {
+    "BLITMAN": 168,
+    "CITY_STATION": 266,
+    "FEDERAL_6TH": 99,
+    "GHOST_STOP_2": 42,
+    "HOUSTON_FIELD_HOUSE": 111,
+    "STUDENT_UNION": 88
+  },
+  "HOUSTON_FIELD_HOUSE": {
+    "COLONIE": 101,
+    "ECAV": 51,
+    "FEDERAL_6TH": 218,
+    "GHOST_STOP_2": 86,
+    "HEFFNER_HOUSE": 117,
+    "STUDENT_UNION": 108
+  },
+  "POLYTECHNIC": {
+    "ACADEMY_HALL": 69,
+    "BLITMAN": 303,
+    "CITY_STATION": 180,
+    "STUDENT_UNION": 108,
+    "WEST_HALL": 136
+  },
+  "STAC_1": {
+    "GEORGIAN": 37,
+    "STAC_2": 32,
+    "STAC_3": 57
+  },
+  "STAC_2": {
+    "ECAV": 54,
+    "HOUSTON_FIELD_HOUSE": 101,
+    "STAC_3": 33
+  },
+  "STAC_3": {
+    "ECAV": 32,
+    "HOUSTON_FIELD_HOUSE": 62,
+    "STAC_2": 91
+  },
+  "STUDENT_UNION": {
+    "ACADEMY_HALL": 39,
+    "BLITMAN": 774,
+    "CITY_STATION": 587,
+    "COLONIE": 149,
+    "GHOST_STOP_1": 211,
+    "GHOST_STOP_2": 118,
+    "HEFFNER_HOUSE": 909,
+    "HOUSTON_FIELD_HOUSE": 127,
+    "POLYTECHNIC": 113,
+    "STAC_1": 204,
+    "STAC_3": 491
+  },
+  "WEST_HALL": {
+    "ACADEMY_HALL": 1094,
+    "FEDERAL_6TH": 135,
+    "GHOST_STOP_2": 96,
+    "HEFFNER_HOUSE": 71
+  }
+}
