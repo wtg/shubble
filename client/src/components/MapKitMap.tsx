@@ -441,7 +441,10 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
       // --- Update or create annotation ---
       if (existingAnnotation) {
         // existing vehicle — update position and subtitle
-        existingAnnotation.coordinate = coordinate;
+        // Only update coordinate directly if we don't have an animation state (to avoid flicker)
+        if (!vehicleAnimationStates.current[key]) {
+          existingAnnotation.coordinate = coordinate;
+        }
         existingAnnotation.subtitle = `${vehicle.speed_mph.toFixed(1)} mph`;
 
         // Handle route status updates
