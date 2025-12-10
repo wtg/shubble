@@ -154,6 +154,8 @@ python -m test-server.server
 This will start a server at `localhost://8001`, which simulates what the Samsara API server would be doing for Shubble in production. It sends simulated webhook requests for vehicles entering/exiting the RPI geofence and sends simulated shuttle location data.
 It expects the Shubble server to be running on `localhost://8000`, so make sure to start the backend server first.
 
+#### For instructions on using the automated testing module, see /test-client/testing.md
+
 # Database Migrations
 
 Most of the time, you will not need to worry about the database schema. However, if you do need to make changes, you can use Flask-Migrate to handle database migrations.
