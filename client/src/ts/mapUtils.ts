@@ -7,7 +7,17 @@ export type Coordinate = {
 const R = 6371e3;
 
 /**
- * Calculates the distance between two coordinates in meters using the Haversine formula.
+ * Calculates the great-circle distance between two coordinates in meters using the Haversine formula.
+ * 
+ * MATH EXPLANATION:
+ * The Haversine formula determines the great-circle distance between two points on a sphere given their longitudes and latitudes.
+ * It is numerically stable for small distances (unlike using the law of cosines directly).
+ * 
+ * a = sin²(Δφ/2) + cos φ1 ⋅ cos φ2 ⋅ sin²(Δλ/2)
+ * c = 2 ⋅ atan2( √a, √(1−a) )
+ * d = R ⋅ c
+ * 
+ * Where φ is latitude, λ is longitude, R is Earth's radius (approx 6371km).
  */
 export function haversineDistance(coord1: Coordinate, coord2: Coordinate): number {
     const lat1 = coord1.latitude * Math.PI / 180;
@@ -53,17 +63,56 @@ export function findNearestPointOnPolyline(
 }
 
 /**
- * Projects a point onto a line segment defined by p1 and p2.
+ * Projects a point p onto the line segment defined by p1 and p2.
+ * 
+ * MATH EXPLANATION:
+ * We treat the Earth's surface locally as a flat plane (Euclidean approximation).
+ * However, because longitude lines converge at the poles, 1 degree of longitude is smaller than 1 degree of latitude.
+ * We correct for this by scaling the longitude difference by cos(latitude).
+ * 
+ * The projection uses the "Vector Projection" formula.
+ * Let vector A = p - p1 (vector from start of segment to point)
+ * Let vector B = p2 - p1 (vector representing the segment)
+ * 
+ * We want to project A onto B to find how far along the segment the point lies.
+ * The scalar projection t is given by the dot product:
+ * 
+ *      t = (A . B) / |B|^2
+ * 
+ *  - If t <= 0, the closest point is p1 (start of segment).
+ *  - If t >= 1, the closest point is p2 (end of segment).
+ *  - If 0 < t < 1, the closest point is p1 + t * B.
  */
 function projectPointOnSegment(p: Coordinate, p1: Coordinate, p2: Coordinate): Coordinate {
-    const l2 = (p1.latitude - p2.latitude) ** 2 + (p1.longitude - p2.longitude) ** 2;
+    // Average latitude for the segment to calculate the longitude scaling factor
+    const meanLat = (p1.latitude + p2.latitude) / 2 * (Math.PI / 180);
+    const cosLat = Math.cos(meanLat);
+
+    // Vector B (segment direction)
+    // x corresponds to longitude (scaled), y corresponds to latitude
+    const Bx = (p2.longitude - p1.longitude) * cosLat;
+    const By = p2.latitude - p1.latitude;
+
+    // Magnitude of B squared (|B|^2)
+    const l2 = Bx * Bx + By * By;
+
+    // If the segment is a single point (length 0), return that point
     if (l2 === 0) return p1;
 
-    let t = ((p.latitude - p1.latitude) * (p2.latitude - p1.latitude) +
-        (p.longitude - p1.longitude) * (p2.longitude - p1.longitude)) / l2;
+    // Vector A (start to point)
+    const Ax = (p.longitude - p1.longitude) * cosLat;
+    const Ay = p.latitude - p1.latitude;
 
+    // Dot product A . B
+    // t represents the fractional distance along the segment (0.0 to 1.0)
+    let t = (Ax * Bx + Ay * By) / l2;
+
+    // Clamp t to the segment range [0, 1]
     t = Math.max(0, Math.min(1, t));
 
+    // Calculate the new point
+    // Note: We interpolate the raw Lat/Lon values directly, which is safe for short segments.
+    // If we were dealing with massive segments (trans-oceanic), we'd need Great Circle interpolation.
     return {
         latitude: p1.latitude + t * (p2.latitude - p1.latitude),
         longitude: p1.longitude + t * (p2.longitude - p1.longitude)
