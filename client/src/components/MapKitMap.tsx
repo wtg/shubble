@@ -126,8 +126,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
     polylineIndex: number;
     currentPoint: Coordinate;
     currentSpeed: number; // mph
-    acceleration: number; // mph per second
-    lastServerTime: number; // server timestamp of the data
+    lastServerTime: number;
   }>>({});
   const animationFrameId = useRef<number | null>(null);
 
@@ -505,13 +504,11 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
       const snapToPolyline = () => {
         const { index, point } = findNearestPointOnPolyline(vehicleCoord, routePolyline);
-        // Default acceleration to 0 if we don't have enough history
         vehicleAnimationStates.current[key] = {
           lastUpdateTime: now,
           polylineIndex: index,
           currentPoint: point,
           currentSpeed: vehicle.speed_mph,
-          acceleration: 0,
           lastServerTime: serverTime
         };
       };
@@ -589,21 +586,14 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         const routePolyline = flattenedRoutesRef.current[vehicle.route_name];
 
         // Update speed based on acceleration
-        // v = u + at
-        // dt is in ms, so dt/1000 is seconds
+        // REMOVED acceleration. We use the calculated smooth speed directly.
+
         const dtSeconds = dt / 1000;
 
-        // We'll update the *currentSpeed* in the state effectively
-        // but we normally wouldn't mutate state in a render loop like this without care.
-        // Since we are using refs, muting is okay.
-
-        animState.currentSpeed += animState.acceleration * dtSeconds;
-
-        // Clamp speed. Can't go backwards (unless we want to support that? prob not for a shuttle)
+        // Clamp speed.
         if (animState.currentSpeed < 0) animState.currentSpeed = 0;
 
-        // Calculate distance to move: Average speed * time would be better, or just current speed
-        // d = v*t (using updated speed)
+        // Calculate distance to move
         // 1 mph = 0.44704 m/s
         const speedMps = animState.currentSpeed * 0.44704;
         const distanceMeters = speedMps * dtSeconds;
