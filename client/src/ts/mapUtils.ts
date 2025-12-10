@@ -106,3 +106,43 @@ export function moveAlongPolyline(
     // Reached the end of the polyline
     return { index: polyline.length - 1, point: polyline[polyline.length - 1] };
 }
+
+/**
+ * Calculates the distance along the polyline between a start point and an end point.
+ * Assumes both points are "on" the polyline (projected).
+ * startPoint is on segment starting at `startIndex`.
+ * endPoint is on segment starting at `endIndex`.
+ * If startIndex > endIndex, it assumes the route wrapped or something (returns 0 or positive dist).
+ * Actually, for this use case, we just assume positive progress.
+ */
+export function calculateDistanceAlongPolyline(
+    polyline: Coordinate[],
+    startIndex: number,
+    startPoint: Coordinate,
+    endIndex: number,
+    endPoint: Coordinate
+): number {
+    if (startIndex > endIndex) {
+        // Could happen if we looped or re-routed. Return 0 to be safe.
+        return 0;
+    }
+
+    if (startIndex === endIndex) {
+        return haversineDistance(startPoint, endPoint);
+    }
+
+    let totalDistance = 0;
+
+    // 1. Distance from startPoint to end of its segment
+    totalDistance += haversineDistance(startPoint, polyline[startIndex + 1]);
+
+    // 2. Full segments in between
+    for (let i = startIndex + 1; i < endIndex; i++) {
+        totalDistance += haversineDistance(polyline[i], polyline[i + 1]);
+    }
+
+    // 3. Distance from start of end segment to endPoint
+    totalDistance += haversineDistance(polyline[endIndex], endPoint);
+
+    return totalDistance;
+}
