@@ -71,19 +71,19 @@ https://www.docker.com/products/docker-desktop/
 Go to this link to run Redis on docker:
 https://hub.docker.com/_/redis
 
-Press on "run in docker desktop"
+Press on "run in docker desktop".
 
-This should open up your docker desktop application and run it. On this display you should see a localhost port that redis is running on. (e.g https://localhost:32678)
+This should open up your docker desktop application and run it. On this display you should see a localhost port that redis is running on (e.g https://localhost:32796):
 
 <img width="288" height="94" alt="image" src="https://github.com/user-attachments/assets/fe1816b9-a47e-4ede-91f6-530290e80606" />
 
-Copy this localhost with the port and put the following in your env
+Copy this localhost with the port and put the following in your `.env`:
 
 ```
-REDIS_URL=redis://localhost:{port}
+REDIS_URL=redis://localhost:{"port"}
 ```
 
-replacing port with your actual port
+Replace the "port" with your actual port (e.g 32796) and save changes. Now, the docker should work after you press run. 
 
 # Running the frontend
 
@@ -137,6 +137,7 @@ This will start the worker process that handles background tasks, such as updati
 To test the backend, Shubble provides another Flask app that mimics the Samsara API. The test app enables users to trigger shuttle entry, exit, and location updates without needing to set up a real Samsara account or API keys. This is useful for development and testing purposes.
 **Note**: even if you're not developing the backend, you may still want to run the test to populate Shubble with data.
 Like Shubble, the test app is built using Flask and React. Therefore, you must build the frontend before running the test app.
+
 To build the frontend for the test app, `cd` to the `/test-client` directory and run:
 
 ```bash
