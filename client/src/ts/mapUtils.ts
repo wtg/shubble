@@ -195,3 +195,29 @@ export function calculateDistanceAlongPolyline(
 
     return totalDistance;
 }
+
+/**
+ * Calculates the initial bearing (forward azimuth) from start to end.
+ * Returns degrees 0-360.
+ */
+export function calculateBearing(start: Coordinate, end: Coordinate): number {
+    const lat1 = start.latitude * Math.PI / 180;
+    const lat2 = end.latitude * Math.PI / 180;
+    const diffLong = (end.longitude - start.longitude) * Math.PI / 180;
+
+    const x = Math.sin(diffLong) * Math.cos(lat2);
+    const y = Math.cos(lat1) * Math.sin(lat2) -
+        Math.sin(lat1) * Math.cos(lat2) * Math.cos(diffLong);
+
+    const initialBearing = Math.atan2(x, y);
+    return (initialBearing * 180 / Math.PI + 360) % 360;
+}
+
+/**
+ * Calculates the smallest difference between two angles (0-360).
+ * Returns absolute difference in degrees (0-180).
+ */
+export function getAngleDifference(angle1: number, angle2: number): number {
+    const diff = Math.abs(angle1 - angle2) % 360;
+    return diff > 180 ? 360 - diff : diff;
+}

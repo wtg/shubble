@@ -13,7 +13,9 @@ import {
   type Coordinate,
   findNearestPointOnPolyline,
   moveAlongPolyline,
-  calculateDistanceAlongPolyline
+  calculateDistanceAlongPolyline,
+  calculateBearing,
+  getAngleDifference
 } from "../ts/mapUtils";
 
 async function generateRoutePolylines(updatedRouteData: ShuttleRouteData) {
@@ -544,6 +546,22 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
           serverProjecedDistMeters
         );
 
+        // CHECK DIRECTION: Is the vehicle heading roughly in the direction of the route segment?
+        // If the vehicle is driving "backwards" effectively (>90 deg offset), we should probably not animate it forward.
+        // We check the bearing of the segment where the *server* says the vehicle is.
+        let isMovingCorrectly = true;
+        if (routePolyline.length > serverIndex + 1 && vehicle.speed_mph > 1) {
+          const p1 = routePolyline[serverIndex];
+          const p2 = routePolyline[serverIndex + 1];
+          const segmentBearing = calculateBearing(p1, p2);
+          const headingDiff = getAngleDifference(segmentBearing, vehicle.heading_degrees);
+
+          // If difference is > 90 degrees, it's moving "wrong way" relative to this segment
+          if (headingDiff > 90) {
+            isMovingCorrectly = false;
+          }
+        }
+
         // 3. How far is that Target Point from our CURRENT VISUAL position?
         const distToTarget = calculateDistanceAlongPolyline(
           routePolyline,
@@ -555,7 +573,14 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
         // 4. Calculate the speed needed to cover that distance in 5 seconds
         // Speed = Dist / Time
-        const smoothSpeedMps = distToTarget / PREDICTION_WINDOW_SECONDS;
+        let smoothSpeedMps = distToTarget / PREDICTION_WINDOW_SECONDS;
+
+        // If moving wrong way, don't force it forward.
+        if (!isMovingCorrectly) {
+          smoothSpeedMps = 0;
+          // Maybe we should just snap?
+        }
+
         const smoothSpeedMph = smoothSpeedMps / 0.44704;
 
         // 5. Update state
