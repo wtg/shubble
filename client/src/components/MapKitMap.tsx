@@ -1,14 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import '../styles/MapKitMap.css';
 import ShuttleIcon from "./ShuttleIcon";
 
 import type { ShuttleRouteData, ShuttleStopData } from "../ts/types/route";
-import '../styles/MapKitMap.css';
 import type { VehicleInformationMap } from "../ts/types/vehicleLocation";
-import type { Route } from "../ts/types/schedule";
 
-import { log } from "../ts/logger";
 import {
   type Coordinate,
   findNearestPointOnPolyline,
@@ -122,9 +119,6 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
   const [map, setMap] = useState<(mapkit.Map | null)>(null);
 
   const vehicleOverlays = useRef<Record<string, mapkit.ShuttleAnnotation>>({});
-
-  // Animation state
-  const flattenedRoutesRef = useRef<Record<string, { points: Coordinate[], stopIndices: number[] }>>({});
   const vehicleAnimationStates = useRef<Record<string, {
     lastUpdateTime: number; // local time when we received the server update
     polylineIndex: number;
@@ -396,41 +390,24 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
   }, [map, routeData]);
 
-  // Flatten routes for animation usage whenever routeData changes
-  useEffect(() => {
-    if (!routeData) return;
-    const flattened: Record<string, { points: Coordinate[], stopIndices: number[] }> = {};
+  // Memoize flattened routes to avoid recalculating on every render
+  const flattenedRoutes = useMemo(() => {
+    if (!routeData) return {};
+    const flattened: Record<string, Coordinate[]> = {};
 
     for (const [routeKey, data] of Object.entries(routeData)) {
       if (data.ROUTES) {
-        // ROUTES is array of segments (coordinate arrays). Flatten them into one long line.
-        // Each point is [lat, lon]
+        // Flatten all route segments into one continuous polyline
         const points: Coordinate[] = [];
-        const stopIndices: number[] = [];
-
-        // The first stop is at index 0
-        stopIndices.push(0);
-
         data.ROUTES.forEach(segment => {
           segment.forEach(pt => {
             points.push({ latitude: pt[0], longitude: pt[1] });
           });
-          // The end of this segment corresponds to the next stop location
-          // (or extremely close to it).
-          // The current length of 'points' is the index of the start of the *next* segment?
-          // Actually, points.push appends. So points.length - 1 is the last point.
-          // If the segments are continuous, the last point of Segment A might be the first point of Segment B
-          // depending on how they were fetched.
-          // Looking at generateRoutePolylines: `segment.slice(1)` is pushed for subsequent segments.
-          // So points are unique.
-
-          stopIndices.push(points.length - 1);
         });
-
-        flattened[routeKey] = { points, stopIndices };
+        flattened[routeKey] = points;
       }
     }
-    flattenedRoutesRef.current = flattened;
+    return flattened;
   }, [routeData]);
 
   // display vehicles on map
@@ -510,10 +487,9 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
       // If we don't have a route for this vehicle, we can't animate along a path nicely. 
       // We'll just rely on the API updates or maybe simple linear extrapolation later?
       // For now, let's only set up animation if we have a valid route.
-      if (!vehicle.route_name || !flattenedRoutesRef.current[vehicle.route_name]) return;
+      if (!vehicle.route_name || !flattenedRoutes[vehicle.route_name]) return;
 
-      const routeData = flattenedRoutesRef.current[vehicle.route_name];
-      const routePolyline = routeData.points;
+      const routePolyline = flattenedRoutes[vehicle.route_name];
       const vehicleCoord = { latitude: vehicle.latitude, longitude: vehicle.longitude };
 
       const serverTime = new Date(vehicle.timestamp).getTime();
@@ -664,9 +640,9 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         const annotation = vehicleOverlays.current[key];
 
         if (!vehicle || !annotation || !animState) return;
-        if (!vehicle.route_name || !flattenedRoutesRef.current[vehicle.route_name]) return;
+        if (!vehicle.route_name || !flattenedRoutes[vehicle.route_name]) return;
 
-        const routePolyline = flattenedRoutesRef.current[vehicle.route_name].points;
+        const routePolyline = flattenedRoutes[vehicle.route_name];
 
         // =======================================================================
         // EASED ANIMATION
