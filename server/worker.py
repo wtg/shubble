@@ -6,7 +6,7 @@ import time
 import requests
 import os
 import logging
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from data.schedules import Schedule
 import math
 
@@ -205,7 +205,7 @@ def update_driver_assignments(app, vehicle_ids):
                 has_next_page = True
             after_token = pagination.get('endCursor', after_token)
 
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
 
             for assignment in data.get('data', []):
                 driver_data = assignment.get('driver')
@@ -229,7 +229,7 @@ def update_driver_assignments(app, vehicle_ids):
                     assigned_at = now
 
                 # Create or update driver
-                driver = Driver.query.get(driver_id)
+                driver = db.session.get(Driver, driver_id)
                 if not driver:
                     driver = Driver(id=driver_id, name=driver_name)
                     db.session.add(driver)
