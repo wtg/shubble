@@ -306,25 +306,20 @@ export function getAngleDifference(angle1: number, angle2: number): number {
 /**
  * Easing function for smooth animation.
  * 
- * This implements "ease-in-out quad" - the animation starts slow, speeds up
- * in the middle, and slows down at the end. This creates natural-feeling motion.
+ * This implements "ease-out quad" - the animation starts fast and slows down
+ * at the end. This matches how vehicles naturally move (coast and decelerate).
  * 
  * @param t - Progress value from 0.0 to 1.0 (0 = start, 1 = end)
  * @returns Eased progress value from 0.0 to 1.0
  * 
  * MATH EXPLANATION:
- * - For t < 0.5: Uses 2t² (accelerating)
- * - For t >= 0.5: Uses 1 - (-2t + 2)² / 2 (decelerating)
+ * Uses the formula: 1 - (1 - t)²
+ * - At t=0: returns 0
+ * - At t=0.5: returns 0.75 (75% progress at halfway point)
+ * - At t=1: returns 1
  */
-export function easeInOutQuad(t: number): number {
+export function easeOutQuad(t: number): number {
     // Clamp t to [0, 1]
     t = Math.max(0, Math.min(1, t));
-
-    if (t < 0.5) {
-        // Ease in (accelerate)
-        return 2 * t * t;
-    } else {
-        // Ease out (decelerate)
-        return 1 - Math.pow(-2 * t + 2, 2) / 2;
-    }
+    return 1 - Math.pow(1 - t, 2);
 }

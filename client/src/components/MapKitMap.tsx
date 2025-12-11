@@ -12,8 +12,7 @@ import {
   moveAlongPolyline,
   calculateDistanceAlongPolyline,
   calculateBearing,
-  getAngleDifference,
-  easeInOutQuad
+  getAngleDifference
 } from "../ts/mapUtils";
 
 async function generateRoutePolylines(updatedRouteData: ShuttleRouteData) {
@@ -657,13 +656,10 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         const timeElapsed = now - animState.lastUpdateTime;
 
         // Calculate progress through the prediction window (0.0 to 1.0)
-        const linearProgress = Math.min(timeElapsed / PREDICTION_WINDOW_MS, 1.0);
+        const progress = Math.min(timeElapsed / PREDICTION_WINDOW_MS, 1.0);
 
-        // Apply easing function for smooth acceleration/deceleration
-        const easedProgress = easeInOutQuad(linearProgress);
-
-        // Calculate how far along the target distance we should be
-        const targetPosition = animState.targetDistance * easedProgress;
+        // Calculate how far along the target distance we should be (linear interpolation)
+        const targetPosition = animState.targetDistance * progress;
 
         // Calculate how much to move this frame (can be negative for backward movement)
         const distanceToMove = targetPosition - animState.distanceTraveled;
