@@ -61,6 +61,13 @@ The Shubble UI is built using three main technologies: `TypeScript`, `TSX` (Reac
   - CSS files control styling — layout, colors, spacing, fonts, animations, and responsiveness.
   - They ensure the UI is visually clear, consistent, and user-friendly.
 
+### Helping Learning Resources 
+If you're new to the technologies used in this UI, here are a few resources that will help you understand how the interface is structured and how the components work together:
+
+- https://www.dhiwise.com/post/typescript-essentials-navigating-the-ts-vs-tsx-divide
+- https://react.dev/learn/typescript
+- https://www.w3schools.com/css/
+- https://www.w3schools.com/typescript/typescript_react.php
 
 ## Overview of the UI Layout
 The UI for this project is built using a React + TypeScript front-end located in the `client/` directory. Inside `client/src/`, the layout is divided into logical folders such as `components/` for reusable UI elements, `pages/` for full page views, `styles/` for global and modular CSS, and `data/` or `types/` for shared utilities and type definitions. The main application entry point (`main.tsx`) mounts the UI, while `App.tsx` defines the top-level structure and routing.
