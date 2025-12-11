@@ -586,20 +586,18 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
         // Step 6: Update animation state.
         // If the gap is extremely large (>250m in either direction), snap to server position.
-        // For small backward gaps, just stop (targetDistance = 0) and wait for next update.
+        // For smaller backward gaps, animate smoothly backward to correct the overprediction.
         const MAX_REASONABLE_GAP_METERS = 250;
         if (Math.abs(distanceToTarget) > MAX_REASONABLE_GAP_METERS) {
           snapToPolyline();
         } else {
-          // Clamp to non-negative: if target is behind us, just stop (we'll catch up later)
-          const clampedTargetDistance = Math.max(0, targetDistanceMeters);
-
+          // Allow negative targetDistance for smooth backward animation
           // Reset the animation progress - we're starting a new prediction window
           vehicleAnimationStates.current[key] = {
             lastUpdateTime: now,
             polylineIndex: animState.polylineIndex,
             currentPoint: animState.currentPoint,
-            targetDistance: clampedTargetDistance,
+            targetDistance: targetDistanceMeters,
             distanceTraveled: 0,
             lastServerTime: serverTime
           };
@@ -667,10 +665,11 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         // Calculate how far along the target distance we should be
         const targetPosition = animState.targetDistance * easedProgress;
 
-        // Calculate how much to move this frame
+        // Calculate how much to move this frame (can be negative for backward movement)
         const distanceToMove = targetPosition - animState.distanceTraveled;
 
-        if (distanceToMove <= 0) return;
+        // Skip if no movement needed
+        if (distanceToMove === 0) return;
 
         // Move along polyline
         const { index, point } = moveAlongPolyline(

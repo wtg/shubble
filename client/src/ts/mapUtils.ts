@@ -121,8 +121,13 @@ function projectPointOnSegment(p: Coordinate, p1: Coordinate, p2: Coordinate): C
 
 /**
  * Moves a point along the polyline by a certain distance (in meters).
- * Starts from a given segment index and fractional progress, or just finds the next point.
- * For simplicity, we assume we are at `startPoint` which is on the segment starting at `startIndex`.
+ * Supports both positive (forward) and negative (backward) distances.
+ * 
+ * @param polyline - The route as an array of coordinates
+ * @param startIndex - Index of the segment containing startPoint
+ * @param startPoint - Current position on the polyline
+ * @param distanceMeters - Distance to move (positive = forward, negative = backward)
+ * @returns New position on the polyline
  */
 export function moveAlongPolyline(
     polyline: Coordinate[],
@@ -130,6 +135,12 @@ export function moveAlongPolyline(
     startPoint: Coordinate,
     distanceMeters: number
 ): { index: number, point: Coordinate } {
+    // Handle backward movement
+    if (distanceMeters < 0) {
+        return moveBackward(polyline, startIndex, startPoint, -distanceMeters);
+    }
+
+    // Forward movement
     let currentIndex = startIndex;
     let currentPoint = startPoint;
     let remainingDist = distanceMeters;
@@ -154,6 +165,41 @@ export function moveAlongPolyline(
 
     // Reached the end of the polyline
     return { index: polyline.length - 1, point: polyline[polyline.length - 1] };
+}
+
+/**
+ * Helper function to move backward along the polyline.
+ */
+function moveBackward(
+    polyline: Coordinate[],
+    startIndex: number,
+    startPoint: Coordinate,
+    distanceMeters: number
+): { index: number, point: Coordinate } {
+    let currentIndex = startIndex;
+    let currentPoint = startPoint;
+    let remainingDist = distanceMeters;
+
+    while (remainingDist > 0 && currentIndex >= 0) {
+        const prevPoint = polyline[currentIndex];
+        const segmentDist = haversineDistance(currentPoint, prevPoint);
+
+        if (remainingDist <= segmentDist) {
+            // The target is on this segment (moving toward start)
+            const ratio = remainingDist / segmentDist;
+            const newLat = currentPoint.latitude + (prevPoint.latitude - currentPoint.latitude) * ratio;
+            const newLon = currentPoint.longitude + (prevPoint.longitude - currentPoint.longitude) * ratio;
+            return { index: currentIndex, point: { latitude: newLat, longitude: newLon } };
+        } else {
+            // Move to the previous segment
+            remainingDist -= segmentDist;
+            currentPoint = prevPoint;
+            currentIndex--;
+        }
+    }
+
+    // Reached the start of the polyline
+    return { index: 0, point: polyline[0] };
 }
 
 /**
