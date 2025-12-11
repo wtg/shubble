@@ -158,11 +158,17 @@ export function moveAlongPolyline(
 
 /**
  * Calculates the distance along the polyline between a start point and an end point.
- * Assumes both points are "on" the polyline (projected).
- * startPoint is on segment starting at `startIndex`.
- * endPoint is on segment starting at `endIndex`.
- * If startIndex > endIndex, it assumes the route wrapped or something (returns 0 or positive dist).
- * Actually, for this use case, we just assume positive progress.
+ * 
+ * IMPORTANT: For circular routes, if startIndex > endIndex, this means the shuttle
+ * has wrapped around the end of the polyline. We calculate the distance by going
+ * from startIndex to the end, then from the beginning to endIndex.
+ * 
+ * @param polyline - The route polyline as an array of coordinates
+ * @param startIndex - Index of the segment containing startPoint
+ * @param startPoint - Current position on the polyline
+ * @param endIndex - Index of the segment containing endPoint  
+ * @param endPoint - Target position on the polyline
+ * @returns Distance in meters along the polyline
  */
 export function calculateDistanceAlongPolyline(
     polyline: Coordinate[],
@@ -171,11 +177,40 @@ export function calculateDistanceAlongPolyline(
     endIndex: number,
     endPoint: Coordinate
 ): number {
-    if (startIndex > endIndex) {
-        // Could happen if we looped or re-routed. Return 0 to be safe.
-        return 0;
+    // Handle normal forward case
+    if (startIndex <= endIndex) {
+        return calculateForwardDistance(polyline, startIndex, startPoint, endIndex, endPoint);
     }
 
+    // Handle wrap-around for circular routes
+    // Distance = (startPoint -> end of polyline) + (start of polyline -> endPoint)
+    const distanceToEnd = calculateForwardDistance(
+        polyline,
+        startIndex,
+        startPoint,
+        polyline.length - 2,
+        polyline[polyline.length - 1]
+    );
+    const distanceFromStart = calculateForwardDistance(
+        polyline,
+        0,
+        polyline[0],
+        endIndex,
+        endPoint
+    );
+    return distanceToEnd + distanceFromStart;
+}
+
+/**
+ * Helper function to calculate forward distance along polyline.
+ */
+function calculateForwardDistance(
+    polyline: Coordinate[],
+    startIndex: number,
+    startPoint: Coordinate,
+    endIndex: number,
+    endPoint: Coordinate
+): number {
     if (startIndex === endIndex) {
         return haversineDistance(startPoint, endPoint);
     }
@@ -220,4 +255,30 @@ export function calculateBearing(start: Coordinate, end: Coordinate): number {
 export function getAngleDifference(angle1: number, angle2: number): number {
     const diff = Math.abs(angle1 - angle2) % 360;
     return diff > 180 ? 360 - diff : diff;
+}
+
+/**
+ * Easing function for smooth animation.
+ * 
+ * This implements "ease-in-out quad" - the animation starts slow, speeds up
+ * in the middle, and slows down at the end. This creates natural-feeling motion.
+ * 
+ * @param t - Progress value from 0.0 to 1.0 (0 = start, 1 = end)
+ * @returns Eased progress value from 0.0 to 1.0
+ * 
+ * MATH EXPLANATION:
+ * - For t < 0.5: Uses 2t² (accelerating)
+ * - For t >= 0.5: Uses 1 - (-2t + 2)² / 2 (decelerating)
+ */
+export function easeInOutQuad(t: number): number {
+    // Clamp t to [0, 1]
+    t = Math.max(0, Math.min(1, t));
+
+    if (t < 0.5) {
+        // Ease in (accelerate)
+        return 2 * t * t;
+    } else {
+        // Ease out (decelerate)
+        return 1 - Math.pow(-2 * t + 2, 2) / 2;
+    }
 }

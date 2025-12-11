@@ -15,7 +15,8 @@ import {
   moveAlongPolyline,
   calculateDistanceAlongPolyline,
   calculateBearing,
-  getAngleDifference
+  getAngleDifference,
+  easeInOutQuad
 } from "../ts/mapUtils";
 
 async function generateRoutePolylines(updatedRouteData: ShuttleRouteData) {
@@ -125,10 +126,11 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
   // Animation state
   const flattenedRoutesRef = useRef<Record<string, { points: Coordinate[], stopIndices: number[] }>>({});
   const vehicleAnimationStates = useRef<Record<string, {
-    lastUpdateTime: number; // local time when we received the update
+    lastUpdateTime: number; // local time when we received the server update
     polylineIndex: number;
     currentPoint: Coordinate;
-    currentSpeed: number; // mph
+    targetDistance: number; // total distance to travel in this prediction window (meters)
+    distanceTraveled: number; // distance already traveled in this window (meters)
     lastServerTime: number;
   }>>({});
   const animationFrameId = useRef<number | null>(null);
@@ -531,7 +533,8 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
           lastUpdateTime: now,
           polylineIndex: index,
           currentPoint: point,
-          currentSpeed: vehicle.speed_mph,
+          targetDistance: 0,
+          distanceTraveled: 0,
           lastServerTime: serverTime
         };
       };
@@ -597,28 +600,28 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
           targetPoint
         );
 
-        // Step 5: Calculate the smooth animation speed
-        let smoothSpeedMps = distanceToTarget / PREDICTION_WINDOW_SECONDS;
+        // Step 5: Calculate the total distance to travel with easing
+        let targetDistanceMeters = distanceToTarget;
 
-        // If moving wrong direction, stop the animation to avoid sliding backwards
+        // If moving wrong direction, stop the animation
         if (!isMovingCorrectDirection) {
-          smoothSpeedMps = 0;
+          targetDistanceMeters = 0;
         }
 
-        const smoothSpeedMph = smoothSpeedMps / 0.44704;
-
-        // 5. Update animation state.
+        // Step 6: Update animation state.
         // If the gap is extremely large (>250m), something is wrong (route change, bad data).
         // In that case, snap immediately to the server position instead of animating.
         const MAX_REASONABLE_GAP_METERS = 250;
         if (distanceToTarget > MAX_REASONABLE_GAP_METERS) {
           snapToPolyline();
         } else {
+          // Reset the animation progress - we're starting a new prediction window
           vehicleAnimationStates.current[key] = {
             lastUpdateTime: now,
             polylineIndex: animState.polylineIndex,
             currentPoint: animState.currentPoint,
-            currentSpeed: smoothSpeedMph,
+            targetDistance: targetDistanceMeters,
+            distanceTraveled: 0,
             lastServerTime: serverTime
           };
         }
@@ -665,37 +668,46 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
         const routePolyline = flattenedRoutesRef.current[vehicle.route_name].points;
 
-        // Update speed based on acceleration
-        // REMOVED acceleration. We use the calculated smooth speed directly.
+        // =======================================================================
+        // EASED ANIMATION
+        // =======================================================================
+        // Instead of constant speed, we use an ease-in-out curve.
+        // This makes the shuttle accelerate at the start and decelerate at the end
+        // of each prediction window, creating smoother, more natural motion.
+        // =======================================================================
 
-        const dtSeconds = dt / 1000;
+        const PREDICTION_WINDOW_MS = 5000;
+        const timeElapsed = now - animState.lastUpdateTime;
 
-        // Clamp speed.
-        if (animState.currentSpeed < 0) animState.currentSpeed = 0;
+        // Calculate progress through the prediction window (0.0 to 1.0)
+        const linearProgress = Math.min(timeElapsed / PREDICTION_WINDOW_MS, 1.0);
 
-        // Calculate distance to move
-        // 1 mph = 0.44704 m/s
-        const speedMps = animState.currentSpeed * 0.44704;
-        const distanceMeters = speedMps * dtSeconds;
+        // Apply easing function for smooth acceleration/deceleration
+        const easedProgress = easeInOutQuad(linearProgress);
 
-        if (distanceMeters <= 0) return;
+        // Calculate how far along the target distance we should be
+        const targetPosition = animState.targetDistance * easedProgress;
+
+        // Calculate how much to move this frame
+        const distanceToMove = targetPosition - animState.distanceTraveled;
+
+        if (distanceToMove <= 0) return;
 
         // Move along polyline
         const { index, point } = moveAlongPolyline(
           routePolyline,
           animState.polylineIndex,
           animState.currentPoint,
-          distanceMeters
+          distanceToMove
         );
 
         // Update state
         animState.polylineIndex = index;
         animState.currentPoint = point;
+        animState.distanceTraveled = targetPosition;
 
         // Update MapKit annotation
         annotation.coordinate = new mapkit.Coordinate(point.latitude, point.longitude);
-        // Optional debugging: Update subtitle to show predicted speed?
-        // annotation.subtitle = `${animState.currentSpeed.toFixed(1)} mph (pred)`;
       });
 
       animationFrameId.current = requestAnimationFrame(animate);
