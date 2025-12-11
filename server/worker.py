@@ -179,6 +179,7 @@ def update_driver_assignments(app, vehicle_ids):
         url = 'https://api.samsara.com/fleet/driver-vehicle-assignments'
 
     url_params = {
+        'filterBy': 'vehicles',
         'vehicleIds': ','.join(vehicle_ids),
     }
 
@@ -198,6 +199,7 @@ def update_driver_assignments(app, vehicle_ids):
                 return
 
             data = response.json()
+            logger.info(f'Driver assignments API response: {len(data.get("data", []))} assignments returned')
             pagination = data.get('pagination', {})
             if pagination.get('hasNextPage'):
                 has_next_page = True
