@@ -11,17 +11,30 @@ This section provides a simple overview of how to access and interact with the p
 - [Developer Workflow with the UI](#developer-workflow-with-the-ui)
 - [Troubleshooting Access Issues](#troubleshooting-access-issues)
 
-# UI Overview & Developer Guide
+# UI Overview & Developer 
 
 ## Purpose of the UI
 
 The purpose of the UI is to provide a clear, user-friendly way to interact with the project’s main features while also presenting them in a clean and visually appealing layout. It helps developers test functionality, understand how users will experience the system, and ensure that both the interface and the underlying logic work together smoothly.
 
 ## How to Access the UI
+Verify that all [setup instructions](CONTRIBUTING.md) have been completed first.
 
 To view the UI while you're developing, you’ll start the frontend's development server. Use the following steps below: 
-#### 1. Run the command in your terminal:
+####1. Run the command in your terminal:
+  In the project’s root folder (the main `shubble` foler) run: 
+  ```bash
+  npm run dev
+  ```
+  This command launches a development server so you can run and test your frontend application locally.
+
 #### 2. Wait for the local address to appear:
+  Once the dev server starts, your terminal will show a link where the UI is running. It usually looks like:  
+  ```bash
+  http://localhost:5173/
+  ``` 
+  The port your development server runs on may differ based on the project’s configuration and whichever ports are free on your system.
+
 #### 3. Open the UI in your browser:
 #### 4. To stop the UI:
 ## Overview of the UI Layout
