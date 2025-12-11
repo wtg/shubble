@@ -21,7 +21,7 @@ The purpose of the UI is to provide a clear, user-friendly way to interact with 
 Verify that all [setup instructions](CONTRIBUTING.md) have been completed first.
 
 To view the UI while you're developing, you’ll start the frontend's development server. Use the following steps below: 
-####1. Run the command in your terminal:
+#### 1. Run the command in your terminal:
   In the project’s root folder (the main `shubble` foler) run: 
   ```bash
   npm run dev
@@ -36,7 +36,14 @@ To view the UI while you're developing, you’ll start the frontend's developmen
   The port your development server runs on may differ based on the project’s configuration and whichever ports are free on your system.
 
 #### 3. Open the UI in your browser:
+
+- **Mac:** `Command + Click` the link the terminal prints.
+- **Windows:** `Ctrl + Click` the link the terminal prints.
+
+This will open the UI in your browser automatically.
+
 #### 4. To stop the UI:
+Return to the terminal where npm run dev is running and press `Ctrl + C` to terminate the development server.
 ## Overview of the UI Layout
 
 
