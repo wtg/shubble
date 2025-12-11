@@ -539,57 +539,57 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
       if (!animState) {
         snapToPolyline();
       } else {
-        // --- PREDICTION SMOOTHING ---
-        // Instead of accelerating, we predict where the shuttle *should* be in 5 seconds
-        // and set the speed exactly right to get there.
+        // =======================================================================
+        // PREDICTION SMOOTHING ALGORITHM
+        // =======================================================================
+        // Problem: Server updates arrive every ~5 seconds, causing the shuttle
+        // to "jump" to its new position (rubberbanding).
+        //
+        // Solution: Instead of jumping, we calculate the speed needed for the
+        // shuttle to smoothly travel from its current visual position to where
+        // it *should* be when the next update arrives.
+        //
+        // Formula: speed = distance / time
+        // Where:
+        //   - distance = gap between current visual position and predicted target
+        //   - time = 5 seconds (the update interval)
+        // =======================================================================
 
         const PREDICTION_WINDOW_SECONDS = 5;
 
-        // 1. Where is the shuttle according to the server NOW?
-        // (vehicleCoord)
-
-        // 2. Where will it be in 5 seconds if it keeps going at server speed?
-        // Server speed is in mph -> convert to meters/sec
-        // 1 mph = 0.44704 m/s
-        const serverProjecedDistMeters = (vehicle.speed_mph * 0.44704) * PREDICTION_WINDOW_SECONDS;
-
-        // Calculate that projected point on the route
+        // Step 1: Find where the server says the shuttle is right now
         const { index: serverIndex, point: serverPoint } = findNearestPointOnPolyline(vehicleCoord, routePolyline);
 
-        let { index: targetIndex, point: targetPoint } = moveAlongPolyline(
+        // Step 2: Calculate where the shuttle will be in 5 seconds
+        // Convert speed from mph to meters/second (1 mph = 0.44704 m/s)
+        const speedMetersPerSecond = vehicle.speed_mph * 0.44704;
+        const projectedDistanceMeters = speedMetersPerSecond * PREDICTION_WINDOW_SECONDS;
+
+        // Move along the route polyline by that distance to find the target point
+        const { index: targetIndex, point: targetPoint } = moveAlongPolyline(
           routePolyline,
           serverIndex,
           serverPoint,
-          serverProjecedDistMeters
+          projectedDistanceMeters
         );
 
-        // STOP PROJECTION CLAMPING:
-        // Check if we passed a stop in this projection.
-        // If so, clamp to that stop to emulate stopping.
-        const nextStopIndex = routeData.stopIndices.find(idx => idx > serverIndex && idx <= targetIndex);
-        if (nextStopIndex !== undefined) {
-          targetIndex = nextStopIndex;
-          targetPoint = routePolyline[targetIndex];
-        }
-
-        // CHECK DIRECTION: Is the vehicle heading roughly in the direction of the route segment?
-        // If the vehicle is driving "backwards" effectively (>90 deg offset), we should probably not animate it forward.
-        // We check the bearing of the segment where the *server* says the vehicle is.
-        let isMovingCorrectly = true;
+        // Step 3: Verify the shuttle is moving in the correct direction
+        // Compare the vehicle's GPS heading to the route segment bearing.
+        // If they differ by more than 90°, the shuttle may be going the wrong way.
+        let isMovingCorrectDirection = true;
         if (routePolyline.length > serverIndex + 1 && vehicle.speed_mph > 1) {
-          const p1 = routePolyline[serverIndex];
-          const p2 = routePolyline[serverIndex + 1];
-          const segmentBearing = calculateBearing(p1, p2);
-          const headingDiff = getAngleDifference(segmentBearing, vehicle.heading_degrees);
+          const segmentStart = routePolyline[serverIndex];
+          const segmentEnd = routePolyline[serverIndex + 1];
+          const segmentBearing = calculateBearing(segmentStart, segmentEnd);
+          const headingDifference = getAngleDifference(segmentBearing, vehicle.heading_degrees);
 
-          // If difference is > 90 degrees, it's moving "wrong way" relative to this segment
-          if (headingDiff > 90) {
-            isMovingCorrectly = false;
+          if (headingDifference > 90) {
+            isMovingCorrectDirection = false;
           }
         }
 
-        // 3. How far is that Target Point from our CURRENT VISUAL position?
-        const distToTarget = calculateDistanceAlongPolyline(
+        // Step 4: Calculate distance from current visual position to target
+        const distanceToTarget = calculateDistanceAlongPolyline(
           routePolyline,
           animState.polylineIndex,
           animState.currentPoint,
@@ -597,22 +597,21 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
           targetPoint
         );
 
-        // 4. Calculate the speed needed to cover that distance in 5 seconds
-        // Speed = Dist / Time
-        let smoothSpeedMps = distToTarget / PREDICTION_WINDOW_SECONDS;
+        // Step 5: Calculate the smooth animation speed
+        let smoothSpeedMps = distanceToTarget / PREDICTION_WINDOW_SECONDS;
 
-        // If moving wrong way, don't force it forward.
-        if (!isMovingCorrectly) {
+        // If moving wrong direction, stop the animation to avoid sliding backwards
+        if (!isMovingCorrectDirection) {
           smoothSpeedMps = 0;
-          // Maybe we should just snap?
         }
 
         const smoothSpeedMph = smoothSpeedMps / 0.44704;
 
-        // 5. Update state
-        // We do NOT snap the position. We just update the speed.
-        // Unless the distance is crazy (e.g. > 500m), which means something glitchy happened or route changed.
-        if (distToTarget > 500) {
+        // 5. Update animation state.
+        // If the gap is extremely large (>250m), something is wrong (route change, bad data).
+        // In that case, snap immediately to the server position instead of animating.
+        const MAX_REASONABLE_GAP_METERS = 250;
+        if (distanceToTarget > MAX_REASONABLE_GAP_METERS) {
           snapToPolyline();
         } else {
           vehicleAnimationStates.current[key] = {
