@@ -96,6 +96,15 @@ The UI for this project is built using a React + TypeScript front-end located in
 
 From a developer perspective, this layout makes it easy to locate the code responsible for visual components, page-level logic, and shared UI resources. The separation into components and pages also encourages modularity — most UI changes happen inside `client/src/components` or `client/src/pages`, keeping the rest of the system clean and maintainable
 
+#### Where to Start Editing the UI
+
+If you are new to the UI codebase, a good place to start is:
+
+- `client/src/pages/` — Contains page-level components that represent full views.
+- `client/src/components/` — Contains reusable UI components shared across pages.
+
+For small changes or experiments, modifying an existing component in `components/` is usually the safest place to begin. For larger features or layout changes, start with the relevant page in `pages/`.
+
 ## Key Features Developers Should Know
 
 - **Interactive UI Components**  
