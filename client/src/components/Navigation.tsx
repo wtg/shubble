@@ -1,10 +1,13 @@
 import { Link, Outlet } from "react-router";
 import Feedback from "./Feedback";
-import WarningBanner from "./WarningBanner";
-import AnnouncementBanner from "./AnnouncementBanner";
+import AnnouncementBanner, { Banner } from "./AnnouncementBanner";
 import config from "../ts/config";
 
 export default function Navigation({ GIT_REV }: { GIT_REV: string }) {
+  // Build staging warning message with markdown link
+  const stagingMessage = `This is a staging domain. [Visit our official website](https://shuttles.rpi.edu)${GIT_REV !== 'unknown' ? ` | [${GIT_REV}](https://github.com/wtg/shubble/commit/${GIT_REV})` : ''
+    }`;
+
   return (
     <>
       <header>
@@ -31,7 +34,7 @@ export default function Navigation({ GIT_REV }: { GIT_REV: string }) {
       </header>
 
       <div className="App">
-        {config.isStaging && <WarningBanner bannerText="This is a staging domain. Please visit our official website!" bannerLink="https://shuttles.rpi.edu" gitRev={GIT_REV} />}
+        {config.isStaging && <Banner message={stagingMessage} type="warning" />}
         <AnnouncementBanner />
         <Outlet />
 
