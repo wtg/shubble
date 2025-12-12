@@ -10,7 +10,6 @@ This section provides a simple overview of how to access and interact with the p
 - [Design and Figma Overview](#design-and-figma-overview).
 - [Overview of the UI Layout](#overview-of-the-ui-layout).
 - [Key Features Developers Should Know](#key-features-developers-should-know).
-- [Developer Workflow with the UI](#developer-workflow-with-the-ui)
 - [Troubleshooting Access Issues](#troubleshooting-access-issues)
 
 # UI Overview & Developer 
@@ -114,6 +113,33 @@ From a developer perspective, this layout makes it easy to locate the code respo
 - **Separation of Logic and Presentation**  
   Application logic and data handling are generally separated from visual presentation. This structure allows developers to update functionality or styling independently while keeping the UI maintainable.
 
-## Developer Workflow with the UI
 
 ## Troubleshooting Access Issues
+
+Below are some common issues developers may encounter when accessing or running the UI, along with suggested solutions.
+
+- **UI does not load in the browser**  
+  Ensure the development server is running and that no errors are shown in the terminal. If the server failed to start, try running `npm install` to ensure all dependencies are installed.
+
+- **Command `npm run dev` fails**  
+  Check the error message printed in the terminal. Common causes include missing dependencies, an incompatible Node.js version, or syntax errors in the code. Restarting the terminal and re-running the command can sometimes resolve environment issues.
+
+- **Port already in use**  
+  If the default port is occupied, the development server will automatically select another available port. Use the URL printed in the terminal rather than assuming a specific port number.
+
+- **Changes not appearing in the browser**  
+  Confirm that the development server is still running and that files are being saved. If live reloading stops working, restart the dev server.
+
+- **TypeScript or build errors**  
+  Carefully read TypeScript error messages, as they usually point directly to the issue. These errors often stem from incorrect types, missing imports, or outdated interfaces.
+
+- **Blank page or partial UI rendering**  
+  Open the browser’s developer console to check for runtime errors. Console messages can help identify missing data, failed network requests, or component rendering issues.
+
+If issues persist, try restarting the development server, clearing the browser cache, or reviewing recent code changes that may have introduced errors.
+
+---
+
+Good luck working with the UI, and happy coding!
+
+
