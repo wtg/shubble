@@ -9,6 +9,7 @@ import Schedule from './components/Schedule';
 import About from './pages/About';
 import Data from './pages/Data';
 import MapKitMap from './components/MapKitMap';
+import Tv from './pages/Tv';
 import rawRouteData from './data/routes.json';
 import { useState, useEffect, use } from "react";
 import WarningBanner from './components/WarningBanner';
@@ -47,6 +48,7 @@ function App() {
           {/* without header and footer */}
           <Route>
             <Route path='/map' element={<MapKitMap routeData={routeData} vehicles={null} generateRoutes={false} selectedRoute={selectedRoute} setSelectedRoute={setSelectedRoute} isFullscreen={true} />} />
+            <Route path='/tv' element={<Tv />} />
           </Route>
         </Routes>
       </Router>
