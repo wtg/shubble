@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, send_from_directory, current_app
 from . import db, cache
-from .models import Vehicle, GeofenceEvent, VehicleLocation
+from .models import Vehicle, GeofenceEvent, VehicleLocation, Driver, DriverVehicleAssignment
 from pathlib import Path
 from sqlalchemy import func, and_
 from sqlalchemy.dialects import postgresql
@@ -74,6 +74,17 @@ def get_locations():
         Vehicle, VehicleLocation.vehicle_id == Vehicle.id
     ).all()
 
+    # Get current driver assignments for all vehicles in results
+    vehicle_ids = [loc.vehicle_id for loc, _ in results]
+    current_assignments = {}
+    if vehicle_ids:
+        assignments = DriverVehicleAssignment.query.filter(
+            DriverVehicleAssignment.vehicle_id.in_(vehicle_ids),
+            DriverVehicleAssignment.assignment_end.is_(None)
+        ).all()
+        for assignment in assignments:
+            current_assignments[assignment.vehicle_id] = assignment
+
     # Format response
     response = {}
     for loc, vehicle in results:
@@ -85,6 +96,16 @@ def get_locations():
             route_name = "UNCLEAR"
         else:
             route_name = closest_route_name if closest_distance < 0.050 else None
+
+        # Get current driver info
+        driver_info = None
+        assignment = current_assignments.get(loc.vehicle_id)
+        if assignment and assignment.driver:
+            driver_info = {
+                'id': assignment.driver.id,
+                'name': assignment.driver.name,
+            }
+
         response[loc.vehicle_id] = {
             'name': loc.name,
             'latitude': loc.latitude,
@@ -103,6 +124,7 @@ def get_locations():
             'asset_type': vehicle.asset_type,
             'gateway_model': vehicle.gateway_model,
             'gateway_serial': vehicle.gateway_serial,
+            'driver': driver_info,
         }
 
     return jsonify(response)

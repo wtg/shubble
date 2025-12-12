@@ -280,5 +280,39 @@ def mock_feed():
             }
         })
 
+@app.route('/fleet/driver-vehicle-assignments')
+def mock_driver_assignments():
+    """Mock endpoint for driver-vehicle assignments."""
+    vehicle_ids = request.args.get('vehicleIds', '').split(',')
+    
+    logger.info(f'[MOCK API] Received driver-vehicle assignments request for vehicles {vehicle_ids}')
+    
+    with shuttle_lock:
+        data = []
+        for i, shuttle_id in enumerate(vehicle_ids):
+            if shuttle_id in shuttles:
+                # Generate a mock driver for each active shuttle
+                driver_id = f'driver-{shuttle_id[-3:]}'
+                driver_name = f'Driver {shuttle_id[-3:]}'
+                data.append({
+                    'assignedAtTime': datetime.now().isoformat(timespec='seconds').replace('+00:00', 'Z'),
+                    'driver': {
+                        'id': driver_id,
+                        'name': driver_name,
+                    },
+                    'vehicle': {
+                        'id': shuttle_id,
+                    }
+                })
+        
+        return jsonify({
+            'data': data,
+            'pagination': {
+                'hasNextPage': False,
+                'endCursor': 'fake-token-next'
+            }
+        })
+
 if __name__ == "__main__":
     app.run(debug=True, port=4000)
+
