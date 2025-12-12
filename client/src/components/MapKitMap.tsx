@@ -9,6 +9,17 @@ import type { VehicleInformationMap } from "../ts/types/vehicleLocation";
 import type { Route } from "../ts/types/schedule";
 import { log } from "../ts/logger";
 
+// Helper function to remove consecutive duplicate points from a route
+function removeDuplicateConsecutivePoints(route: [number, number][]): [number, number][] {
+  if (route.length <= 1) return route;
+
+  return route.filter((point, index) => {
+    if (index === 0) return true;
+    const prevPoint = route[index - 1];
+    return point[0] !== prevPoint[0] || point[1] !== prevPoint[1];
+  });
+}
+
 async function generateRoutePolylines(updatedRouteData: ShuttleRouteData) {
   // Use MapKit Directions API to generate polylines for each route segment
   const directions = new mapkit.Directions();
@@ -74,6 +85,13 @@ async function generateRoutePolylines(updatedRouteData: ShuttleRouteData) {
     }
   }
 
+  // Remove consecutive duplicate points from all routes
+  for (const routeInfo of Object.values(updatedRouteData)) {
+    if (routeInfo.ROUTES) {
+      routeInfo.ROUTES = routeInfo.ROUTES.map(removeDuplicateConsecutivePoints);
+    }
+  }
+
   // Trigger download
   function downloadJSON(data: ShuttleRouteData, filename = 'routeData.json') {
     const jsonStr = JSON.stringify(data, null, 2);
@@ -111,7 +129,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
   const token = import.meta.env.VITE_MAPKIT_KEY;
   const [map, setMap] = useState<(mapkit.Map | null)>(null);
   const vehicleOverlays = useRef<Record<string, mapkit.ShuttleAnnotation>>({});
-  
+
 
   const circleWidth = 15;
   const selectedMarkerRef = useRef<mapkit.MarkerAnnotation | null>(null);
@@ -211,8 +229,8 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
       thisMap.addEventListener("deselect", () => {
         // remove any selected stop/marker annotation on when deselected
         if (selectedMarkerRef.current) {
-         thisMap.removeAnnotation(selectedMarkerRef.current);
-         selectedMarkerRef.current = null;
+          thisMap.removeAnnotation(selectedMarkerRef.current);
+          selectedMarkerRef.current = null;
         }
       });
 
@@ -245,8 +263,8 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
             // Check if mouse is within overlay radius
             const region = thisMap.region;
             if (region) {
-              const centerX = mapRect.width * (centerLng - region.center.longitude + region.span.longitudeDelta/2) / region.span.longitudeDelta;
-              const centerY = mapRect.height * (region.center.latitude - centerLat + region.span.latitudeDelta/2) / region.span.latitudeDelta;
+              const centerX = mapRect.width * (centerLng - region.center.longitude + region.span.longitudeDelta / 2) / region.span.longitudeDelta;
+              const centerY = mapRect.height * (region.center.latitude - centerLat + region.span.latitudeDelta / 2) / region.span.latitudeDelta;
 
               const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
               if (distance < circleWidth) { // Within hover radius
@@ -391,7 +409,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
         const routeKey = vehicle.route_name as keyof typeof routeData;
         const info = routeData[routeKey] as { COLOR?: string };
         return info.COLOR ?? "#444444";
-        
+
       })();
 
       // Render ShuttleIcon JSX to a static SVG string
