@@ -225,18 +225,16 @@ def data_today():
     ).order_by(VehicleLocation.timestamp.asc()).all()
 
     locations_today_dict = {}    # returned by the function in JSON format
-    threshold_noise_km = 0.01   # locational noise, threshold in kilometers (~10 meters), determined from \shubble\test-server\server.py: mock_feed()
-    threshold_atStop = 0.05      # at a stop, originally 0.02
-    shuttle_state = {}           # helper, {"vehicle_id" -> "state"}
-    shuttle_prev = {}            # helper, {"vehicle_id" -> [datetime.time_of_day, float.prev_latitude, float.prev_longitude]}
+    threshold_noise_km = 0.01    # threshold/constant: locational noise in kilometers, determined from \shubble\test-server\server.py: mock_feed()
+    threshold_atStop = 0.05      # threshold/constant: at a stop in kilometers, originally = 0.02 
+    shuttle_state = {}           # helper: {"vehicle_id" -> "state"}
+    shuttle_prev = {}            # helper: {"vehicle_id" -> [datetime.time_of_day, float.prev_latitude, float.prev_longitude]}
     for location in locations_today:
         # RELATED DATA:  
         # tuple with the distance to closest point, closest point (latitude, longitude), route name, and polyline index
         _closest_point = Stops.get_closest_point((location.latitude, location.longitude)) 
         # tuple with (route name, stop name) if close enough, else None.
         _at_stop = Stops.is_at_stop((location.latitude, location.longitude), threshold_atStop)[1]
-        if _at_stop is None:
-            _at_stop = "NONE"
         # datetime to string
         _timestamp = location.timestamp.strftime("%H:%M:%S") 
 
@@ -249,7 +247,8 @@ def data_today():
             "distance": _closest_point[0],
             "closest_route": _closest_point[2],
             "closest_polyline": _closest_point[3],
-            "at_stop": ""
+            "at_stop": _at_stop,
+            "status": ""
         }
         # initialization: adding a new vehicle to the dict
         if location.vehicle_id not in locations_today_dict:
@@ -266,7 +265,7 @@ def data_today():
             locations_today_dict[location.vehicle_id]["locations"][_timestamp] = vehicle_location 
 
         # LOOPS/BREAKS:
-        is_at_union = _at_stop[1] == "STUDENT_UNION" and (_closest_point[2] != "WEST" and _closest_point[2] != "NORTH")
+        is_at_union = _at_stop == "STUDENT_UNION" and (_closest_point[2] != "WEST" and _closest_point[2] != "NORTH")
         is_off_route = _closest_point[0] is not None and _closest_point[0] > 0.2
         is_stopped = False
         # determining bool.is_stopped 
@@ -303,9 +302,10 @@ def data_today():
         # update break/loop locations
         if shuttle_state[location.vehicle_id] == "break" or shuttle_state[location.vehicle_id] == "entry":
             locations_today_dict[location.vehicle_id]["breaks"][-1]["locations"].append(_timestamp)
+            locations_today_dict[location.vehicle_id]["locations"][_timestamp]["status"] = "break"
         elif shuttle_state[location.vehicle_id] == "loop":
             locations_today_dict[location.vehicle_id]["loops"][-1]["locations"].append(_timestamp)
-
+            locations_today_dict[location.vehicle_id]["locations"][_timestamp]["status"] = "loop"
             
     return jsonify(locations_today_dict)
 
