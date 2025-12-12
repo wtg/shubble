@@ -60,7 +60,7 @@ Return to the terminal where npm run dev is running and press `Ctrl + C` to term
 The Shubble UI is built using three main technologies: `TypeScript`, `TSX` (React Components), and `CSS`. Each plays a different role in how the front-end behaves, renders, and looks.
 
 - **TypeScript (`.ts`)**  
-  - TypeScript files contain logic that is not directly tied to rendering components -things like utility functions, API calls, data models, type definitions, or shared logic.
+  - TypeScript files contain logic that is not directly tied to rendering components - things like utility functions, API calls, data models, type definitions, or shared logic.
   - These files help enforce type safety, reduce bugs, and make the codebase easier to maintain.
   
 - **TSX (React Components)(`.tsx`)**  
