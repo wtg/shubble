@@ -30,6 +30,7 @@ def serve_react():
     return send_from_directory(root_dir, 'index.html')
 
 @bp.route('/api/locations', methods=['GET'])
+@cache.cached(timeout=300, key_prefix="vehicle_locations")
 def get_locations():
     """
     Returns the latest location for each vehicle currently inside the geofence.
@@ -265,25 +266,25 @@ def data_today():
             locations_today_dict[location.vehicle_id]["locations"][_timestamp] = vehicle_location 
 
         # LOOPS/BREAKS:
-        is_at_union = (_at_stop[1] == "STUDENT_UNION") and (_closest_point[2] != "WEST" and _closest_point[2] != "NORTH")
-        is_off_route = (_closest_point[0] is not None) and (_closest_point[0] > 0.2)
+        is_at_union = _at_stop[1] == "STUDENT_UNION" and (_closest_point[2] != "WEST" and _closest_point[2] != "NORTH")
+        is_off_route = _closest_point[0] is not None and _closest_point[0] > 0.2
         is_stopped = False
         # determining bool.is_stopped 
         if location.vehicle_id not in shuttle_prev:
             shuttle_prev[location.vehicle_id] = [location.timestamp, location.latitude, location.longitude]
         else:
             # to update: technically shouldn't subtract lat and lon
-            if (abs(location.latitude - shuttle_prev[location.vehicle_id][1]) < threshold_noise) and (abs(location.longitude - shuttle_prev[location.vehicle_id][2]) < threshold_noise):
+            if abs(location.latitude - shuttle_prev[location.vehicle_id][1]) < threshold_noise and abs(location.longitude - shuttle_prev[location.vehicle_id][2]) < threshold_noise:
                 if (location.timestamp - shuttle_prev[location.vehicle_id][0]).total_seconds() > 300:
                     is_stopped = True
             else:
                 shuttle_prev[location.vehicle_id] = [location.timestamp, location.latitude, location.longitude]
 
         # initialization: "entry" state
-        if (shuttle_state[location.vehicle_id] == "entry") and is_at_union:
+        if shuttle_state[location.vehicle_id] == "entry" and is_at_union:
             shuttle_state[location.vehicle_id] = "break"
         # check: end break & start loop
-        elif (shuttle_state[location.vehicle_id] == "break") and not (is_at_union or is_off_route or is_stopped):
+        elif shuttle_state[location.vehicle_id] == "break" and not (is_at_union or is_off_route or is_stopped):
             # end break
             shuttle_state[location.vehicle_id] = "loop"
             # start new loop
@@ -291,7 +292,7 @@ def data_today():
                 "locations": []
             })
         # check: end loop & start break
-        elif (shuttle_state[location.vehicle_id] == "loop" and is_at_union):
+        elif shuttle_state[location.vehicle_id] == "loop" and is_at_union:
             # end loop
             shuttle_state[location.vehicle_id] = "break"
             # start new break
@@ -300,9 +301,9 @@ def data_today():
             })
         
         # update break/loop locations
-        if(shuttle_state[location.vehicle_id] == "break" or shuttle_state[location.vehicle_id] == "entry"):
+        if shuttle_state[location.vehicle_id] == "break" or shuttle_state[location.vehicle_id] == "entry":
             locations_today_dict[location.vehicle_id]["breaks"][-1]["locations"].append(_timestamp)
-        elif(shuttle_state[location.vehicle_id] == "loop"):
+        elif shuttle_state[location.vehicle_id] == "loop":
             locations_today_dict[location.vehicle_id]["loops"][-1]["locations"].append(_timestamp)
 
             
