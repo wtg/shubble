@@ -229,6 +229,7 @@ def data_today():
     threshold_atStop = 0.05      # constant-threshold: at a stop in kilometers, originally = 0.02 
     seconds_stopped = 300        # constant: seconds stopped at a stop
     shuttle_prev = {}            # helper: {"vehicle_id" -> [datetime.time_of_day, float.prev_latitude, float.prev_longitude]}
+    shuttle_state = {}           # helper: {"vehicle_id" -> "entry" | "break" | "loop"}
     for location in locations_today:
         # RELATED DATA:  
         # tuple with the distance to closest point, closest point (latitude, longitude), route name, and polyline index
@@ -257,13 +258,17 @@ def data_today():
                 "loops": [],
                 "breaks": [{"locations": [_timestamp]}]
             }
-            # update helpers, start the first break as "entry"
+            # update helpers, start the first state as "entry" (treated as break in output)
             locations_today_dict[location.vehicle_id]["locations"][_timestamp]["status"] = "entry"
             shuttle_prev[location.vehicle_id] = [location.timestamp, location.latitude, location.longitude]
+            shuttle_state[location.vehicle_id] = "entry"
         else:
             locations_today_dict[location.vehicle_id]["locations"][_timestamp] = vehicle_location 
 
         # LOOPS/BREAKS:
+        # Get previous per-vehicle state (default to "entry" if missing)
+        state = shuttle_state.get(location.vehicle_id, "entry")
+
         is_at_union = _at_stop == "STUDENT_UNION" and (_closest_point[2] != "WEST" and _closest_point[2] != "NORTH")
         # status = off route: assuming that the shuttle is leaving campus
         if _closest_point[0] is not None and _closest_point[0] > 0.2:
@@ -275,38 +280,46 @@ def data_today():
             distance_km = haversine((location.latitude, location.longitude),(shuttle_prev[location.vehicle_id][1], shuttle_prev[location.vehicle_id][2]))
             if distance_km < threshold_noise_km:
                 if (location.timestamp - shuttle_prev[location.vehicle_id][0]).total_seconds() > seconds_stopped:
+                    # shuttle has been effectively stopped for a long time; treat as empty/on entry
                     locations_today_dict[location.vehicle_id]["locations"][_timestamp]["status"] = "idle"
+                    state = "entry"
             else:
                 shuttle_prev[location.vehicle_id] = [location.timestamp, location.latitude, location.longitude]
 
-        # placholder, for readability
+        # placeholder for this timestamp's raw status tag
         _status = locations_today_dict[location.vehicle_id]["locations"][_timestamp]["status"]
+        is_idle = _status == "idle"
+        is_off_route = _status == "off_route"
+
         # check: shuttle has entered the union for the first time
         # start break
-        if (_status == "entry" or _status == "idle" or _status == "off_route") and is_at_union:
-            locations_today_dict[location.vehicle_id]["locations"][_timestamp]["status"] = _status = "break"
+        if (state == "entry" or is_idle or is_off_route) and is_at_union:
+            state = "break"
         # check: shuttle is starting to loop WEST or NORTH
         # end break & start loop
-        elif (_status == "break" and not is_at_union) and not (_status == "idle" or _status == "off_route"):
-            locations_today_dict[location.vehicle_id]["locations"][_timestamp]["status"] = _status = "loop"
+        elif state == "break" and not is_at_union and not (is_idle or is_off_route):
+            state = "loop"
             locations_today_dict[location.vehicle_id]["loops"].append({
                 "locations": []
             })
         # check: shuttle is back at the union after looping
         # end loop & start break
-        elif (_status == "loop" and is_at_union):
+        elif state == "loop" and is_at_union:
             # end loop
-            locations_today_dict[location.vehicle_id]["locations"][_timestamp]["status"] = _status = "break"
+            state = "break"
             # start new break
             locations_today_dict[location.vehicle_id]["breaks"].append({
                 "locations": []
             })
-        
+
+        # persist updated state
+        shuttle_state[location.vehicle_id] = state
+
         # update break/loop locations
-        if _status == "break" or _status == "entry" or _status == "idle" or _status == "off_route":
+        if state == "break" or state == "entry":
             locations_today_dict[location.vehicle_id]["breaks"][-1]["locations"].append(_timestamp)
             locations_today_dict[location.vehicle_id]["locations"][_timestamp]["status"] = "break"
-        elif _status == "loop":
+        elif state == "loop":
             locations_today_dict[location.vehicle_id]["loops"][-1]["locations"].append(_timestamp)
             locations_today_dict[location.vehicle_id]["locations"][_timestamp]["status"] = "loop"
             
