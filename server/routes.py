@@ -1,12 +1,12 @@
 from flask import Blueprint, request, jsonify, send_from_directory, current_app
 from numpy import datetime_as_string
-from . import db
+from . import db, cache
 from .models import Vehicle, GeofenceEvent, VehicleLocation
 from pathlib import Path
 from sqlalchemy import func, and_
 from sqlalchemy.dialects import postgresql
 from datetime import datetime, date, timezone
-from data.stops import Stops
+from data.stops import Stops, haversine
 from data.schedules import Schedule
 from hashlib import sha256
 import hmac
@@ -224,11 +224,11 @@ def data_today():
         )
     ).order_by(VehicleLocation.timestamp.asc()).all()
 
-    locations_today_dict = {}  # returned by the function in JSON format
-    threshold_noise = 0.004    # locational noise, threshold of 0.00008 determined from \shubble\test-server\server.py: mock_feed()
-    threshold_atStop = 0.05    # at a stop, originally 0.02
-    shuttle_state = {}         # helper, {"vehicle_id" -> "state"}
-    shuttle_prev = {}          # helper, {"vehicle_id" -> [datetime.time_of_day, float.prev_latitude, float.prev_longitude]}
+    locations_today_dict = {}    # returned by the function in JSON format
+    threshold_noise_km = 0.01   # locational noise, threshold in kilometers (~10 meters), determined from \shubble\test-server\server.py: mock_feed()
+    threshold_atStop = 0.05      # at a stop, originally 0.02
+    shuttle_state = {}           # helper, {"vehicle_id" -> "state"}
+    shuttle_prev = {}            # helper, {"vehicle_id" -> [datetime.time_of_day, float.prev_latitude, float.prev_longitude]}
     for location in locations_today:
         # RELATED DATA:  
         # tuple with the distance to closest point, closest point (latitude, longitude), route name, and polyline index
@@ -273,8 +273,8 @@ def data_today():
         if location.vehicle_id not in shuttle_prev:
             shuttle_prev[location.vehicle_id] = [location.timestamp, location.latitude, location.longitude]
         else:
-            # to update: technically shouldn't subtract lat and lon
-            if abs(location.latitude - shuttle_prev[location.vehicle_id][1]) < threshold_noise and abs(location.longitude - shuttle_prev[location.vehicle_id][2]) < threshold_noise:
+            distance_km = haversine((location.latitude, location.longitude),(shuttle_prev[location.vehicle_id][1], shuttle_prev[location.vehicle_id][2]))
+            if distance_km < threshold_noise_km:
                 if (location.timestamp - shuttle_prev[location.vehicle_id][0]).total_seconds() > 300:
                     is_stopped = True
             else:
