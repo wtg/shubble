@@ -88,7 +88,7 @@ Developers should use the Figma files as a guide when:
 - Ensuring visual consistency across pages
 
 The Figma designs are not always a one-to-one mapping with the code, but they provide a strong baseline for how the UI is intended to look and behave.  
-To learn how to use figma click [HERE](https://www.youtube.com/watch?v=jQ1sfKIl50E). 
+To learn how to use Figma click [HERE](https://www.youtube.com/watch?v=jQ1sfKIl50E). 
 #### Examples of Past Work
 
 <p align="center">
