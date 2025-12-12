@@ -8,7 +8,8 @@ This section provides a simple overview of how to access and interact with the p
 - [How to Access the UI](#how-to-access-the-ui)
 - [Frontend Technology Breakdown](#frontend-technology-breakdown)
 - [Design and Figma Overview](#design-and-figma-overview)
-- [Overview of the UI Layout](#overview-of-the-ui-layout)
+- [Overview of the UI Layout](#overview-of-the-ui-layout
+- [UI Coding Practices/Paradigms](#ui-coding-practes/paradigms)
 - [Key Features Developers Should Know](#key-features-developers-should-know)
 - [Troubleshooting Access Issues](#troubleshooting-access-issues)
 
@@ -90,7 +91,6 @@ The Figma designs are not always a one-to-one mapping with the code, but they pr
 
 
 
-
 ## Overview of the UI Layout
 The UI for this project is built using a React + TypeScript front-end located in the `client/` directory. Inside `client/src/`, the layout is divided into logical folders such as `components/` for reusable UI elements, `pages/` for full page views, `styles/` for global and modular CSS, and `data/` or `types/` for shared utilities and type definitions. The main application entry point (`main.tsx`) mounts the UI, while `App.tsx` defines the top-level structure and routing.
 
@@ -104,6 +104,28 @@ If you are new to the UI codebase, a good place to start is:
 - `client/src/components/` — Contains reusable UI components shared across pages.
 
 For small changes or experiments, modifying an existing component in `components/` is usually the safest place to begin. For larger features or layout changes, start with the relevant page in `pages/`.
+
+## UI Coding Practices/Paradigms 
+
+- **CSS-Based Styling (No Inline Styles)**  
+  Styling is handled exclusively through CSS files rather than inline styles or style objects within components. This separation keeps presentation concerns isolated from logic, improves readability, and makes global style changes easier to manage.
+
+- **React Functional Components**  
+  All UI components are written as React functional components rather than class-based components. This approach aligns with modern React best practices and allows the use of hooks for state management and side effects.
+
+- **Centralized Type Definitions**  
+  Major reusable types—especially those related to domain concepts such as Stops or Schedules—are defined in dedicated type files under `client/src/ts/types`. Centralizing these definitions ensures consistency across the UI and reduces duplication.
+
+- **Component Reusability and Modularity**  
+  UI logic is broken down into small, reusable components whenever possible. Components are designed to do one thing well and be composed together, rather than embedding large amounts of logic in a single file.
+
+- **Clear Separation of Concerns**  
+  Visual presentation, application logic, and data handling are kept as separate as possible. Components focus on rendering and interaction, while shared logic and data structures live in utility or type files.
+
+- **Readable and Explicit Code**  
+  Code is written with clarity in mind, favoring explicit variable names and straightforward logic over overly compact or clever solutions. This makes the UI easier to understand and modify, especially for new contributors.
+
+Following these practices helps ensure that the UI remains consistent, approachable, and scalable as more features and contributors are added.
 
 ## Key Features Developers Should Know
 
@@ -121,7 +143,6 @@ For small changes or experiments, modifying an existing component in `components
 
 - **Separation of Logic and Presentation**  
   Application logic and data handling are generally separated from visual presentation. This structure allows developers to update functionality or styling independently while keeping the UI maintainable.
-
 
 ## Troubleshooting Access Issues
 
