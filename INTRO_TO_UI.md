@@ -78,7 +78,8 @@ Developers should use the Figma files as a guide when:
 - Modifying existing layouts or styles
 - Ensuring visual consistency across pages
 
-The Figma designs are not always a one-to-one mapping with the code, but they provide a strong baseline for how the UI is intended to look and behave.
+The Figma designs are not always a one-to-one mapping with the code, but they provide a strong baseline for how the UI is intended to look and behave.  
+To learn how to use figma click [HERE](https://www.youtube.com/watch?v=jQ1sfKIl50E). 
 #### Examples of Past Work
 
 <p align="center">
@@ -169,6 +170,7 @@ Below are some common issues developers may encounter when accessing or running 
 If issues persist, try restarting the development server, clearing the browser cache, or reviewing recent code changes that may have introduced errors.
 
 ---
+Before making changes, contributors are encouraged to browse existing components and patterns to understand how the UI is structured. Following established conventions helps keep the interface consistent and easier to maintain.
 
 Good luck working with the UI, and happy coding!
 
