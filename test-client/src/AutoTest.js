@@ -94,7 +94,7 @@ export default function Tester(getShuttlesFn) {
         }
 
         // request a state change
-        await makeApiCall(api.setNextState, id, evt.type);
+        await makeApiCall(api.setNextState, id, {state: evt.type, route: evt.route});
         console.log(`shuttle ${id} set next_state to`, evt);
 
         // verify that the event started (assumes that the last event finished and cannot block)
