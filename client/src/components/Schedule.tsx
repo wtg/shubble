@@ -2,8 +2,11 @@ import { useState, useEffect } from 'react';
 import '../styles/Schedule.css';
 import rawRouteData from '../data/routes.json';
 import rawAggregatedSchedule from '../data/aggregated_schedule.json';
-import type { AggregatedDaySchedule, AggregatedScheduleType } from '../ts/types/schedule';
+import type { AggregatedDaySchedule, AggregatedScheduleType} from '../ts/types/schedule';
 import type { ShuttleRouteData, ShuttleStopData } from '../ts/types/route';
+import {buildAllStops, findClosestStop, type Stop, type ClosestStop, } from '../ts/types/ClosestStop';
+
+
 
 const aggregatedSchedule: AggregatedScheduleType = rawAggregatedSchedule as unknown as AggregatedScheduleType;
 
@@ -26,6 +29,15 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
   const [stopNames, setStopNames] = useState<string[]>([]);
   const [schedule, setSchedule] = useState<AggregatedDaySchedule>(aggregatedSchedule[selectedDay]);
 
+  const [allStops, setAllStops] = useState<Stop[]>([]);
+  const [closestStop, setClosestStop] = useState<ClosestStop | null>(null);
+
+  // Whenever selectedDay changes, recompute today's stops
+  useEffect(() => {
+    const stopsToday = buildAllStops(routeData, aggregatedSchedule, selectedDay);
+    setAllStops(stopsToday);
+  }, [selectedDay]);
+  
   // Define safe values to avoid repeated null checks
   const safeSelectedRoute = selectedRoute || routeNames[0];
 
@@ -76,6 +88,27 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
     return date;
   }
 
+// Use user location and get closest stop to them 
+  useEffect(() => {
+    if (!('geolocation' in navigator)) return;
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const userPoint = {
+          lat: pos.coords.latitude,
+          lon: pos.coords.longitude,
+        };
+
+        const closest = findClosestStop(userPoint, allStops);
+        setClosestStop(closest);
+      },
+      (err) => {
+        console.error('Error getting user location', err);
+      }
+    );
+  }, [allStops]);
+
+
   // scroll to the current time on route change
   useEffect(() => {
     const scheduleDiv = document.querySelector('.schedule-scroll');
@@ -103,6 +136,11 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
     <div className="p-4">
       <h2>Schedule</h2>
       <div>
+          {closestStop && (
+          <div className="closest-stop-hint">
+            Closest Stop: <strong>{closestStop.name}</strong>
+          </div>
+         )}
         <label htmlFor='weekday-dropdown'>Weekday:</label>
         <select id='weekday-dropdown' className="schedule-dropdown-style" value={selectedDay} onChange={handleDayChange}>
           {
@@ -116,6 +154,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
       </div>
       <div>
         <label htmlFor='loop-dropdown'>Loop:</label>
+        
         <select id='loop-dropdown' className="schedule-dropdown-style" value={safeSelectedRoute} onChange={(e) => setSelectedRoute(e.target.value)}>
           {
             routeNames.map((route, index) =>
@@ -156,9 +195,11 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
                 })
               );
             })()}
+            
           </tbody>
         </table>
       </div>
+
     </div>
   );
 }

@@ -31,3 +31,19 @@ export type AggregatedScheduleType = [
   AggregatedDaySchedule, // FRIDAY
   AggregatedDaySchedule, // SATURDAY
 ]
+
+// a simple point
+export interface Point {
+  lat: number;
+  lon: number;
+}
+
+// A stop in stops array
+export interface Stop {
+  id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  route: string;
+}
+
