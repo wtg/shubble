@@ -1,0 +1,54 @@
+.announcement-banner {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 12px 20px;
+  box-sizing: border-box;
+  text-align: center;
+  font-weight: 500;
+  font-size: 15px;
+  margin: 0;
+  gap: 8px;
+}
+
+.announcement-banner.info {
+  background-color: #184b7f;
+  color: #ffffff;
+}
+
+.announcement-banner.warning {
+  background-color: #b8860b;
+  color: #ffffff;
+}
+
+.announcement-banner.error {
+  background-color: #c41e3a;
+  color: #ffffff;
+}
+
+.announcement-banner a {
+  color: #ffffff;
+  text-decoration: underline;
+}
+
+.announcement-banner p {
+  margin: 0;
+}
+
+.announcement-banner .reload-btn {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  color: #ffffff;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 0.2s ease;
+}
+
+.announcement-banner .reload-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
