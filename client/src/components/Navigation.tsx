@@ -1,6 +1,7 @@
 import { Link, Outlet } from "react-router";
 import Feedback from "./Feedback";
 import WarningBanner from "./WarningBanner";
+import AnnouncementBanner from "./AnnouncementBanner";
 import config from "../ts/config";
 
 export default function Navigation({ GIT_REV }: { GIT_REV: string }) {
@@ -31,6 +32,7 @@ export default function Navigation({ GIT_REV }: { GIT_REV: string }) {
 
       <div className="App">
         {config.isStaging && <WarningBanner bannerText="This is a staging domain. Please visit our official website!" bannerLink="https://shuttles.rpi.edu" gitRev={GIT_REV} />}
+        <AnnouncementBanner />
         <Outlet />
 
         <div className="small feedback-container">
