@@ -10,10 +10,10 @@ import About from './pages/About';
 import Data from './pages/Data';
 import MapKitMap from './components/MapKitMap';
 import rawRouteData from './data/routes.json';
-import { useState, useEffect, use } from "react";
-import WarningBanner from './components/WarningBanner';
+import { useState, useEffect } from "react";
 import type { ShuttleRouteData } from './ts/types/route';
 import Navigation from './components/Navigation';
+import ErrorBoundary from './components/ErrorBoundary';
 import config from "./ts/config";
 
 function App() {
@@ -40,7 +40,7 @@ function App() {
   }, []);
 
   return (
-    <>
+    <ErrorBoundary>
       <Router>
         <Routes>
           {/* with header and footer */}
@@ -58,7 +58,7 @@ function App() {
           </Route>
         </Routes>
       </Router>
-    </>
+    </ErrorBoundary>
   );
 }
 
