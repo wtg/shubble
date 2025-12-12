@@ -5,6 +5,7 @@ This section provides a simple overview of how to access and interact with the p
 ## Summary
 
 - [Purpose of the UI](#purpose-of-the-ui)
+- [How the UI Fits Into Shubble](#how-the-ui-fits-into-shubble)
 - [How to Access the UI](#how-to-access-the-ui)
 - [Frontend Technology Breakdown](#frontend-technology-breakdown)
 - [Design and Figma Overview](#design-and-figma-overview)
@@ -18,6 +19,14 @@ This section provides a simple overview of how to access and interact with the p
 ## Purpose of the UI
 
 The purpose of the UI is to provide a clear, user-friendly way to interact with the project’s main features while also presenting them in a clean and visually appealing layout. It helps developers test functionality, understand how users will experience the system, and ensure that both the interface and the underlying logic work together smoothly.
+
+## How the UI Fits Into Shubble
+
+In Shubble, the UI provides a visual and interactive way to view shuttle routes, stops, and system state. It serves as the main point of interaction for understanding how shuttle data is presented to users.
+
+As an example, the UI displays routes and stops on a map, with shuttles shown as moving markers that update over time. Routes are visually distinguished using color, and simple controls such as tabs allow users to switch between routes (e.g., North and West) without reloading the page.
+
+For developers, this makes the UI a quick and intuitive way to test, debug, and validate how changes affect the overall system.
 
 ## How to Access the UI
 Verify that all [setup instructions](CONTRIBUTING.md) have been completed first.
