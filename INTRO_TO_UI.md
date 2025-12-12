@@ -135,6 +135,10 @@ For small changes or experiments, modifying an existing component in `components
 - **Readable and Explicit Code**  
   Code is written with clarity in mind, favoring explicit variable names and straightforward logic over overly compact or clever solutions. This makes the UI easier to understand and modify, especially for new contributors.
 
+- **Responsiveness and Screen Sizes**  
+  When making UI changes, developers should verify that the interface remains usable and visually consistent across different screen widths and window sizes. Components should adapt gracefully to resizing and avoid layouts that break on smaller or larger screens.
+
+
 Following these practices helps ensure that the UI remains consistent, approachable, and scalable as more features and contributors are added.
 
 ## Key Features Developers Should Know
