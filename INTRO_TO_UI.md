@@ -9,7 +9,7 @@ This section provides a simple overview of how to access and interact with the p
 - [How to Access the UI](#how-to-access-the-ui)
 - [Frontend Technology Breakdown](#frontend-technology-breakdown)
 - [Design and Figma Overview](#design-and-figma-overview)
-- [Overview of the UI Layout](#overview-of-the-ui-layout
+- [Overview of the UI Layout](#overview-of-the-ui-layout)
 - [UI Coding Practices/Paradigms](#ui-coding-practices/paradigms)
 - [Key Features Developers Should Know](#key-features-developers-should-know)
 - [Troubleshooting Access Issues](#troubleshooting-access-issues)
