@@ -95,7 +95,7 @@ def get_locations():
         if closest_distance is None:
             route_name = "UNCLEAR"
         else:
-            route_name = closest_route_name if closest_distance < 0.020 else None
+            route_name = closest_route_name if closest_distance < 0.050 else None
 
         # Get current driver info
         driver_info = None
