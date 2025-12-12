@@ -4,13 +4,14 @@
   align-items: center;
   justify-content: center;
   width: 100%;
-  padding: 12px 20px;
+  padding: 14px 24px;
   box-sizing: border-box;
   text-align: center;
-  font-weight: 500;
-  font-size: 15px;
+  font-weight: 600;
+  font-size: 17px;
+  letter-spacing: 0.2px;
   margin: 0;
-  gap: 8px;
+  gap: 10px;
 }
 
 .announcement-banner.info {
