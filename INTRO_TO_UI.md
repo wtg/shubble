@@ -4,15 +4,15 @@ This section provides a simple overview of how to access and interact with the p
 
 ## Summary
 
-- [Purpose of the UI](#purpose-of-the-ui).
-- [How to Access the UI](#how-to-access-the-ui).
-- [Frontend Technology Breakdown](#frontend-technology-breakdown).
-- [Design and Figma Overview](#design-and-figma-overview).
-- [Overview of the UI Layout](#overview-of-the-ui-layout).
-- [Key Features Developers Should Know](#key-features-developers-should-know).
+- [Purpose of the UI](#purpose-of-the-ui)
+- [How to Access the UI](#how-to-access-the-ui)
+- [Frontend Technology Breakdown](#frontend-technology-breakdown)
+- [Design and Figma Overview](#design-and-figma-overview)
+- [Overview of the UI Layout](#overview-of-the-ui-layout)
+- [Key Features Developers Should Know](#key-features-developers-should-know)
 - [Troubleshooting Access Issues](#troubleshooting-access-issues)
 
-# UI Overview & Developer 
+# UI Overview & Developer Guide
 
 ## Purpose of the UI
 
@@ -23,7 +23,7 @@ Verify that all [setup instructions](CONTRIBUTING.md) have been completed first.
 
 To view the UI while you're developing, you’ll start the frontend's development server. Use the following steps below: 
 #### 1. Run the command in your terminal:
-  In the project’s root folder (the main `shubble` foler) run: 
+  In the project’s root folder (the main `shubble` folder) run: 
   ```bash
   npm run dev
   ```
@@ -61,7 +61,7 @@ The Shubble UI is built using three main technologies: `TypeScript`, `TSX` (Reac
   - CSS files control styling — layout, colors, spacing, fonts, animations, and responsiveness.
   - They ensure the UI is visually clear, consistent, and user-friendly.
 
-### Helping Learning Resources 
+### Helpful Learning Resources 
 If you're new to the technologies used in this UI, here are a few resources that will help you understand how the interface is structured and how the components work together:
 
 - https://www.dhiwise.com/post/typescript-essentials-navigating-the-ts-vs-tsx-divide
@@ -94,7 +94,7 @@ The Figma designs are not always a one-to-one mapping with the code, but they pr
 ## Overview of the UI Layout
 The UI for this project is built using a React + TypeScript front-end located in the `client/` directory. Inside `client/src/`, the layout is divided into logical folders such as `components/` for reusable UI elements, `pages/` for full page views, `styles/` for global and modular CSS, and `data/` or `types/` for shared utilities and type definitions. The main application entry point (`main.tsx`) mounts the UI, while `App.tsx` defines the top-level structure and routing.
 
-From a developer perspective, this layout makes it easy to locate the code responsible for visual components, page-level logic, and shared UI resources. The separation into components and pages also encourages modularity — most UI changes happen inside `client/src/components` or `client/src/pages`, keeping the rest of the system clean and maintainable
+From a developer perspective, this layout makes it easy to locate the code responsible for visual components, page-level logic, and shared UI resources. The separation into components and pages also encourages modularity — most UI changes happen inside `client/src/components` or `client/src/pages`, keeping the rest of the system clean and maintainable.
 
 #### Where to Start Editing the UI
 
