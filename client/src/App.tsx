@@ -28,6 +28,14 @@ function App() {
       meta.name = 'robots';
       meta.content = 'noindex, nofollow';
       document.getElementsByTagName('head')[0].appendChild(meta);
+    } else {
+      // add in Unami analytics script
+      const script = document.createElement("script");
+      script.src = "https://cloud.umami.is/script.js";
+      script.dataset.websiteId = "d3082520-e157-498d-b9b3-67f83f4b8847";
+      script.defer = true;
+
+      document.head.appendChild(script);
     }
   }, []);
 

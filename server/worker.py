@@ -1,12 +1,12 @@
 from . import create_app, db, cache, Config
 from .time_utils import get_campus_start_of_day
-from .models import VehicleLocation, GeofenceEvent
+from .models import VehicleLocation, GeofenceEvent, Driver, DriverVehicleAssignment
 from sqlalchemy import func, and_
 import time
 import requests
 import os
 import logging
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from data.schedules import Schedule
 import math
 
@@ -156,13 +156,134 @@ def update_locations(app):
 
     return
 
+
+def update_driver_assignments(app, vehicle_ids):
+    """
+    Fetches and updates driver-vehicle assignments for vehicles currently in the geofence.
+    Creates/updates driver records and tracks assignment changes.
+    """
+    if not vehicle_ids:
+        logger.info('No vehicles to fetch driver assignments for')
+        return
+
+    headers = {'Accept': 'application/json'}
+    # Determine API URL based on environment
+    if app.config['ENV'] == 'development':
+        url = 'http://localhost:4000/fleet/driver-vehicle-assignments'
+    else:
+        api_key = os.environ.get('API_KEY')
+        if not api_key:
+            logger.error('API_KEY not set for driver assignments')
+            return
+        headers['Authorization'] = f'Bearer {api_key}'
+        url = 'https://api.samsara.com/fleet/driver-vehicle-assignments'
+
+    url_params = {
+        'filterBy': 'vehicles',
+        'vehicleIds': ','.join(vehicle_ids),
+    }
+
+    try:
+        has_next_page = True
+        after_token = None
+        assignments_updated = 0
+
+        while has_next_page:
+            if after_token:
+                url_params['after'] = after_token
+            has_next_page = False
+
+            response = requests.get(url, headers=headers, params=url_params)
+            if response.status_code != 200:
+                logger.error(f'Driver assignments API error: {response.status_code} {response.text}')
+                return
+
+            data = response.json()
+            logger.info(f'Driver assignments API response: {len(data.get("data", []))} assignments returned')
+            pagination = data.get('pagination', {})
+            if pagination.get('hasNextPage'):
+                has_next_page = True
+            after_token = pagination.get('endCursor', after_token)
+
+            now = datetime.now(timezone.utc)
+
+            for assignment in data.get('data', []):
+                driver_data = assignment.get('driver')
+                vehicle_data = assignment.get('vehicle')
+
+                if not driver_data or not vehicle_data:
+                    continue
+
+                driver_id = driver_data.get('id')
+                driver_name = driver_data.get('name')
+                vehicle_id = vehicle_data.get('id')
+                assigned_at_str = assignment.get('assignedAtTime')
+
+                if not driver_id or not vehicle_id:
+                    continue
+
+                # Parse assignment time
+                if assigned_at_str:
+                    assigned_at = datetime.fromisoformat(assigned_at_str.replace("Z", "+00:00"))
+                else:
+                    assigned_at = now
+
+                # Create or update driver
+                driver = db.session.get(Driver, driver_id)
+                if not driver:
+                    driver = Driver(id=driver_id, name=driver_name)
+                    db.session.add(driver)
+                    logger.info(f'Created new driver: {driver_name} ({driver_id})')
+                elif driver.name != driver_name:
+                    driver.name = driver_name
+
+                # Check if there's an existing open assignment for this vehicle
+                existing = DriverVehicleAssignment.query.filter_by(
+                    vehicle_id=vehicle_id,
+                    assignment_end=None
+                ).first()
+
+                if existing:
+                    # If same driver, no change needed
+                    if existing.driver_id == driver_id:
+                        continue
+                    # Different driver - close the old assignment
+                    existing.assignment_end = now
+                    logger.info(f'Closed assignment for driver {existing.driver_id} on vehicle {vehicle_id}')
+
+                # Create new assignment
+                new_assignment = DriverVehicleAssignment(
+                    driver_id=driver_id,
+                    vehicle_id=vehicle_id,
+                    assignment_start=assigned_at,
+                )
+                db.session.add(new_assignment)
+                assignments_updated += 1
+
+            if assignments_updated > 0:
+                db.session.commit()
+                logger.info(f'Updated {assignments_updated} driver assignments')
+            else:
+                logger.info('No driver assignment changes detected')
+
+    except requests.RequestException as e:
+        logger.error(f'Failed to fetch driver assignments: {e}')
+
+
 def run_worker():
     logger.info('Worker started...')
 
     while True:
         try:
             with app.app_context():
+                # Get current vehicles in geofence before updating
+                current_vehicle_ids = get_vehicles_in_geofence()
+
                 update_locations(app)
+
+                # Update driver assignments for vehicles in geofence
+                if current_vehicle_ids:
+                    update_driver_assignments(app, current_vehicle_ids)
 
                 # Recompute matched schedules if data has changed
                 if cache.get("schedule_entries") is None:

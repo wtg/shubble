@@ -64,3 +64,31 @@ class VehicleLocation(db.Model):
 
     def __repr__(self):
         return f"<ShuttleLocation {self.vehicle_id} @ {self.timestamp}>"
+
+
+class Driver(db.Model):
+    __tablename__ = 'drivers'
+
+    id = db.Column(db.String, primary_key=True)  # Samsara driver ID
+    name = db.Column(db.String, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<Driver {self.id} - {self.name}>"
+
+
+class DriverVehicleAssignment(db.Model):
+    __tablename__ = 'driver_vehicle_assignments'
+
+    id = db.Column(db.Integer, primary_key=True)
+    driver_id = db.Column(db.String, db.ForeignKey('drivers.id'), nullable=False, index=True)
+    vehicle_id = db.Column(db.String, db.ForeignKey('vehicles.id'), nullable=False, index=True)
+    assignment_start = db.Column(db.DateTime, nullable=False)
+    assignment_end = db.Column(db.DateTime, nullable=True)  # null = currently assigned
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    driver = db.relationship('Driver', backref='assignments', lazy=True)
+    vehicle = db.relationship('Vehicle', backref='driver_assignments', lazy=True)
+
+    def __repr__(self):
+        return f"<DriverVehicleAssignment {self.driver_id} -> {self.vehicle_id}>"

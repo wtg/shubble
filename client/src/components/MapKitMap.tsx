@@ -1,13 +1,19 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import '../styles/MapKitMap.css';
 import ShuttleIcon from "./ShuttleIcon";
 
 import type { ShuttleRouteData, ShuttleStopData } from "../ts/types/route";
-import '../styles/MapKitMap.css';
 import type { VehicleInformationMap } from "../ts/types/vehicleLocation";
-import type { Route } from "../ts/types/schedule";
-import { log } from "../ts/logger";
+
+import {
+  type Coordinate,
+  findNearestPointOnPolyline,
+  moveAlongPolyline,
+  calculateDistanceAlongPolyline,
+  calculateBearing,
+  getAngleDifference
+} from "../ts/mapUtils";
 
 // Helper function to remove consecutive duplicate points from a route
 function removeDuplicateConsecutivePoints(route: [number, number][]): [number, number][] {
@@ -128,7 +134,17 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
   const [mapLoaded, setMapLoaded] = useState(false);
   const token = import.meta.env.VITE_MAPKIT_KEY;
   const [map, setMap] = useState<(mapkit.Map | null)>(null);
+
   const vehicleOverlays = useRef<Record<string, mapkit.ShuttleAnnotation>>({});
+  const vehicleAnimationStates = useRef<Record<string, {
+    lastUpdateTime: number; // local time when we received the server update
+    polylineIndex: number;
+    currentPoint: Coordinate;
+    targetDistance: number; // total distance to travel in this prediction window (meters)
+    distanceTraveled: number; // distance already traveled in this window (meters)
+    lastServerTime: number;
+  }>>({});
+  const animationFrameId = useRef<number | null>(null);
 
 
   const circleWidth = 15;
@@ -391,6 +407,26 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
   }, [map, routeData]);
 
+  // Memoize flattened routes to avoid recalculating on every render
+  const flattenedRoutes = useMemo(() => {
+    if (!routeData) return {};
+    const flattened: Record<string, Coordinate[]> = {};
+
+    for (const [routeKey, data] of Object.entries(routeData)) {
+      if (data.ROUTES) {
+        // Flatten all route segments into one continuous polyline
+        const points: Coordinate[] = [];
+        data.ROUTES.forEach(segment => {
+          segment.forEach(pt => {
+            points.push({ latitude: pt[0], longitude: pt[1] });
+          });
+        });
+        flattened[routeKey] = points;
+      }
+    }
+    return flattened;
+  }, [routeData]);
+
   // display vehicles on map
   useEffect(() => {
     if (!map || !vehicles) return;
@@ -419,7 +455,10 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
       // --- Update or create annotation ---
       if (existingAnnotation) {
         // existing vehicle — update position and subtitle
-        existingAnnotation.coordinate = coordinate;
+        // Only update coordinate directly if we don't have an animation state (to avoid flicker)
+        if (!vehicleAnimationStates.current[key]) {
+          existingAnnotation.coordinate = coordinate;
+        }
         existingAnnotation.subtitle = `${vehicle.speed_mph.toFixed(1)} mph`;
 
         // Handle route status updates
@@ -458,6 +497,131 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
       }
     });
 
+    // --- Update Animation State for new/updated vehicles ---
+    const now = Date.now();
+    Object.keys(vehicles).forEach((key) => {
+      const vehicle = vehicles[key];
+      // If we don't have a route for this vehicle, we can't animate along a path nicely. 
+      // We'll just rely on the API updates or maybe simple linear extrapolation later?
+      // For now, let's only set up animation if we have a valid route.
+      if (!vehicle.route_name || !flattenedRoutes[vehicle.route_name]) return;
+
+      const routePolyline = flattenedRoutes[vehicle.route_name];
+      const vehicleCoord = { latitude: vehicle.latitude, longitude: vehicle.longitude };
+
+      const serverTime = new Date(vehicle.timestamp).getTime();
+
+      // Check if we already have state
+      let animState = vehicleAnimationStates.current[key];
+
+      // If the server data hasn't changed (cached response), ignore this update
+      // and let the client-side prediction continue running.
+      if (animState && animState.lastServerTime === serverTime) {
+        return;
+      }
+
+      const snapToPolyline = () => {
+        const { index, point } = findNearestPointOnPolyline(vehicleCoord, routePolyline);
+        vehicleAnimationStates.current[key] = {
+          lastUpdateTime: now,
+          polylineIndex: index,
+          currentPoint: point,
+          targetDistance: 0,
+          distanceTraveled: 0,
+          lastServerTime: serverTime
+        };
+      };
+
+      if (!animState) {
+        snapToPolyline();
+      } else {
+        // =======================================================================
+        // PREDICTION SMOOTHING ALGORITHM
+        // =======================================================================
+        // Problem: Server updates arrive every ~5 seconds, causing the shuttle
+        // to "jump" to its new position (rubberbanding).
+        //
+        // Solution: Instead of jumping, we calculate the speed needed for the
+        // shuttle to smoothly travel from its current visual position to where
+        // it *should* be when the next update arrives.
+        //
+        // Formula: speed = distance / time
+        // Where:
+        //   - distance = gap between current visual position and predicted target
+        //   - time = 5 seconds (the update interval)
+        // =======================================================================
+
+        const PREDICTION_WINDOW_SECONDS = 5;
+
+        // Step 1: Find where the server says the shuttle is right now
+        const { index: serverIndex, point: serverPoint } = findNearestPointOnPolyline(vehicleCoord, routePolyline);
+
+        // Step 2: Calculate where the shuttle will be in 5 seconds
+        // Convert speed from mph to meters/second (1 mph = 0.44704 m/s)
+        const speedMetersPerSecond = vehicle.speed_mph * 0.44704;
+        const projectedDistanceMeters = speedMetersPerSecond * PREDICTION_WINDOW_SECONDS;
+
+        // Move along the route polyline by that distance to find the target point
+        const { index: targetIndex, point: targetPoint } = moveAlongPolyline(
+          routePolyline,
+          serverIndex,
+          serverPoint,
+          projectedDistanceMeters
+        );
+
+        // Step 3: Verify the shuttle is moving in the correct direction
+        // Compare the vehicle's GPS heading to the route segment bearing.
+        // If they differ by more than 90°, the shuttle may be going the wrong way.
+        let isMovingCorrectDirection = true;
+        if (routePolyline.length > serverIndex + 1 && vehicle.speed_mph > 1) {
+          const segmentStart = routePolyline[serverIndex];
+          const segmentEnd = routePolyline[serverIndex + 1];
+          const segmentBearing = calculateBearing(segmentStart, segmentEnd);
+          const headingDifference = getAngleDifference(segmentBearing, vehicle.heading_degrees);
+
+          if (headingDifference > 90) {
+            isMovingCorrectDirection = false;
+          }
+        }
+
+        // Step 4: Calculate distance from current visual position to target
+        const distanceToTarget = calculateDistanceAlongPolyline(
+          routePolyline,
+          animState.polylineIndex,
+          animState.currentPoint,
+          targetIndex,
+          targetPoint
+        );
+
+        // Step 5: Calculate the total distance to travel with easing
+        let targetDistanceMeters = distanceToTarget;
+
+        // If moving wrong direction, stop the animation
+        if (!isMovingCorrectDirection) {
+          targetDistanceMeters = 0;
+        }
+
+        // Step 6: Update animation state.
+        // If the gap is extremely large (>250m in either direction), snap to server position.
+        // For smaller backward gaps, animate smoothly backward to correct the overprediction.
+        const MAX_REASONABLE_GAP_METERS = 250;
+        if (Math.abs(distanceToTarget) > MAX_REASONABLE_GAP_METERS) {
+          snapToPolyline();
+        } else {
+          // Allow negative targetDistance for smooth backward animation
+          // Reset the animation progress - we're starting a new prediction window
+          vehicleAnimationStates.current[key] = {
+            lastUpdateTime: now,
+            polylineIndex: animState.polylineIndex,
+            currentPoint: animState.currentPoint,
+            targetDistance: targetDistanceMeters,
+            distanceTraveled: 0,
+            lastServerTime: serverTime
+          };
+        }
+      }
+    });
+
     // --- Remove stale vehicles ---
     const currentVehicleKeys = new Set(Object.keys(vehicles));
     Object.keys(vehicleOverlays.current).forEach((key) => {
@@ -467,6 +631,86 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
       }
     });
   }, [map, vehicles, routeData]);
+
+
+  // --- Animation Loop ---
+  useEffect(() => {
+    // We use setTimeout/setInterval or requestAnimationFrame. The user "Considered" setTimeout.
+    // We will use requestAnimationFrame for smoothness, but structure it to calculate delta
+    // similar to how one might with setTimeout.
+
+    let lastFrameTime = Date.now();
+
+    const animate = () => {
+      const now = Date.now();
+      const dt = now - lastFrameTime; // ms
+      lastFrameTime = now;
+
+      // Avoid huge jumps if tab was backgrounded
+      if (dt > 1000) {
+        animationFrameId.current = requestAnimationFrame(animate);
+        return;
+      }
+
+      Object.keys(vehicleAnimationStates.current).forEach(key => {
+        const animState = vehicleAnimationStates.current[key];
+        const vehicle = vehicles?.[key];
+        const annotation = vehicleOverlays.current[key];
+
+        if (!vehicle || !annotation || !animState) return;
+        if (!vehicle.route_name || !flattenedRoutes[vehicle.route_name]) return;
+
+        const routePolyline = flattenedRoutes[vehicle.route_name];
+
+        // =======================================================================
+        // EASED ANIMATION
+        // =======================================================================
+        // Instead of constant speed, we use an ease-in-out curve.
+        // This makes the shuttle accelerate at the start and decelerate at the end
+        // of each prediction window, creating smoother, more natural motion.
+        // =======================================================================
+
+        const PREDICTION_WINDOW_MS = 5000;
+        const timeElapsed = now - animState.lastUpdateTime;
+
+        // Calculate progress through the prediction window (0.0 to 1.0)
+        const progress = Math.min(timeElapsed / PREDICTION_WINDOW_MS, 1.0);
+
+        // Calculate how far along the target distance we should be (linear interpolation)
+        const targetPosition = animState.targetDistance * progress;
+
+        // Calculate how much to move this frame (can be negative for backward movement)
+        const distanceToMove = targetPosition - animState.distanceTraveled;
+
+        // Skip if no movement needed
+        if (distanceToMove === 0) return;
+
+        // Move along polyline
+        const { index, point } = moveAlongPolyline(
+          routePolyline,
+          animState.polylineIndex,
+          animState.currentPoint,
+          distanceToMove
+        );
+
+        // Update state
+        animState.polylineIndex = index;
+        animState.currentPoint = point;
+        animState.distanceTraveled = targetPosition;
+
+        // Update MapKit annotation
+        annotation.coordinate = new mapkit.Coordinate(point.latitude, point.longitude);
+      });
+
+      animationFrameId.current = requestAnimationFrame(animate);
+    };
+
+    animationFrameId.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
+    };
+  }, [vehicles]); // Restart loop if vehicles change? Not strictly necessary if refs are used, but ensures we have latest `vehicles` closure if needed. Actually with refs we don't need to dependency on vehicles often if we read from ref, but here we read `vehicles` prop.
 
 
 
