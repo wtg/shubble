@@ -659,6 +659,7 @@
       "CHASAN",
       "FEDERAL_6TH",
       "WEST_HALL",
+      "E_COMPLEX",
       "STUDENT_UNION_RETURN"
     ],
     "POLYLINE_STOPS": [
@@ -672,6 +673,7 @@
       "GHOST_STOP_2",
       "FEDERAL_6TH",
       "WEST_HALL",
+      "E_COMPLEX",
       "STUDENT_UNION_RETURN"
     ],
     "STUDENT_UNION": {
@@ -753,6 +755,14 @@
       ],
       "OFFSET": 15,
       "NAME": "West Hall"
+    },
+    "E_COMPLEX": {
+      "COORDINATES": [
+        42.731060,
+        -73.679268
+      ],
+      "OFFSET": 16,
+      "NAME": "E-Complex"
     },
     "STUDENT_UNION_RETURN": {
       "COORDINATES": [
