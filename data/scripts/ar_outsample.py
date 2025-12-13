@@ -292,6 +292,7 @@ if __name__ == "__main__" or True:
     )
     Xte_best, yte_best = lag_test_only[p_use]
 
+    
     # ----- per-window mini-sequence plots: p context points, then target (actual vs predicted)
 # uses the same best (delta, p, lambda) you selected above
     # one figure per window
@@ -426,4 +427,3 @@ if __name__ == "__main__" or True:
 
     else:
         print("\nBest config produced no test windows to display.")
-
