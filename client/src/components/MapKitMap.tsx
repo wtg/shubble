@@ -118,12 +118,10 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
   const overlays: mapkit.Overlay[] = [];
 
   const shouldHideStop = (stopData: ShuttleStopData) => {
-  // Only apply to the specific stop
   if (stopData.NAME.toUpperCase() !== "CHASAN BUILDING") {
     return false;
   }
 
-  const now = new Date();
   const day = now.getDay(); // 0 = Sun, 6 = Sat
   const isWeekend = day === 0 || day === 6;
 
@@ -132,7 +130,16 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
     (now.getHours() === 17 && now.getMinutes() >= 30);
 
   return isWeekend || after530;
-};
+  };
+
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setNow(new Date());
+    }, 30_000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   // source: https://developer.apple.com/documentation/mapkitjs/loading-the-latest-version-of-mapkit-js
   const setupMapKitJs = async () => {
@@ -396,7 +403,7 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
     if (map && overlays.length > 0) { map.removeOverlays(overlays); } 
     };
 
-  }, [map, routeData]);
+  }, [map, routeData, now]);
 
   // display vehicles on map
   useEffect(() => {
