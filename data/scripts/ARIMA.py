@@ -717,3 +717,151 @@ if __name__ == "__main__" or True:
               f"median={np.median(lengths):.1f}")
     
     
+
+    sigma_mps, sigma_mph = estimate_speed_noise_from_smoothing(
+        seg_series,
+        window=4,  # 10 samples * 5s = 50s smoothing if delta=5
+    )
+    print(f"\n[NOISE] Estimated σ ≈ {sigma_mps:.3f} m/s ≈ {sigma_mph:.3f} mph")
+    
+    # ---------- AR (ridge) pipeline ----------
+    res_df_ar, models_ar, debug_pairs = evaluate_ar_pipeline(
+        df_raw,
+        VEHICLE_COL,
+        MAX_GAP_INCLUDE_S,
+        RESAMPLE,
+        DELTAS,
+        ORDERS,
+        LAMBDAS,
+        DEMEAN_PER_SEGMENT,
+        INCLUDE_DT_LAGS,
+    )
+
+    res_df_ar.to_csv(OUT_PATH_AR, index=False)
+    print(f"\n[AR] Saved sweep to: {OUT_PATH_AR}")
+
+    if not res_df_ar.empty:
+        leaderboard = res_df_ar.sort_values("RMSE").head(20)
+        print("\n[AR] Top 20 (lowest RMSE):")
+        cols = ["mode", "delta_s", "order_p", "lambda", "n_rows", "MSE", "RMSE"]
+        print(leaderboard[cols].to_string(index=False))
+    else:
+        print("[AR] No rows produced (check input columns and parameters).")
+
+    # Debug plots for a few segments (same as your original)
+    if RESAMPLE and debug_pairs:
+        show_n = min(3, len(debug_pairs))
+        for i in range(show_n):
+            dp = debug_pairs[i]
+            df_raw_seg = pd.DataFrame(
+                {"t_raw": dp["t_raw"], "speed_raw": dp["speed_raw"]}
+            )
+            df_grid_seg = pd.DataFrame(
+                {"T_grid": dp["t_grid"], "speed_grid": dp["speed_grid"]}
+            )
+            print(f"\nSegment {i+1} (delta={dp['delta']}) raw head:")
+            print(df_raw_seg.head().to_string(index=False))
+            print(f"\nSegment {i+1} (delta={dp['delta']}) resampled head:")
+            print(df_grid_seg.head().to_string(index=False))
+
+            plt.figure()
+            plt.plot(
+                dp["t_raw"],
+                dp["speed_raw"],
+                marker="o",
+                linestyle="",
+                label="raw (t, speed)",
+            )
+            plt.plot(
+                dp["t_grid"],
+                dp["speed_grid"],
+                marker="x",
+                label="resampled (T, speed)",
+            )
+            plt.xlabel("time (s)")
+            plt.ylabel("speed (m/s)")
+            plt.title(f"Segment {i+1} resampling overlay (Δ={dp['delta']})")
+            plt.legend()
+            plt.tight_layout()
+            plt.show()
+
+    # Residual diagnostics for best AR config
+    if not res_df_ar.empty:
+        best_ar = res_df_ar.sort_values("RMSE").iloc[0]
+        key_ar = (
+            (float(best_ar["delta_s"]) if pd.notna(best_ar["delta_s"]) else None),
+            int(best_ar["order_p"]),
+            float(best_ar["lambda"]),
+        )
+        if key_ar in models_ar and models_ar[key_ar]["n_rows"] > 0:
+            eps = models_ar[key_ar]["eps"]
+            yhat = models_ar[key_ar]["y_hat"]
+
+            plt.figure()
+            plt.hist(eps, bins=30)
+            plt.xlabel("residual ε = y - ŷ")
+            plt.ylabel("count")
+            plt.title(
+                "Residuals histogram — best AR config "
+                f"(mode={best_ar['mode']}, Δ={best_ar['delta_s']}, "
+                f"p={best_ar['order_p']}, λ={best_ar['lambda']})"
+            )
+            plt.tight_layout()
+            plt.show()
+
+            if PLOT_RESID_VS_FITTED:
+                plt.figure()
+                plt.scatter(yhat, eps, s=12)
+                plt.axhline(0.0)
+                plt.xlabel("ŷ (fitted)")
+                plt.ylabel("ε (residual)")
+                plt.title(
+                    f"Residuals vs Fitted — best AR config (mode={best_ar['mode']})"
+                )
+                plt.tight_layout()
+                plt.show()
+
+        # Print best AR weights
+        if key_ar in models_ar:
+            beta = models_ar[key_ar]["beta"]
+            print("\n[AR] Best config weights (phi):")
+            print(
+                f"mode={best_ar['mode']}, Δ={best_ar['delta_s']}, "
+                f"p={best_ar['order_p']}, λ={best_ar['lambda']}"
+            )
+            print(beta)
+            
+    # ---------- ARIMA (integrated moving avg) pipeline ----------
+    res_df_arima, models_arima = evaluate_arima_resampled(
+        df_raw,
+        VEHICLE_COL,
+        MAX_GAP_INCLUDE_S,
+        DELTAS,
+        ARIMA_P,
+        ARIMA_D,
+        ARIMA_Q,
+        DEMEAN_PER_SEGMENT,
+    )
+
+    res_df_arima.to_csv(OUT_PATH_ARIMA, index=False)
+    print(f"\n[ARIMA] Saved sweep to: {OUT_PATH_ARIMA}")
+
+    if not res_df_arima.empty:
+        leaderboard_arima = res_df_arima.sort_values("RMSE").head(20)
+        print("\n[ARIMA] Top 20 (lowest RMSE):")
+        cols = [
+            "mode",
+            "delta_s",
+            "p",
+            "d",
+            "q",
+            "n_obs",
+            "n_segments",
+            "AIC_mean",
+            "BIC_mean",
+            "MSE",
+            "RMSE",
+        ]
+        print(leaderboard_arima[cols].to_string(index=False))
+        
+
