@@ -830,4 +830,152 @@ if __name__ == "__main__":
         print("[AR TEST] No AR test rows produced.")
         best_ar_rmse_test = float("nan")
 
+    # ---------- ARIMA TEST SUITE (~10k points) ----------
+    print("\n[ARIMA TEST] Evaluating all ARIMA configs on ~10,000 points...")
+    arima_test_results = []
+
+    for p in ARIMA_P_LIST:
+        for d in ARIMA_D_LIST:
+            for q in ARIMA_Q_LIST:
+                print(f"  Testing ARIMA({p},{d},{q})...")
+                rmse_t, aic_t, bic_t, n_obs_t, n_seg_t = quick_arima_eval(
+                    seg_series,
+                    p, d, q,
+                    target_points=TEST_TARGET_POINTS,
+                    min_len=ARIMA_MIN_LEN,
+                    random_seed=TEST_RANDOM_SEED,
+                )
+                arima_test_results.append(
+                    {
+                        "p": p,
+                        "d": d,
+                        "q": q,
+                        "RMSE_test": rmse_t,
+                        "AIC_mean_test": aic_t,
+                        "BIC_mean_test": bic_t,
+                        "n_obs_test": n_obs_t,
+                        "n_segments_test": n_seg_t,
+                    }
+                )
+
+    arima_test_df = pd.DataFrame(arima_test_results).sort_values("RMSE_test").reset_index(drop=True)
+    print("\n[ARIMA TEST] Results on ~10,000 points (sorted by RMSE_test):")
+    print(arima_test_df.to_string(index=False))
+
+    if not arima_test_df.empty and np.isfinite(arima_test_df["RMSE_test"]).any():
+        best_arima_row_test = arima_test_df.loc[arima_test_df["RMSE_test"].idxmin()]
+        best_arima_rmse_test = float(best_arima_row_test["RMSE_test"])
+        print("\n[ARIMA TEST] Best config on ~10,000 points:")
+        print(best_arima_row_test.to_string())
+    else:
+        best_arima_rmse_test = float("nan")
+        print("[ARIMA TEST] No successful ARIMA test fits.")
+
+    # ---------- Summary comparison ----------
+    print("\n===== SUMMARY =====")
+    print(f"Global speed std          : {global_std:.3f} m/s ({global_std * 2.23694:.3f} mph)")
+    print(f"Noise σ (smoothing)       : {sigma_mps:.3f} m/s ({sigma_mph:.3f} mph)")
+    print(f"Best AR RMSE (train)      : {best_ar_rmse:.3f} m/s")
+    print(f"Best AR RMSE (test~10k)   : {best_ar_rmse_test:.3f} m/s")
+    print(f"Best ARIMA RMSE (train)   : {best_arima_rmse_train:.3f} m/s")
+    print(f"Best ARIMA RMSE (test~10k): {best_arima_rmse_test:.3f} m/s")
+
+    if np.isfinite(best_ar_rmse_test) and np.isfinite(sigma_mps):
+        print(f"AR test RMSE / noise σ    : {best_ar_rmse_test / sigma_mps:.3f}")
+    if np.isfinite(best_arima_rmse_test) and np.isfinite(sigma_mps):
+        print(f"ARIMA test RMSE / noise σ : {best_arima_rmse_test / sigma_mps:.3f}")
+        
+       # ---------- Per-step consecutive predictions for best AR & ARIMA ----------
+    print("\n[CONSEC] Per-step predictions for best AR and ARIMA on a single long segment...")
+
+    # We need best AR test row + best ARIMA test row
+    if (
+        (not np.isnan(best_ar_rmse_test))
+        and ("best_ar_test_row" in locals())
+        and (best_arima_row_test is not None)
+        and np.isfinite(best_arima_rmse_test)
+    ):
+        # ---- Best AR hyperparams from test suite ----
+        best_p_ar = int(best_ar_test_row["order_p"])
+        best_lam_ar = float(best_ar_test_row["lambda"])
+        delta_used = float(DELTAS[0]) if RESAMPLE else None
+        model_key_ar = (delta_used, best_p_ar, best_lam_ar)
+        if model_key_ar not in models_ar:
+            raise KeyError(f"Best AR model key {model_key_ar} not found in models_ar.")
+        beta_ar_global = models_ar[model_key_ar]["beta"]
+
+        # ---- Best ARIMA hyperparams from test suite ----
+        best_p_arima = int(best_arima_row_test["p"])
+        best_d_arima = int(best_arima_row_test["d"])
+        best_q_arima = int(best_arima_row_test["q"])
+
+        # Need enough history for lags + window
+        min_needed = best_p_ar + CONSEC_POINTS + 5
+        seg = pick_long_segment(seg_series, min_len=min_needed, random_seed=TEST_RANDOM_SEED)
+        T = len(seg)
+        print(f"[CONSEC] Using segment of length {T} for per-step evaluation")
+
+        # ================= AR (ridge) one-step-ahead =================
+        print(f"[CONSEC][AR] p={best_p_ar}, lambda={best_lam_ar}")
+
+        # Build lag design on the whole segment
+        X_full_ar, y_full_ar = build_ar_design_from_resampled(seg, best_p_ar)
+        if X_full_ar.shape[0] < CONSEC_POINTS:
+            raise ValueError(
+                f"Not enough rows in X_full_ar ({X_full_ar.shape[0]}) "
+                f"for CONSEC_POINTS={CONSEC_POINTS}."
+            )
+
+        # Take last CONSEC_POINTS rows: each row uses TRUE lags from seg
+        X_sub_ar = X_full_ar[-CONSEC_POINTS:]
+        y_true_ar = y_full_ar[-CONSEC_POINTS:]
+        y_hat_ar = X_sub_ar @ beta_ar_global
+
+        # ================= ARIMA one-step-ahead (fittedvalues) =================
+        print(f"[CONSEC][ARIMA] order=({best_p_arima},{best_d_arima},{best_q_arima})")
+
+        try:
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=UserWarning)
+                warnings.filterwarnings("ignore", category=ConvergenceWarning)
+                model_arima = ARIMA(
+                    seg,
+                    order=(best_p_arima, best_d_arima, best_q_arima),
+                    enforce_stationarity=False,
+                    enforce_invertibility=False,
+                )
+                res_arima = model_arima.fit()
+        except Exception as e:
+            print(f"[CONSEC][ARIMA] Fit failed: {repr(e)}")
+            res_arima = None
+
+        if res_arima is not None:
+            # res_arima.fittedvalues are essentially one-step-ahead predictions
+            fitted = np.asarray(res_arima.fittedvalues, dtype="float64")
+            # Align by just taking the last n overlapping points
+            n = min(CONSEC_POINTS, len(fitted))
+            y_hat_arima = fitted[-n:]
+            y_true_arima = seg[-n:]
+        else:
+            n = CONSEC_POINTS
+            y_hat_arima = np.full(n, np.nan, dtype="float64")
+            y_true_arima = seg[-n:]
+
+        # ================= RMSE helpers =================
+        def rmse(a, b):
+            a = np.asarray(a, dtype="float64")
+            b = np.asarray(b, dtype="float64")
+            mask = np.isfinite(a) & np.isfinite(b)
+            if not mask.any():
+                return float("nan")
+            diff = a[mask] - b[mask]
+            return float(np.sqrt(np.mean(diff ** 2)))
+
+        rmse_ar_window = rmse(y_true_ar, y_hat_ar)
+        rmse_arima_window = rmse(y_true_arima, y_hat_arima)
+
+        print(f"[CONSEC] Window RMSE (AR, per-step)     : {rmse_ar_window:.3f} m/s")
+        print(f"[CONSEC] Window RMSE (ARIMA, per-step) : {rmse_arima_window:.3f} m/s")
+
+
 
