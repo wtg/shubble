@@ -721,7 +721,7 @@ export default function MapKitMap({ routeData, displayVehicles = true, generateR
     return () => {
       if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
     };
-  }, [vehicles]); // Restart loop if vehicles change? Not strictly necessary if refs are used, but ensures we have latest `vehicles` closure if needed. Actually with refs we don't need to dependency on vehicles often if we read from ref, but here we read `vehicles` prop.
+  }, [vehicles, flattenedRoutes]); // Include flattenedRoutes to ensure animation uses current route data
 
 
 
