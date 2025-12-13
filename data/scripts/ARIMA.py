@@ -240,3 +240,243 @@ def build_arx_design_irregular(t_seg, s_seg, p, include_dt_lags=True):
     return X, y
 
 
+def ridge_fit(X, y, lam):
+    if X.shape[0] == 0:
+        return (
+            (np.zeros((X.shape[1],), dtype="float64") if X.shape[1] > 0 else np.array([])),
+            np.array([]),
+            np.array([]),
+            float("nan"),
+        )
+
+    print("dimension:", X.shape)
+    XT = X.T
+    A = XT @ X + (0 if lam in (None, 0) else lam) * np.eye(X.shape[1])
+    b = XT @ y
+    beta = np.linalg.solve(A, b)
+    y_hat = X @ beta
+    eps = y - y_hat
+    mse = float(np.mean(eps ** 2))
+    print("dim_phi: ", beta.shape)
+    return beta, y_hat, eps, mse
+
+def estimate_speed_noise_from_smoothing(seg_series, window=20):
+    """
+    seg_series: list of 1D numpy arrays (resampled speeds in m/s)
+    window: moving average window length in samples
+    """
+    all_resid = []
+
+    for s in seg_series:
+        if len(s) < window + 2:
+            continue
+        # moving average via convolution
+        kernel = np.ones(window) / window
+        smooth = np.convolve(s, kernel, mode="same")
+        resid = s - smooth
+        # drop edges if you want to avoid convolution edge effects
+        resid = resid[window:-window] if len(resid) > 2 * window else resid
+        all_resid.append(resid)
+
+    if not all_resid:
+        return np.nan, np.nan
+
+    all_resid = np.concatenate(all_resid)
+    sigma_mps = float(np.std(all_resid))
+    sigma_mph = sigma_mps * 2.23694
+    return sigma_mps, sigma_mph
+
+# ---------------- AR (RIDGE) PIPELINE ----------------
+def evaluate_ar_pipeline(
+    df_raw,
+    vehicle_col,
+    max_gap_include_s,
+    resample,
+    deltas,
+    orders,
+    lambdas,
+    demean_per_segment=True,
+    include_dt_lags=True,
+):
+    results = []
+    models = {}
+    debug_pairs = []
+
+    # Group by vehicle if column present
+    if vehicle_col and vehicle_col in df_raw.columns:
+        groups = list(df_raw.groupby(vehicle_col))
+    else:
+        groups = [(None, df_raw)]
+
+    delta_list = deltas if resample else [None]
+
+    for delta in delta_list:
+        segs = []
+
+        # Build segments (either resampled or raw)
+        for _, df_g in groups:
+            df_speed = compute_speed_mps(df_g)
+            raw_segs = split_segments_on_gaps(
+                df_speed["t"],
+                df_speed["speed_mps"],
+                df_speed["dt_s"],
+                max_gap_include_s,
+            )
+            for (t_seg, s_seg) in raw_segs:
+                if demean_per_segment and len(s_seg) > 0:
+                    s_seg = s_seg - np.nanmean(s_seg)
+                if resample:
+                    t_grid, s_grid = resample_linear(t_seg, s_seg, float(delta))
+                    if len(s_grid) >= 5:
+                        segs.append(("resampled", t_grid, s_grid))
+                        debug_pairs.append(
+                            {
+                                "delta": float(delta),
+                                "t_raw": t_seg,
+                                "speed_raw": s_seg,
+                                "t_grid": t_grid,
+                                "speed_grid": s_grid,
+                            }
+                        )
+                else:
+                    if len(s_seg) >= 3:
+                        segs.append(("raw", t_seg, s_seg))
+
+        # Build lagged design matrices for each order p
+        lagged_by_p = {}
+        for p in orders:
+            X_list, y_list = [], []
+            for mode, t_arr, s_arr in segs:
+                if mode == "resampled":
+                    Xs, ys = build_ar_design_from_resampled(s_arr, p)
+                else:
+                    Xs, ys = build_arx_design_irregular(
+                        t_arr, s_arr, p, include_dt_lags=include_dt_lags
+                    )
+                if Xs.shape[0] > 0:
+                    X_list.append(Xs)
+                    y_list.append(ys)
+
+            if X_list:
+                X_all = np.vstack(X_list)
+                y_all = np.concatenate(y_list)
+            else:
+                feat_dim = p if resample else (p + (p if include_dt_lags else 0))
+                X_all = np.zeros((0, feat_dim))
+                y_all = np.zeros((0,))
+            lagged_by_p[p] = (X_all, y_all)
+
+        # Fit models for each p, lambda
+        for p in orders:
+            X_all, y_all = lagged_by_p[p]
+            for lam in lambdas:
+                lam_key = 0.0 if lam in (None, 0) else float(lam)
+                beta, y_hat, eps, mse = ridge_fit(X_all, y_all, lam)
+                rmse = float(np.sqrt(mse)) if mse == mse else float("nan")
+                results.append(
+                    {
+                        "mode": "RESAMPLED"
+                        if resample
+                        else ("RAW_ARX_dt" if include_dt_lags else "RAW_AR"),
+                        "delta_s": (float(delta) if resample else None),
+                        "order_p": int(p),
+                        "lambda": lam_key,
+                        "n_rows": int(X_all.shape[0]),
+                        "MSE": mse,
+                        "RMSE": rmse,
+                    }
+                )
+                models[((float(delta) if resample else None), int(p), lam_key)] = {
+                    "beta": beta,
+                    "mse": mse,
+                    "rmse": rmse,
+                    "n_rows": int(X_all.shape[0]),
+                    "feat_dim": int(X_all.shape[1]) if X_all.ndim == 2 else 0,
+                    "eps": eps,
+                    "y_hat": y_hat,
+                }
+
+    res_df = pd.DataFrame(results).sort_values(
+        ["mode", "delta_s", "order_p", "lambda"]
+    ).reset_index(drop=True)
+    return res_df, models, debug_pairs
+
+# ---------------- ARIMA (INTEGRATED MOVING AVG) PIPELINE ----------------
+def evaluate_arima_resampled(
+    df_raw,
+    vehicle_col,
+    max_gap_include_s,
+    deltas,
+    p_list,
+    d_list,
+    q_list,
+    demean_per_segment=True,
+):
+    """
+    For each delta and ARIMA(p, d, q) combination:
+      - build resampled segments across all vehicles
+      - fit ARIMA(p, d, q) on each segment (if long enough)
+      - aggregate residuals to compute global RMSE
+      - aggregate AIC/BIC (mean over segments)
+    """
+    results = []
+    models = {}
+
+    # Group by vehicle if column present
+    if vehicle_col and vehicle_col in df_raw.columns:
+        groups = list(df_raw.groupby(vehicle_col))
+    else:
+        groups = [(None, df_raw)]
+
+    for delta in deltas:
+        seg_series = []  # store only s_grid per segment; time not needed for ARIMA
+
+        # Build resampled segments across all vehicles
+        for _, df_g in groups:
+            df_speed = compute_speed_mps(df_g)
+            raw_segs = split_segments_on_gaps(
+                df_speed["t"],
+                df_speed["speed_mps"],
+                df_speed["dt_s"],
+                max_gap_include_s,
+            )
+            for (t_seg, s_seg) in raw_segs:
+                if len(s_seg) == 0:
+                    continue
+                if demean_per_segment:
+                    s_seg = s_seg - np.nanmean(s_seg)
+                t_grid, s_grid = resample_linear(t_seg, s_seg, float(delta))
+                if len(s_grid) >= 5:
+                    seg_series.append(s_grid.astype("float64"))
+
+        if not seg_series:
+            # No usable segments for this delta
+            for p in p_list:
+                for d in d_list:
+                    for q in q_list:
+                        results.append(
+                            {
+                                "mode": "ARIMA_RESAMPLED",
+                                "delta_s": float(delta),
+                                "p": int(p),
+                                "d": int(d),
+                                "q": int(q),
+                                "n_obs": 0,
+                                "n_segments": 0,
+                                "AIC_mean": float("nan"),
+                                "BIC_mean": float("nan"),
+                                "MSE": float("nan"),
+                                "RMSE": float("nan"),
+                            }
+                        )
+                        models[(float(delta), int(p), int(d), int(q))] = {
+                            "params": None,
+                            "mse": float("nan"),
+                            "rmse": float("nan"),
+                            "aic_mean": float("nan"),
+                            "bic_mean": float("nan"),
+                            "n_obs": 0,
+                            "n_segments": 0,
+                        }
+            continue
+
