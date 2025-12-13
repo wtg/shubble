@@ -102,7 +102,7 @@ async function generateRoutePolylines(updatedRouteData: ShuttleRouteData) {
 
 type MapKitMapProps = {
   routeData: ShuttleRouteData | null;
-  vehicles: VehicleInformationMap | null;
+  displayVehicles?: boolean;
   generateRoutes?: boolean;
   selectedRoute?: string | null;
   setSelectedRoute?: (route: string | null) => void;
@@ -111,11 +111,12 @@ type MapKitMapProps = {
 
 // @ts-expect-error selectedRoutes is never used
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-export default function MapKitMap({ routeData, vehicles, generateRoutes = false, selectedRoute, setSelectedRoute, isFullscreen = false }: MapKitMapProps) {
+export default function MapKitMap({ routeData, displayVehicles = true, generateRoutes = false, selectedRoute, setSelectedRoute, isFullscreen = false }: MapKitMapProps) {
   const mapRef = useRef(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const token = import.meta.env.VITE_MAPKIT_KEY;
   const [map, setMap] = useState<(mapkit.Map | null)>(null);
+  const [vehicles, setVehicles] = useState<VehicleInformationMap | null>(null);
 
   const vehicleOverlays = useRef<Record<string, mapkit.ShuttleAnnotation>>({});
   const vehicleAnimationStates = useRef<Record<string, {
@@ -155,6 +156,34 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
     };
     mapkitScript();
   }, []);
+
+    // Fetch location data on component mount and set up polling
+    useEffect(() => {
+      if (!displayVehicles) return;
+
+      const pollLocation = async () => {
+        try {
+          const response = await fetch('/api/locations');
+          if (!response.ok) {
+            throw new Error('Network response was not ok');
+          }
+          const data = await response.json();
+          setVehicles(data);
+        } catch (error) {
+          console.error('Error fetching location:', error);
+        }
+      }
+  
+      pollLocation();
+  
+      // refresh location every 5 seconds
+      const refreshLocation = setInterval(pollLocation, 5000);
+  
+      return () => {
+        clearInterval(refreshLocation);
+      }
+  
+    }, []);
 
   // create the map
   useEffect(() => {
