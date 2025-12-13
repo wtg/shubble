@@ -978,4 +978,130 @@ if __name__ == "__main__":
         print(f"[CONSEC] Window RMSE (ARIMA, per-step) : {rmse_arima_window:.3f} m/s")
 
 
+        # ================= PLOTS =================
+        x_ar = np.arange(len(y_true_ar))
+        plt.figure(figsize=(10, 4))
+        plt.plot(x_ar, y_true_ar, label="True speed (m/s)")
+        plt.plot(x_ar, y_hat_ar, label=f"AR pred (p={best_p_ar}, λ={best_lam_ar})")
+        plt.title(
+            f"Best AR per-step predictions (last {len(y_true_ar)} usable points)\n"
+            f"Window RMSE={rmse_ar_window:.3f} m/s"
+        )
+        plt.xlabel("Time index within window")
+        plt.ylabel("Speed (m/s, demeaned segment)")
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
 
+        x_arima = np.arange(len(y_true_arima))
+        plt.figure(figsize=(10, 4))
+        plt.plot(x_arima, y_true_arima, label="True speed (m/s)")
+        plt.plot(
+            x_arima,
+            y_hat_arima,
+            label=f"ARIMA fitted (p,d,q)=({best_p_arima},{best_d_arima},{best_q_arima})",
+        )
+        plt.title(
+            f"Best ARIMA per-step predictions (last {len(y_true_arima)} usable points)\n"
+            f"Window RMSE={rmse_arima_window:.3f} m/s"
+        )
+        plt.xlabel("Time index within window")
+        plt.ylabel("Speed (m/s, demeaned segment)")
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+
+    else:
+        print("[CONSEC] Skipping per-step plots; missing best AR/ARIMA results.")
+        
+        
+    # ---------- ARIMA TEST SUITE (~10k points, GLOBAL TRAIN ~15k) ----------
+print("\n[ARIMA TEST] Evaluating all ARIMA configs with GLOBAL train (~15,000) and recursive 1-step test (~10,000)...")
+
+# Build global train/test series ONCE, shared across all (p,d,q)
+arima_train_series, arima_test_series = build_arima_global_train_test_series(
+    seg_series,
+    train_target_points=ARIMA_TARGET_POINTS,   # 15000, matches AR_TRAIN_TARGET_POINTS
+    test_target_points=TEST_TARGET_POINTS,     # 5000 or 10000 as you prefer
+    random_seed=TEST_RANDOM_SEED,
+)
+
+print(f"[ARIMA TEST] Global train length: {len(arima_train_series)}, "
+      f"test length: {len(arima_test_series)}")
+
+arima_test_results = []
+
+if (len(arima_train_series) == 0) or (len(arima_test_series) == 0):
+    print("[ARIMA TEST] Not enough data to build global train/test series.")
+    best_arima_rmse_test = float("nan")
+else:
+    for p in ARIMA_P_LIST:
+        for d in ARIMA_D_LIST:
+            for q in ARIMA_Q_LIST:
+                print(f"  Testing ARIMA({p},{d},{q}) with global train + recursive 1-step test...")
+                try:
+                    with warnings.catch_warnings():
+                        warnings.filterwarnings("ignore", category=UserWarning)
+                        warnings.filterwarnings("ignore", category=ConvergenceWarning)
+
+                        # Fit ONE global ARIMA on the training series
+                        model_train = ARIMA(
+                            arima_train_series,
+                            order=(p, d, q),
+                            enforce_stationarity=False,
+                            enforce_invertibility=False,
+                        )
+                        res_train = model_train.fit()
+
+                        # Apply fixed parameters recursively on the test series
+                        res_test = res_train.apply(arima_test_series, refit=False)
+
+                except Exception as e:
+                    print(f"[ARIMA TEST] ARIMA({p},{d},{q}) global test failed: {repr(e)}")
+                    rmse_t = float("nan")
+                    aic_t = float("nan")
+                    bic_t = float("nan")
+                    n_obs_t = 0
+                else:
+                    y_hat_test = np.asarray(res_test.fittedvalues, dtype="float64")
+                    y_true_test = np.asarray(arima_test_series, dtype="float64")
+
+                    mask = np.isfinite(y_hat_test) & np.isfinite(y_true_test)
+                    if mask.any():
+                        resid = y_true_test[mask] - y_hat_test[mask]
+                        mse_t = float(np.mean(resid ** 2))
+                        rmse_t = float(math.sqrt(mse_t))
+                        n_obs_t = int(mask.sum())
+                    else:
+                        rmse_t = float("nan")
+                        n_obs_t = 0
+
+                    aic_t = float(res_train.aic) if hasattr(res_train, "aic") else float("nan")
+                    bic_t = float(res_train.bic) if hasattr(res_train, "bic") else float("nan")
+
+                arima_test_results.append(
+                    {
+                        "p": p,
+                        "d": d,
+                        "q": q,
+                        "RMSE_test": rmse_t,
+                        "AIC_train": aic_t,
+                        "BIC_train": bic_t,
+                        "n_obs_test": n_obs_t,
+                    }
+                )
+
+    arima_test_df = pd.DataFrame(arima_test_results).sort_values("RMSE_test").reset_index(drop=True)
+    print("\n[ARIMA TEST] Global-train recursive 1-step results (sorted by RMSE_test):")
+    print(arima_test_df.to_string(index=False))
+
+    if not arima_test_df.empty and np.isfinite(arima_test_df["RMSE_test"]).any():
+        best_arima_row_test = arima_test_df.loc[arima_test_df["RMSE_test"].idxmin()]
+        best_arima_rmse_test = float(best_arima_row_test["RMSE_test"])
+        print("\n[ARIMA TEST] Best config with GLOBAL train + recursive 1-step test:")
+        print(best_arima_row_test.to_string())
+    else:
+        best_arima_rmse_test = float("nan")
+        print("[ARIMA TEST] No successful global ARIMA tests.")
