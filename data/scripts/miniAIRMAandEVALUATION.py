@@ -628,3 +628,206 @@ def build_arima_global_train_test_series(
     n_train = 0
     n_test = 0
 
+    mode = "train"  # first fill train, then test
+
+    for idx in indices:
+        s = seg_series[idx].astype("float64")
+        if s.size == 0:
+            continue
+
+        pos = 0
+        while pos < s.size and (n_train < train_target_points or n_test < test_target_points):
+            if mode == "train":
+                # how many more train points we still want
+                need = train_target_points - n_train
+                if need <= 0:
+                    mode = "test"
+                    continue
+                take = min(need, s.size - pos)
+                if take <= 0:
+                    break
+                train_list.append(s[pos : pos + take])
+                n_train += take
+                pos += take
+                if n_train >= train_target_points:
+                    mode = "test"
+            else:
+                # fill test
+                need = test_target_points - n_test
+                if need <= 0:
+                    break
+                take = min(need, s.size - pos)
+                if take <= 0:
+                    break
+                test_list.append(s[pos : pos + take])
+                n_test += take
+                pos += take
+
+        if n_train >= train_target_points and n_test >= test_target_points:
+            break
+
+    train_series = np.concatenate(train_list) if train_list else np.zeros((0,), dtype="float64")
+    test_series = np.concatenate(test_list) if test_list else np.zeros((0,), dtype="float64")
+
+    return train_series, test_series
+
+# ---------------- MAIN ----------------
+if __name__ == "__main__":
+    df_raw = pd.read_csv(INPUT_PATH)
+
+    # Build resampled segments just once (for noise + ARIMA + AR test)
+    seg_series = build_resampled_speed_segments(
+        df_raw,
+        VEHICLE_COL,
+        MAX_GAP_INCLUDE_S,
+        DELTAS[0],
+        DEMEAN_PER_SEGMENT,
+    )
+
+    print(f"Total resampled segments: {len(seg_series)}")
+    if seg_series:
+        lengths = [len(s) for s in seg_series]
+        print(
+            f"Segment length stats: "
+            f"min={min(lengths)}, max={max(lengths)}, median={np.median(lengths):.1f}"
+        )
+        all_s = np.concatenate(seg_series)
+        global_std = float(np.std(all_s))
+        print(f"Global speed std: {global_std:.3f} m/s ({global_std * 2.23694:.3f} mph)")
+
+    # ---------- Noise estimate ----------
+    sigma_mps, sigma_mph = estimate_speed_noise_from_smoothing(
+        seg_series,
+        window=NOISE_WINDOW_SAMPLES,
+    )
+    print(f"\n[NOISE] Estimated σ ≈ {sigma_mps:.3f} m/s ≈ {sigma_mph:.3f} mph "
+          f"(window={NOISE_WINDOW_SAMPLES} samples)")
+
+    # ---------- AR (ridge) pipeline ----------
+    res_df_ar, models_ar, debug_pairs = evaluate_ar_pipeline(
+        df_raw,
+        VEHICLE_COL,
+        MAX_GAP_INCLUDE_S,
+        RESAMPLE,
+        DELTAS,
+        ORDERS,
+        LAMBDAS,
+        DEMEAN_PER_SEGMENT,
+        INCLUDE_DT_LAGS,
+    )
+
+    res_df_ar.to_csv(OUT_PATH_AR, index=False)
+    print(f"\n[AR] Saved sweep to: {OUT_PATH_AR}")
+
+    if not res_df_ar.empty:
+        leaderboard_ar = res_df_ar.sort_values("RMSE").head(20)
+        print("\n[AR] Top 20 (lowest RMSE):")
+        cols = ["mode", "delta_s", "order_p", "lambda", "n_rows", "MSE", "RMSE"]
+        print(leaderboard_ar[cols].to_string(index=False))
+
+        # Best AR config (train RMSE)
+        best_ar_row = res_df_ar.sort_values("RMSE").iloc[0]
+        best_ar_rmse = float(best_ar_row["RMSE"])
+        key_ar = (
+            (float(best_ar_row["delta_s"]) if pd.notna(best_ar_row["delta_s"]) else None),
+            int(best_ar_row["order_p"]),
+            float(best_ar_row["lambda"]),
+        )
+        print("\n[AR] Best config (train RMSE):")
+        print(best_ar_row[cols].to_string())
+    else:
+        print("[AR] No rows produced (check input columns and parameters).")
+        best_ar_rmse = float("nan")
+        key_ar = None
+
+    # ---------- Quick ARIMA "train" eval (5k points) ----------
+    print("\n[ARIMA] Quick eval on sampled segments (train, ~5000 points)...")
+    arima_results = []
+
+    for p in ARIMA_P_LIST:
+        for d in ARIMA_D_LIST:
+            for q in ARIMA_Q_LIST:
+                print(f"  Evaluating ARIMA({p},{d},{q})...")
+                rmse, aic_mean, bic_mean, n_obs, n_seg = quick_arima_eval(
+                    seg_series,
+                    p, d, q,
+                    target_points=ARIMA_TARGET_POINTS,
+                    min_len=ARIMA_MIN_LEN,
+                    random_seed=ARIMA_RANDOM_SEED,
+                )
+                arima_results.append(
+                    {
+                        "p": p,
+                        "d": d,
+                        "q": q,
+                        "RMSE": rmse,
+                        "AIC_mean": aic_mean,
+                        "BIC_mean": bic_mean,
+                        "n_obs": n_obs,
+                        "n_segments": n_seg,
+                    }
+                )
+
+    arima_df = pd.DataFrame(arima_results).sort_values("RMSE").reset_index(drop=True)
+    print("\n[ARIMA] Quick-eval results (train, sorted by RMSE):")
+    print(arima_df.to_string(index=False))
+
+    if not arima_df.empty and np.isfinite(arima_df["RMSE"]).any():
+        best_arima_row_train = arima_df.loc[arima_df["RMSE"].idxmin()]
+        best_arima_rmse_train = float(best_arima_row_train["RMSE"])
+        print("\n[ARIMA] Best quick-eval config (train):")
+        print(best_arima_row_train.to_string())
+    else:
+        best_arima_rmse_train = float("nan")
+        best_arima_row_train = None
+        print("[ARIMA] No successful ARIMA fits in quick eval.")
+
+    # ---------- AR TEST SUITE (~10k points) ----------
+    print("\n[AR TEST] Evaluating all AR configs on ~10,000 points...")
+    ar_test_rows = []
+
+    for p in ORDERS:
+        X_test, y_test = build_ar_test_design(
+            seg_series,
+            p,
+            target_points=TEST_TARGET_POINTS,
+            random_seed=TEST_RANDOM_SEED,
+        )
+        n_rows_test = X_test.shape[0]
+        if n_rows_test == 0:
+            continue
+
+        for lam in LAMBDAS:
+            lam_key = 0.0 if lam in (None, 0) else float(lam)
+            model_key = (float(DELTAS[0]) if RESAMPLE else None, int(p), lam_key)
+            if model_key not in models_ar:
+                continue
+            beta = models_ar[model_key]["beta"]
+            if beta.size == 0:
+                rmse_test = float("nan")
+            else:
+                y_hat_test = X_test @ beta
+                eps_test = y_test - y_hat_test
+                mse_test = float(np.mean(eps_test ** 2))
+                rmse_test = float(math.sqrt(mse_test))
+
+            ar_test_rows.append(
+                {
+                    "order_p": int(p),
+                    "lambda": lam_key,
+                    "n_rows_test": int(n_rows_test),
+                    "RMSE_test": rmse_test,
+                }
+            )
+
+    if ar_test_rows:
+        ar_test_df = pd.DataFrame(ar_test_rows).sort_values("RMSE_test").reset_index(drop=True)
+        print("\n[AR TEST] Results on ~10,000 points (sorted by RMSE_test):")
+        print(ar_test_df.head(20).to_string(index=False))
+        best_ar_test_row = ar_test_df.iloc[0]
+        best_ar_rmse_test = float(best_ar_test_row["RMSE_test"])
+    else:
+        print("[AR TEST] No AR test rows produced.")
+        best_ar_rmse_test = float("nan")
+
+
