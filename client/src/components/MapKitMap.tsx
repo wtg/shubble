@@ -186,6 +186,22 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
 
       // create the map
       const thisMap = new mapkit.Map(mapRef.current!, mapOptions);
+      setMap(thisMap);
+
+      const coords = [
+      new mapkit.Coordinate(42.7307, -73.6865),
+      new mapkit.Coordinate(42.7335, -73.6857),
+      ];
+
+      const line = new mapkit.PolylineOverlay(coords, {
+        style: new mapkit.Style({
+          strokeColor: "#000",
+          lineWidth: 2,
+        }),
+      });
+
+    thisMap.addOverlays([line]);
+
       // set zoom and boundary limits
       thisMap.setCameraZoomRangeAnimated(
         new mapkit.CameraZoomRange(200, 3000),
