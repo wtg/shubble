@@ -87,7 +87,11 @@ def get_locations():
 
     # Format response
     response = {}
+    oldest_timestamp = None
     for loc, vehicle in results:
+        # Track oldest data point for latency calculation
+        if oldest_timestamp is None or loc.timestamp < oldest_timestamp:
+            oldest_timestamp = loc.timestamp
         # Get closest loop
         closest_distance, _, closest_route_name, polyline_index = Stops.get_closest_point(
             (loc.latitude, loc.longitude)
@@ -127,7 +131,15 @@ def get_locations():
             'driver': driver_info,
         }
 
-    return jsonify(response)
+    # Add timing metadata as HTTP headers to help frontend synchronize with Samsara API
+    now = datetime.now(timezone.utc)
+    data_age = (now - oldest_timestamp).total_seconds() if oldest_timestamp else None
+    
+    resp = jsonify(response)
+    resp.headers['X-Server-Time'] = now.isoformat()
+    resp.headers['X-Oldest-Data-Time'] = oldest_timestamp.isoformat() if oldest_timestamp else ''
+    resp.headers['X-Data-Age-Seconds'] = str(data_age) if data_age is not None else ''
+    return resp
 
 @bp.route('/api/webhook', methods=['POST'])
 def webhook():
