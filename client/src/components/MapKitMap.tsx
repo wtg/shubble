@@ -531,12 +531,29 @@ export default function MapKitMap({ routeData, displayVehicles = true, generateR
         return;
       }
 
+      // Check if shuttle is off-route by finding distance to nearest polyline point
+      const nearestResult = findNearestPointOnPolyline(vehicleCoord, routePolyline);
+      const OFF_ROUTE_THRESHOLD_METERS = 100; // If >100m from polyline, consider off-route
+
+      if (nearestResult.distance > OFF_ROUTE_THRESHOLD_METERS) {
+        // Shuttle is off-route - clear animation state so it shows at actual GPS position
+        // Delete the animation state so the annotation uses the direct coordinate update (line 494)
+        delete vehicleAnimationStates.current[key];
+
+        // Update annotation directly to GPS position
+        const annotation = vehicleOverlays.current[key];
+        if (annotation) {
+          annotation.coordinate = new mapkit.Coordinate(vehicle.latitude, vehicle.longitude);
+        }
+        return;
+      }
+
       const snapToPolyline = () => {
-        const { index, point } = findNearestPointOnPolyline(vehicleCoord, routePolyline);
+        // Reuse nearestResult from off-route check to avoid duplicate calculation
         vehicleAnimationStates.current[key] = {
           lastUpdateTime: now,
-          polylineIndex: index,
-          currentPoint: point,
+          polylineIndex: nearestResult.index,
+          currentPoint: nearestResult.point,
           targetDistance: 0,
           distanceTraveled: 0,
           lastServerTime: serverTime
