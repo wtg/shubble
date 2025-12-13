@@ -157,33 +157,33 @@ export default function MapKitMap({ routeData, displayVehicles = true, generateR
     mapkitScript();
   }, []);
 
-    // Fetch location data on component mount and set up polling
-    useEffect(() => {
-      if (!displayVehicles) return;
+  // Fetch location data on component mount and set up polling
+  useEffect(() => {
+    if (!displayVehicles) return;
 
-      const pollLocation = async () => {
-        try {
-          const response = await fetch('/api/locations');
-          if (!response.ok) {
-            throw new Error('Network response was not ok');
-          }
-          const data = await response.json();
-          setVehicles(data);
-        } catch (error) {
-          console.error('Error fetching location:', error);
+    const pollLocation = async () => {
+      try {
+        const response = await fetch('/api/locations');
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
         }
+        const data = await response.json();
+        setVehicles(data);
+      } catch (error) {
+        console.error('Error fetching location:', error);
       }
-  
-      pollLocation();
-  
-      // refresh location every 5 seconds
-      const refreshLocation = setInterval(pollLocation, 5000);
-  
-      return () => {
-        clearInterval(refreshLocation);
-      }
-  
-    }, []);
+    }
+
+    pollLocation();
+
+    // refresh location every 5 seconds
+    const refreshLocation = setInterval(pollLocation, 5000);
+
+    return () => {
+      clearInterval(refreshLocation);
+    }
+
+  }, []);
 
   // create the map
   useEffect(() => {
@@ -531,12 +531,29 @@ export default function MapKitMap({ routeData, displayVehicles = true, generateR
         return;
       }
 
+      // Check if shuttle is off-route by finding distance to nearest polyline point
+      const nearestResult = findNearestPointOnPolyline(vehicleCoord, routePolyline);
+      const OFF_ROUTE_THRESHOLD_METERS = 100; // If >100m from polyline, consider off-route
+
+      if (nearestResult.distance > OFF_ROUTE_THRESHOLD_METERS) {
+        // Shuttle is off-route - clear animation state so it shows at actual GPS position
+        // Delete the animation state so the annotation uses the direct coordinate update (line 494)
+        delete vehicleAnimationStates.current[key];
+
+        // Update annotation directly to GPS position
+        const annotation = vehicleOverlays.current[key];
+        if (annotation) {
+          annotation.coordinate = new mapkit.Coordinate(vehicle.latitude, vehicle.longitude);
+        }
+        return;
+      }
+
       const snapToPolyline = () => {
-        const { index, point } = findNearestPointOnPolyline(vehicleCoord, routePolyline);
+        // Reuse nearestResult from off-route check to avoid duplicate calculation
         vehicleAnimationStates.current[key] = {
           lastUpdateTime: now,
-          polylineIndex: index,
-          currentPoint: point,
+          polylineIndex: nearestResult.index,
+          currentPoint: nearestResult.point,
           targetDistance: 0,
           distanceTraveled: 0,
           lastServerTime: serverTime
@@ -613,9 +630,9 @@ export default function MapKitMap({ routeData, displayVehicles = true, generateR
         }
 
         // Step 6: Update animation state.
-        // If the gap is extremely large (>250m in either direction), snap to server position.
+        // If the gap is extremely large (>350m in either direction), snap to server position.
         // For smaller backward gaps, animate smoothly backward to correct the overprediction.
-        const MAX_REASONABLE_GAP_METERS = 250;
+        const MAX_REASONABLE_GAP_METERS = 350;
         if (Math.abs(distanceToTarget) > MAX_REASONABLE_GAP_METERS) {
           snapToPolyline();
         } else {
@@ -639,6 +656,8 @@ export default function MapKitMap({ routeData, displayVehicles = true, generateR
       if (!currentVehicleKeys.has(key)) {
         map.removeAnnotation(vehicleOverlays.current[key]);
         delete vehicleOverlays.current[key];
+        // Also clean up animation state to prevent memory leaks
+        delete vehicleAnimationStates.current[key];
       }
     });
   }, [map, vehicles, routeData]);
@@ -721,7 +740,7 @@ export default function MapKitMap({ routeData, displayVehicles = true, generateR
     return () => {
       if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
     };
-  }, [vehicles]); // Restart loop if vehicles change? Not strictly necessary if refs are used, but ensures we have latest `vehicles` closure if needed. Actually with refs we don't need to dependency on vehicles often if we read from ref, but here we read `vehicles` prop.
+  }, [vehicles, flattenedRoutes]); // Include flattenedRoutes to ensure animation uses current route data
 
 
 
