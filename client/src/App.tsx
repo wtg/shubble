@@ -10,8 +10,7 @@ import About from './pages/About';
 import Data from './pages/Data';
 import MapKitMap from './components/MapKitMap';
 import rawRouteData from './data/routes.json';
-import { useState, useEffect, use } from "react";
-import WarningBanner from './components/WarningBanner';
+import { useState, useEffect } from "react";
 import type { ShuttleRouteData } from './ts/types/route';
 import Navigation from './components/Navigation';
 import config from "./ts/config";
@@ -49,12 +48,12 @@ function App() {
             <Route path='/schedule' element={<Schedule selectedRoute={selectedRoute} setSelectedRoute={setSelectedRoute} />} />
             <Route path='/about' element={<About />} />
             <Route path='/data' element={<Data />} />
-            <Route path='/generate-static-routes' element={<MapKitMap routeData={routeData} vehicles={null} generateRoutes={true} />} />
+            <Route path='/generate-static-routes' element={<MapKitMap routeData={routeData} displayVehicles={true} generateRoutes={true} />} />
           </Route>
 
           {/* without header and footer */}
           <Route>
-            <Route path='/map' element={<MapKitMap routeData={routeData} vehicles={null} generateRoutes={false} selectedRoute={selectedRoute} setSelectedRoute={setSelectedRoute} isFullscreen={true} />} />
+            <Route path='/map' element={<MapKitMap routeData={routeData} generateRoutes={false} selectedRoute={selectedRoute} setSelectedRoute={setSelectedRoute} isFullscreen={true} />} />
           </Route>
         </Routes>
       </Router>
