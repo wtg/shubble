@@ -480,3 +480,240 @@ def evaluate_arima_resampled(
                         }
             continue
 
+        # For each ARIMA(p, d, q) combination, fit on all segments and aggregate
+        for p in p_list:
+            for d in d_list:
+                for q in q_list:
+                    all_resid = []
+                    aics = []
+                    bics = []
+                    n_obs = 0
+                    n_seg_fit = 0
+                    example_params = None
+
+                    min_len = max(p + d + q + 3, 10)
+
+                    for s_seg in seg_series:
+                        if len(s_seg) < min_len:
+                            continue
+                        try:
+                            with warnings.catch_warnings():
+                                warnings.filterwarnings(
+                                    "ignore", category=ConvergenceWarning
+                                )
+                                model = ARIMA(s_seg, order=(p, d, q))
+                                res = model.fit()
+                        except Exception:
+                            # Skip segments where ARIMA fails to converge or throws
+                            continue
+
+                        resid = np.asarray(res.resid, dtype="float64")
+                        mask = np.isfinite(resid)
+                        resid = resid[mask]
+                        if resid.size == 0:
+                            continue
+
+                        all_resid.append(resid)
+                        n_obs += resid.size
+                        n_seg_fit += 1
+                        if hasattr(res, "aic"):
+                            aics.append(res.aic)
+                        if hasattr(res, "bic"):
+                            bics.append(res.bic)
+                        example_params = np.asarray(res.params, dtype="float64")
+
+                    if n_obs == 0:
+                        mse = float("nan")
+                        rmse = float("nan")
+                    else:
+                        all_resid_concat = np.concatenate(all_resid)
+                        mse = float(np.mean(all_resid_concat ** 2))
+                        rmse = float(np.sqrt(mse))
+
+                    aic_mean = float(np.mean(aics)) if aics else float("nan")
+                    bic_mean = float(np.mean(bics)) if bics else float("nan")
+
+                    results.append(
+                        {
+                            "mode": "ARIMA_RESAMPLED",
+                            "delta_s": float(delta),
+                            "p": int(p),
+                            "d": int(d),
+                            "q": int(q),
+                            "n_obs": int(n_obs),
+                            "n_segments": int(n_seg_fit),
+                            "AIC_mean": aic_mean,
+                            "BIC_mean": bic_mean,
+                            "MSE": mse,
+                            "RMSE": rmse,
+                        }
+                    )
+
+                    models[(float(delta), int(p), int(d), int(q))] = {
+                        "params": example_params,
+                        "mse": mse,
+                        "rmse": rmse,
+                        "aic_mean": aic_mean,
+                        "bic_mean": bic_mean,
+                        "n_obs": int(n_obs),
+                        "n_segments": int(n_seg_fit),
+                    }
+
+    res_df = pd.DataFrame(results).sort_values(
+        ["mode", "delta_s", "p", "d", "q"]
+    ).reset_index(drop=True)
+    return res_df, models
+#---------------------------ARIMA APROX--------------------------------------
+def build_resampled_segments(df_raw, vehicle_col, max_gap_include_s, delta_s, demean_per_segment=True):
+    """
+    Returns a list of 1D numpy arrays (speed series), one per resampled segment.
+    """
+    if vehicle_col and vehicle_col in df_raw.columns:
+        groups = list(df_raw.groupby(vehicle_col))
+    else:
+        groups = [(None, df_raw)]
+
+    seg_series = []
+
+    for _, df_g in groups:
+        df_speed = compute_speed_mps(df_g)
+        raw_segs = split_segments_on_gaps(
+            df_speed["t"],
+            df_speed["speed_mps"],
+            df_speed["dt_s"],
+            max_gap_include_s,
+        )
+        for (t_seg, s_seg) in raw_segs:
+            if len(s_seg) == 0:
+                continue
+            if demean_per_segment:
+                s_seg = s_seg - np.nanmean(s_seg)
+            t_grid, s_grid = resample_linear(t_seg, s_seg, float(delta_s))
+            if len(s_grid) >= 5:
+                seg_series.append(s_grid.astype("float64"))
+
+    print(f"Built {len(seg_series)} resampled segments for Δ={delta_s}.")
+    total_len = sum(len(s) for s in seg_series)
+    print(f"Total resampled length = {total_len} points.")
+    return seg_series
+
+import random
+def quick_arima_eval(seg_series,
+                     p, d, q,
+                     max_segments=800,
+                     maxiter=30,      # kept in signature but NOT used (for compatibility)
+                     min_len=10,
+                     use_longest=True,
+                     random_seed=42):
+    """
+    Quickly evaluate one ARIMA(p,d,q) on a subset of segments.
+
+    Returns (rmse, aic_mean, bic_mean, n_obs, n_segments_used).
+
+    This version:
+      - does NOT pass maxiter to ARIMA.fit() (your statsmodels doesn't support it),
+      - prints debug info if no segments are successfully fit.
+    """
+    if not seg_series:
+        print(f"[quick_arima_eval] seg_series is empty for (p,d,q)=({p},{d},{q})")
+        return float("nan"), float("nan"), float("nan"), 0, 0
+
+    # Choose which segments to use
+    if use_longest:
+        segs_sorted = sorted(seg_series, key=len, reverse=True)
+        segs_used = segs_sorted[:max_segments]
+    else:
+        random.seed(random_seed)
+        segs_used = random.sample(seg_series, min(max_segments, len(seg_series)))
+
+    all_resid = []
+    aics = []
+    bics = []
+    n_obs = 0
+    n_seg_fit = 0
+
+    # minimum length needed for ARIMA(p,d,q)
+    min_len_eff = max(min_len, p + d + q + 3)
+
+    fail_count = 0
+
+    for idx, s in enumerate(segs_used):
+        if len(s) < min_len_eff:
+            continue
+
+        try:
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=UserWarning)
+                warnings.filterwarnings("ignore", category=ConvergenceWarning)
+                model = ARIMA(
+                    s,
+                    order=(p, d, q),
+                    enforce_stationarity=False,
+                    enforce_invertibility=False,
+                )
+                # NOTE: no maxiter/disp here; your ARIMA.fit() doesn't accept them
+                res = model.fit()
+        except Exception as e:
+            fail_count += 1
+            if fail_count <= 5:
+                print(
+                    f"[quick_arima_eval] ARIMA failed for segment idx={idx}, "
+                    f"len={len(s)}, (p,d,q)=({p},{d},{q}): {repr(e)}"
+                )
+            continue
+
+        resid = np.asarray(res.resid, dtype="float64")
+        mask = np.isfinite(resid)
+        resid = resid[mask]
+        if resid.size == 0:
+            continue
+
+        all_resid.append(resid)
+        n_obs += resid.size
+        n_seg_fit += 1
+
+        if hasattr(res, "aic"):
+            aics.append(res.aic)
+        if hasattr(res, "bic"):
+            bics.append(res.bic)
+
+    if n_obs == 0:
+        print(
+            f"[quick_arima_eval] No successful fits for (p,d,q)=({p},{d},{q}). "
+            f"fail_count={fail_count}, used={len(segs_used)} segments, "
+            f"min_len_eff={min_len_eff}"
+        )
+        return float("nan"), float("nan"), float("nan"), 0, 0
+
+    resid_concat = np.concatenate(all_resid)
+    mse = float(np.mean(resid_concat ** 2))
+    rmse = float(np.sqrt(mse))
+    aic_mean = float(np.mean(aics)) if aics else float("nan")
+    bic_mean = float(np.mean(bics)) if bics else float("nan")
+
+    return rmse, aic_mean, bic_mean, n_obs, n_seg_fit
+
+
+
+# ---------------- MAIN ----------------
+if __name__ == "__main__" or True:
+    df_raw = pd.read_csv(INPUT_PATH)
+
+    seg_series = build_resampled_speed_segments(
+        df_raw,
+        VEHICLE_COL,
+        MAX_GAP_INCLUDE_S,
+        DELTAS[0],
+        DEMEAN_PER_SEGMENT,
+    )
+    
+    all_s = np.concatenate(seg_series)
+    print("Global speed std:", np.std(all_s), "m/s")
+
+    print(f"Total resampled segments: {len(seg_series)}")
+    if seg_series:
+        lengths = [len(s) for s in seg_series]
+        print(f"Segment length stats: min={min(lengths)}, max={max(lengths)}, "
+              f"median={np.median(lengths):.1f}")
+    
+    
