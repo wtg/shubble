@@ -117,6 +117,23 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
   const selectedMarkerRef = useRef<mapkit.MarkerAnnotation | null>(null);
   const overlays: mapkit.Overlay[] = [];
 
+  const shouldHideStop = (stopData: ShuttleStopData) => {
+  // Only apply to the specific stop
+  if (stopData.NAME.toUpperCase() !== "CHASAN BUILDING") {
+    return false;
+  }
+
+  const now = new Date();
+  const day = now.getDay(); // 0 = Sun, 6 = Sat
+  const isWeekend = day === 0 || day === 6;
+
+  const after530 =
+    now.getHours() > 17 ||
+    (now.getHours() === 17 && now.getMinutes() >= 30);
+
+  return isWeekend || after530;
+};
+
   // source: https://developer.apple.com/documentation/mapkitjs/loading-the-latest-version-of-mapkit-js
   const setupMapKitJs = async () => {
     if (!window.mapkit || window.mapkit.loadedLibraries.length === 0) {
@@ -310,6 +327,9 @@ export default function MapKitMap({ routeData, vehicles, generateRoutes = false,
     for (const [route, thisRouteData] of Object.entries(routeData)) {
       for (const stopKey of thisRouteData.STOPS) {
         const stopData = thisRouteData[stopKey] as ShuttleStopData;
+        if (shouldHideStop(stopData)) {
+          continue;
+        }
         const stopCoordinate = new mapkit.Coordinate(...(stopData.COORDINATES));
         // add stop overlay (circle)
         const stopOverlay = new mapkit.CircleOverlay(
