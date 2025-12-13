@@ -157,33 +157,33 @@ export default function MapKitMap({ routeData, displayVehicles = true, generateR
     mapkitScript();
   }, []);
 
-    // Fetch location data on component mount and set up polling
-    useEffect(() => {
-      if (!displayVehicles) return;
+  // Fetch location data on component mount and set up polling
+  useEffect(() => {
+    if (!displayVehicles) return;
 
-      const pollLocation = async () => {
-        try {
-          const response = await fetch('/api/locations');
-          if (!response.ok) {
-            throw new Error('Network response was not ok');
-          }
-          const data = await response.json();
-          setVehicles(data);
-        } catch (error) {
-          console.error('Error fetching location:', error);
+    const pollLocation = async () => {
+      try {
+        const response = await fetch('/api/locations');
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
         }
+        const data = await response.json();
+        setVehicles(data);
+      } catch (error) {
+        console.error('Error fetching location:', error);
       }
-  
-      pollLocation();
-  
-      // refresh location every 5 seconds
-      const refreshLocation = setInterval(pollLocation, 5000);
-  
-      return () => {
-        clearInterval(refreshLocation);
-      }
-  
-    }, []);
+    }
+
+    pollLocation();
+
+    // refresh location every 5 seconds
+    const refreshLocation = setInterval(pollLocation, 5000);
+
+    return () => {
+      clearInterval(refreshLocation);
+    }
+
+  }, []);
 
   // create the map
   useEffect(() => {
