@@ -657,3 +657,307 @@ if __name__ == "__main__":
         INCLUDE_DT_LAGS,
     )
 
+    res_df_ar.to_csv(OUT_PATH_AR, index=False)
+    print(f"\n[AR] Saved sweep to: {OUT_PATH_AR}")
+
+    if not res_df_ar.empty:
+        leaderboard_ar = res_df_ar.sort_values("RMSE").head(20)
+        print("\n[AR] Top 20 (lowest RMSE):")
+        cols = ["mode", "delta_s", "order_p", "lambda", "n_rows", "MSE", "RMSE"]
+        print(leaderboard_ar[cols].to_string(index=False))
+
+        # Best AR config (train RMSE)
+        best_ar_row = res_df_ar.sort_values("RMSE").iloc[0]
+        best_ar_rmse = float(best_ar_row["RMSE"])
+        key_ar = (
+            (float(best_ar_row["delta_s"]) if pd.notna(best_ar_row["delta_s"]) else None),
+            int(best_ar_row["order_p"]),
+            float(best_ar_row["lambda"]),
+        )
+        print("\n[AR] Best config (train RMSE):")
+        print(best_ar_row[cols].to_string())
+    else:
+        print("[AR] No rows produced (check input columns and parameters).")
+        best_ar_rmse = float("nan")
+        key_ar = None
+
+    # ---------- Quick ARIMA "train" eval (5k points) ----------
+    print("\n[ARIMA] Quick eval on sampled accel segments (train, ~15000 points)...")
+    arima_results = []
+
+    for p in ARIMA_P_LIST:
+        for d in ARIMA_D_LIST:
+            for q in ARIMA_Q_LIST:
+                print(f"  Evaluating ARIMA({p},{d},{q})...")
+                rmse, aic_mean, bic_mean, n_obs, n_seg = quick_arima_eval(
+                    seg_series,
+                    p,
+                    d,
+                    q,
+                    target_points=ARIMA_TARGET_POINTS,
+                    min_len=ARIMA_MIN_LEN,
+                    random_seed=ARIMA_RANDOM_SEED,
+                )
+                arima_results.append(
+                    {
+                        "p": p,
+                        "d": d,
+                        "q": q,
+                        "RMSE": rmse,
+                        "AIC_mean": aic_mean,
+                        "BIC_mean": bic_mean,
+                        "n_obs": n_obs,
+                        "n_segments": n_seg,
+                    }
+                )
+
+    arima_df = pd.DataFrame(arima_results).sort_values("RMSE").reset_index(drop=True)
+    print("\n[ARIMA] Quick-eval results (train, sorted by RMSE):")
+    print(arima_df.to_string(index=False))
+
+    if not arima_df.empty and np.isfinite(arima_df["RMSE"]).any():
+        best_arima_row_train = arima_df.loc[arima_df["RMSE"].idxmin()]
+        best_arima_rmse_train = float(best_arima_row_train["RMSE"])
+        print("\n[ARIMA] Best quick-eval config (train):")
+        print(best_arima_row_train.to_string())
+    else:
+        best_arima_rmse_train = float("nan")
+        best_arima_row_train = None
+        print("[ARIMA] No successful ARIMA fits in quick eval.")
+
+    # ---------- AR TEST SUITE (~10k points) ----------
+    print("\n[AR TEST] Evaluating all AR configs on ~10,000 points...")
+    ar_test_rows = []
+
+    for p in ORDERS:
+        X_test, y_test = build_ar_test_design(
+            seg_series,
+            p,
+            target_points=TEST_TARGET_POINTS,
+            random_seed=TEST_RANDOM_SEED,
+        )
+        n_rows_test = X_test.shape[0]
+        if n_rows_test == 0:
+            continue
+
+        for lam in LAMBDAS:
+            lam_key = 0.0 if lam in (None, 0) else float(lam)
+            model_key = (float(DELTAS[0]) if RESAMPLE else None, int(p), lam_key)
+            if model_key not in models_ar:
+                continue
+            beta = models_ar[model_key]["beta"]
+            if beta.size == 0:
+                rmse_test = float("nan")
+            else:
+                y_hat_test = X_test @ beta
+                eps_test = y_test - y_hat_test
+                mse_test = float(np.mean(eps_test ** 2))
+                rmse_test = float(math.sqrt(mse_test))
+
+            ar_test_rows.append(
+                {
+                    "order_p": int(p),
+                    "lambda": lam_key,
+                    "n_rows_test": int(n_rows_test),
+                    "RMSE_test": rmse_test,
+                }
+            )
+
+    if ar_test_rows:
+        ar_test_df = pd.DataFrame(ar_test_rows).sort_values("RMSE_test").reset_index(drop=True)
+        print("\n[AR TEST] Results on ~10,000 points (sorted by RMSE_test):")
+        print(ar_test_df.head(20).to_string(index=False))
+        best_ar_test_row = ar_test_df.iloc[0]
+        best_ar_rmse_test = float(best_ar_test_row["RMSE_test"])
+    else:
+        print("[AR TEST] No AR test rows produced.")
+        best_ar_rmse_test = float("nan")
+
+    # ---------- ARIMA TEST SUITE (~10k points) ----------
+    print("\n[ARIMA TEST] Evaluating all ARIMA configs on ~10,000 points...")
+    arima_test_results = []
+
+    for p in ARIMA_P_LIST:
+        for d in ARIMA_D_LIST:
+            for q in ARIMA_Q_LIST:
+                print(f"  Testing ARIMA({p},{d},{q})...")
+                rmse_t, aic_t, bic_t, n_obs_t, n_seg_t = quick_arima_eval(
+                    seg_series,
+                    p,
+                    d,
+                    q,
+                    target_points=TEST_TARGET_POINTS,
+                    min_len=ARIMA_MIN_LEN,
+                    random_seed=TEST_RANDOM_SEED,
+                )
+                arima_test_results.append(
+                    {
+                        "p": p,
+                        "d": d,
+                        "q": q,
+                        "RMSE_test": rmse_t,
+                        "AIC_mean_test": aic_t,
+                        "BIC_mean_test": bic_t,
+                        "n_obs_test": n_obs_t,
+                        "n_segments_test": n_seg_t,
+                    }
+                )
+
+    arima_test_df = pd.DataFrame(arima_test_results).sort_values("RMSE_test").reset_index(drop=True)
+    print("\n[ARIMA TEST] Results on ~10,000 points (sorted by RMSE_test):")
+    print(arima_test_df.to_string(index=False))
+
+    if not arima_test_df.empty and np.isfinite(arima_test_df["RMSE_test"]).any():
+        best_arima_row_test = arima_test_df.loc[arima_test_df["RMSE_test"].idxmin()]
+        best_arima_rmse_test = float(best_arima_row_test["RMSE_test"])
+        print("\n[ARIMA TEST] Best config on ~10,000 points:")
+        print(best_arima_row_test.to_string())
+    else:
+        best_arima_rmse_test = float("nan")
+        best_arima_row_test = None
+        print("[ARIMA TEST] No successful ARIMA test fits.")
+
+    # ---------- Summary comparison ----------
+    print("\n===== SUMMARY =====")
+    print(
+        f"Global accel std              : {global_std:.3f} m/s^2 "
+        f"({global_std * 2.23694:.3f} mph/s)"
+    )
+    print(
+        f"Noise σ (smoothing, accel)    : {sigma_acc:.3f} m/s^2 "
+        f"({sigma_mph_per_s:.3f} mph/s)"
+    )
+    print(f"Best AR RMSE (train, accel)   : {best_ar_rmse:.3f} m/s^2")
+    print(f"Best AR RMSE (test~10k)       : {best_ar_rmse_test:.3f} m/s^2")
+    print(f"Best ARIMA RMSE (train, accel): {best_arima_rmse_train:.3f} m/s^2")
+    print(f"Best ARIMA RMSE (test~10k)    : {best_arima_rmse_test:.3f} m/s^2")
+
+    if np.isfinite(best_ar_rmse_test) and np.isfinite(sigma_acc):
+        print(f"AR test RMSE / noise σ        : {best_ar_rmse_test / sigma_acc:.3f}")
+    if np.isfinite(best_arima_rmse_test) and np.isfinite(sigma_acc):
+        print(f"ARIMA test RMSE / noise σ     : {best_arima_rmse_test / sigma_acc:.3f}")
+
+    # ---------- Per-step consecutive predictions for best AR & ARIMA ----------
+    print("\n[CONSEC] Per-step predictions for best AR and ARIMA on a single long accel segment...")
+
+    if (
+        (not np.isnan(best_ar_rmse_test))
+        and ("best_ar_test_row" in locals())
+        and (best_arima_row_test is not None)
+        and np.isfinite(best_arima_rmse_test)
+    ):
+        # ---- Best AR hyperparams from test suite ----
+        best_p_ar = int(best_ar_test_row["order_p"])
+        best_lam_ar = float(best_ar_test_row["lambda"])
+        delta_used = float(DELTAS[0]) if RESAMPLE else None
+        model_key_ar = (delta_used, best_p_ar, best_lam_ar)
+        if model_key_ar not in models_ar:
+            raise KeyError(f"Best AR model key {model_key_ar} not found in models_ar.")
+        beta_ar_global = models_ar[model_key_ar]["beta"]
+
+        # ---- Best ARIMA hyperparams from test suite ----
+        best_p_arima = int(best_arima_row_test["p"])
+        best_d_arima = int(best_arima_row_test["d"])
+        best_q_arima = int(best_arima_row_test["q"])
+
+        # Need enough history for lags + window
+        min_needed = best_p_ar + CONSEC_POINTS + 5
+        seg = pick_long_segment(seg_series, min_len=min_needed, random_seed=TEST_RANDOM_SEED)
+        T = len(seg)
+        print(f"[CONSEC] Using accel segment of length {T} for per-step evaluation")
+
+        # ================= AR (ridge) one-step-ahead =================
+        print(f"[CONSEC][AR] p={best_p_ar}, lambda={best_lam_ar}")
+
+        X_full_ar, y_full_ar = build_ar_design_from_resampled(seg, best_p_ar)
+        if X_full_ar.shape[0] < CONSEC_POINTS:
+            raise ValueError(
+                f"Not enough rows in X_full_ar ({X_full_ar.shape[0]}) "
+                f"for CONSEC_POINTS={CONSEC_POINTS}."
+            )
+
+        X_sub_ar = X_full_ar[-CONSEC_POINTS:]
+        y_true_ar = y_full_ar[-CONSEC_POINTS:]
+        y_hat_ar = X_sub_ar @ beta_ar_global
+
+        # ================= ARIMA one-step-ahead (fittedvalues) =================
+        print(f"[CONSEC][ARIMA] order=({best_p_arima},{best_d_arima},{best_q_arima})")
+
+        try:
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=UserWarning)
+                warnings.filterwarnings("ignore", category=ConvergenceWarning)
+                model_arima = ARIMA(
+                    seg,
+                    order=(best_p_arima, best_d_arima, best_q_arima),
+                    enforce_stationarity=False,
+                    enforce_invertibility=False,
+                )
+                res_arima = model_arima.fit()
+        except Exception as e:
+            print(f"[CONSEC][ARIMA] Fit failed: {repr(e)}")
+            res_arima = None
+
+        if res_arima is not None:
+            fitted = np.asarray(res_arima.fittedvalues, dtype="float64")
+            n = min(CONSEC_POINTS, len(fitted))
+            y_hat_arima = fitted[-n:]
+            y_true_arima = seg[-n:]
+        else:
+            n = CONSEC_POINTS
+            y_hat_arima = np.full(n, np.nan, dtype="float64")
+            y_true_arima = seg[-n:]
+
+        # ================= RMSE helpers =================
+        def rmse(a, b):
+            a = np.asarray(a, dtype="float64")
+            b = np.asarray(b, dtype="float64")
+            mask = np.isfinite(a) & np.isfinite(b)
+            if not mask.any():
+                return float("nan")
+            diff = a[mask] - b[mask]
+            return float(np.sqrt(np.mean(diff ** 2)))
+
+        rmse_ar_window = rmse(y_true_ar, y_hat_ar)
+        rmse_arima_window = rmse(y_true_arima, y_hat_arima)
+
+        print(f"[CONSEC] Window RMSE (AR, per-step, accel)     : {rmse_ar_window:.3f} m/s^2")
+        print(f"[CONSEC] Window RMSE (ARIMA, per-step, accel) : {rmse_arima_window:.3f} m/s^2")
+
+        # ================= PLOTS =================
+        x_ar = np.arange(len(y_true_ar))
+        plt.figure(figsize=(10, 4))
+        plt.plot(x_ar, y_true_ar, label="True accel (m/s^2)")
+        plt.plot(x_ar, y_hat_ar, label=f"AR pred (p={best_p_ar}, λ={best_lam_ar})")
+        plt.title(
+            f"Best AR per-step accel predictions (last {len(y_true_ar)} usable points)\n"
+            f"Window RMSE={rmse_ar_window:.3f} m/s^2"
+        )
+        plt.xlabel("Time index within window")
+        plt.ylabel("Acceleration (m/s^2)")
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+
+        x_arima = np.arange(len(y_true_arima))
+        plt.figure(figsize=(10, 4))
+        plt.plot(x_arima, y_true_arima, label="True accel (m/s^2)")
+        plt.plot(
+            x_arima,
+            y_hat_arima,
+            label=f"ARIMA fitted (p,d,q)=({best_p_arima},{best_d_arima},{best_q_arima})",
+        )
+        plt.title(
+            f"Best ARIMA per-step accel predictions (last {len(y_true_arima)} usable points)\n"
+            f"Window RMSE={rmse_arima_window:.3f} m/s^2"
+        )
+        plt.xlabel("Time index within window")
+        plt.ylabel("Acceleration (m/s^2)")
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+
+    else:
+        print("[CONSEC] Skipping per-step plots; missing best AR/ARIMA results.")
