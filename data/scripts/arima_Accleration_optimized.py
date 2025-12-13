@@ -397,3 +397,263 @@ def evaluate_ar_pipeline(
                     if len(a_seg) >= 3:
                         segs.append(("raw", t_seg[1:], a_seg))
 
+        # Build lagged design matrices for each order p
+        lagged_by_p = {}
+        for p in orders:
+            X_list, y_list = [], []
+            for mode, t_arr, s_arr in segs:
+                if mode == "resampled":
+                    Xs, ys = build_ar_design_from_resampled(s_arr, p)
+                else:
+                    Xs, ys = build_arx_design_irregular(
+                        t_arr, s_arr, p, include_dt_lags=include_dt_lags
+                    )
+                if Xs.shape[0] > 0:
+                    X_list.append(Xs)
+                    y_list.append(ys)
+
+            if X_list:
+                X_all = np.vstack(X_list)
+                y_all = np.concatenate(y_list)
+            else:
+                feat_dim = p if resample else (p + (p if include_dt_lags else 0))
+                X_all = np.zeros((0, feat_dim))
+                y_all = np.zeros((0,))
+            lagged_by_p[p] = (X_all, y_all)
+
+        # Fit models for each p, lambda
+        for p in orders:
+            X_all, y_all = lagged_by_p[p]
+            for lam in lambdas:
+                lam_key = 0.0 if lam in (None, 0) else float(lam)
+                beta, y_hat, eps, mse = ridge_fit(X_all, y_all, lam)
+                rmse = float(np.sqrt(mse)) if mse == mse else float("nan")
+                results.append(
+                    {
+                        "mode": "RESAMPLED"
+                        if resample
+                        else ("RAW_ARX_dt" if include_dt_lags else "RAW_AR"),
+                        "delta_s": (float(delta) if resample else None),
+                        "order_p": int(p),
+                        "lambda": lam_key,
+                        "n_rows": int(X_all.shape[0]),
+                        "MSE": mse,
+                        "RMSE": rmse,
+                    }
+                )
+                models[((float(delta) if resample else None), int(p), lam_key)] = {
+                    "beta": beta,
+                    "mse": mse,
+                    "rmse": rmse,
+                    "n_rows": int(X_all.shape[0]),
+                    "feat_dim": int(X_all.shape[1]) if X_all.ndim == 2 else 0,
+                    "eps": eps,
+                    "y_hat": y_hat,
+                }
+
+    res_df = pd.DataFrame(results).sort_values(
+        ["mode", "delta_s", "order_p", "lambda"]
+    ).reset_index(drop=True)
+    return res_df, models, debug_pairs
+
+
+# ---------------- QUICK ARIMA EVAL (SAMPLED) ----------------
+def quick_arima_eval(
+    seg_series,
+    p, d, q,
+    target_points=5000,
+    min_len=10,
+    random_seed=42,
+):
+    """
+    Quickly evaluate one ARIMA(p,d,q) on a randomly chosen set of *acceleration* segments,
+    selected until we accumulate ~target_points total time points.
+    """
+    if not seg_series:
+        print(f"[quick_arima_eval] seg_series is empty for (p,d,q)=({p},{d},{q})")
+        return float("nan"), float("nan"), float("nan"), 0, 0
+
+    min_len_eff = max(min_len, p + d + q + 3)
+
+    rng = random.Random(random_seed)
+    indices = list(range(len(seg_series)))
+    rng.shuffle(indices)
+
+    segs_used = []
+    cum_len = 0
+
+    for idx in indices:
+        s = seg_series[idx]
+        if len(s) < min_len_eff:
+            continue
+        segs_used.append(s)
+        cum_len += len(s)
+        if cum_len >= target_points:
+            break
+
+    if not segs_used:
+        print(
+            f"[quick_arima_eval] No segments long enough for (p,d,q)=({p},{d},{q}). "
+            f"min_len_eff={min_len_eff}"
+        )
+        return float("nan"), float("nan"), float("nan"), 0, 0
+
+    print(
+        f"[quick_arima_eval] ARIMA({p},{d},{q}): "
+        f"using {len(segs_used)} segments, total_len≈{cum_len} points "
+        f"(target={target_points})"
+    )
+
+    all_resid = []
+    aics = []
+    bics = []
+    n_obs = 0
+    n_seg_fit = 0
+    fail_count = 0
+
+    for local_idx, s in enumerate(segs_used):
+        try:
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=UserWarning)
+                warnings.filterwarnings("ignore", category=ConvergenceWarning)
+                model = ARIMA(
+                    s,
+                    order=(p, d, q),
+                    enforce_stationarity=False,
+                    enforce_invertibility=False,
+                )
+                res = model.fit()
+        except Exception as e:
+            fail_count += 1
+            if fail_count <= 5:
+                print(
+                    f"[quick_arima_eval] ARIMA failed for segment idx={local_idx}, "
+                    f"len={len(s)}, (p,d,q)=({p},{d},{q}): {repr(e)}"
+                )
+            continue
+
+        resid = np.asarray(res.resid, dtype="float64")
+        mask = np.isfinite(resid)
+        resid = resid[mask]
+        if resid.size == 0:
+            continue
+
+        all_resid.append(resid)
+        n_obs += resid.size
+        n_seg_fit += 1
+
+        if hasattr(res, "aic"):
+            aics.append(res.aic)
+        if hasattr(res, "bic"):
+            bics.append(res.bic)
+
+    if n_obs == 0:
+        print(
+            f"[quick_arima_eval] No successful fits for (p,d,q)=({p},{d},{q}). "
+            f"fail_count={fail_count}, attempted_segments={len(segs_used)}"
+        )
+        return float("nan"), float("nan"), float("nan"), 0, 0
+
+    resid_concat = np.concatenate(all_resid)
+    mse = float(np.mean(resid_concat ** 2))
+    rmse = float(np.sqrt(mse))
+    aic_mean = float(np.mean(aics)) if aics else float("nan")
+    bic_mean = float(np.mean(bics)) if bics else float("nan")
+
+    return rmse, aic_mean, bic_mean, n_obs, n_seg_fit
+
+
+# ---------- AR TEST DESIGN (10k points) ----------
+def build_ar_test_design(seg_series, p, target_points=10000, random_seed=123):
+    """
+    Build a test design matrix (X_test, y_test) for AR of order p,
+    from random *acceleration* segments until we accumulate ~target_points rows.
+    """
+    rng = random.Random(random_seed)
+    indices = list(range(len(seg_series)))
+    rng.shuffle(indices)
+
+    X_list = []
+    y_list = []
+    total_rows = 0
+
+    for idx in indices:
+        s = seg_series[idx]
+        if len(s) <= p:
+            continue
+        X_s, y_s = build_ar_design_from_resampled(s, p)
+        if X_s.shape[0] == 0:
+            continue
+        X_list.append(X_s)
+        y_list.append(y_s)
+        total_rows += X_s.shape[0]
+        if total_rows >= target_points:
+            break
+
+    if not X_list:
+        return np.zeros((0, p)), np.zeros((0,))
+
+    X_test = np.vstack(X_list)
+    y_test = np.concatenate(y_list)
+
+    if X_test.shape[0] > target_points:
+        X_test = X_test[:target_points]
+        y_test = y_test[:target_points]
+
+    return X_test, y_test
+
+
+# ---------------- MAIN ----------------
+if __name__ == "__main__":
+    df_raw = pd.read_csv(INPUT_PATH)
+
+    # Build resampled acceleration segments just once (for noise + ARIMA + AR test)
+    seg_series = build_resampled_accel_segments(
+        df_raw,
+        VEHICLE_COL,
+        MAX_GAP_INCLUDE_S,
+        DELTAS[0],
+        DEMEAN_PER_SEGMENT,
+    )
+
+    print(f"Total resampled acceleration segments: {len(seg_series)}")
+    if seg_series:
+        lengths = [len(s) for s in seg_series]
+        print(
+            f"Segment length stats: "
+            f"min={min(lengths)}, max={max(lengths)}, median={np.median(lengths):.1f}"
+        )
+        all_s = np.concatenate(seg_series)
+        global_std = float(np.std(all_s))
+        print(
+            f"Global accel std: {global_std:.3f} m/s^2 "
+            f"({global_std * 2.23694:.3f} mph/s)"
+        )
+        print(
+            f"Acceleration horizon: ACCEL_H={ACCEL_H} steps, "
+            f"span={ACCEL_H * DELTAS[0]:.1f} seconds"
+        )
+
+    # ---------- Noise estimate ----------
+    sigma_acc, sigma_mph_per_s = estimate_speed_noise_from_smoothing(
+        seg_series,
+        window=NOISE_WINDOW_SAMPLES,
+    )
+    print(
+        f"\n[NOISE] Estimated accel σ ≈ {sigma_acc:.3f} m/s^2 "
+        f"≈ {sigma_mph_per_s:.3f} mph/s (window={NOISE_WINDOW_SAMPLES} samples)"
+    )
+
+    # ---------- AR (ridge) pipeline ----------
+    res_df_ar, models_ar, debug_pairs = evaluate_ar_pipeline(
+        df_raw,
+        VEHICLE_COL,
+        MAX_GAP_INCLUDE_S,
+        RESAMPLE,
+        DELTAS,
+        ORDERS,
+        LAMBDAS,
+        DEMEAN_PER_SEGMENT,
+        INCLUDE_DT_LAGS,
+    )
+
