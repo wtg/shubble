@@ -630,9 +630,9 @@ export default function MapKitMap({ routeData, displayVehicles = true, generateR
         }
 
         // Step 6: Update animation state.
-        // If the gap is extremely large (>250m in either direction), snap to server position.
+        // If the gap is extremely large (>350m in either direction), snap to server position.
         // For smaller backward gaps, animate smoothly backward to correct the overprediction.
-        const MAX_REASONABLE_GAP_METERS = 250;
+        const MAX_REASONABLE_GAP_METERS = 350;
         if (Math.abs(distanceToTarget) > MAX_REASONABLE_GAP_METERS) {
           snapToPolyline();
         } else {
@@ -656,6 +656,8 @@ export default function MapKitMap({ routeData, displayVehicles = true, generateR
       if (!currentVehicleKeys.has(key)) {
         map.removeAnnotation(vehicleOverlays.current[key]);
         delete vehicleOverlays.current[key];
+        // Also clean up animation state to prevent memory leaks
+        delete vehicleAnimationStates.current[key];
       }
     });
   }, [map, vehicles, routeData]);
