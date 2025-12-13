@@ -327,3 +327,304 @@ def ridge_fit(X, y, lam):
     return beta, y_hat, eps, mse
 
 
+def evaluate_ar_pipeline(
+    df_raw,
+    vehicle_col,
+    max_gap_include_s,
+    resample,
+    deltas,
+    orders,
+    lambdas,
+    demean_per_segment=True,
+    include_dt_lags=True,
+):
+    results = []
+    models = {}
+    debug_pairs = []
+
+    # Group by vehicle if column present
+    if vehicle_col and vehicle_col in df_raw.columns:
+        groups = list(df_raw.groupby(vehicle_col))
+    else:
+        groups = [(None, df_raw)]
+
+    delta_list = deltas if resample else [None]
+
+    for delta in delta_list:
+        segs = []
+
+        # Build segments (either resampled or raw)
+        for _, df_g in groups:
+            df_speed = compute_speed_mps(df_g)
+            raw_segs = split_segments_on_gaps(
+                df_speed["t"],
+                df_speed["speed_mps"],
+                df_speed["dt_s"],
+                max_gap_include_s,
+            )
+            for (t_seg, s_seg) in raw_segs:
+                if demean_per_segment and len(s_seg) > 0:
+                    s_seg = s_seg - np.nanmean(s_seg)
+                if resample:
+                    t_grid, s_grid = resample_linear(t_seg, s_seg, float(delta))
+                    if len(s_grid) >= 5:
+                        segs.append(("resampled", t_grid, s_grid))
+                        debug_pairs.append(
+                            {
+                                "delta": float(delta),
+                                "t_raw": t_seg,
+                                "speed_raw": s_seg,
+                                "t_grid": t_grid,
+                                "speed_grid": s_grid,
+                            }
+                        )
+                else:
+                    if len(s_seg) >= 3:
+                        segs.append(("raw", t_seg, s_seg))
+
+        # Build lagged design matrices for each order p
+        lagged_by_p = {}
+        for p in orders:
+            X_list, y_list = [], []
+            for mode, t_arr, s_arr in segs:
+                if mode == "resampled":
+                    Xs, ys = build_ar_design_from_resampled(s_arr, p)
+                else:
+                    Xs, ys = build_arx_design_irregular(
+                        t_arr, s_arr, p, include_dt_lags=include_dt_lags
+                    )
+                if Xs.shape[0] > 0:
+                    X_list.append(Xs)
+                    y_list.append(ys)
+        
+            if X_list:
+                X_all = np.vstack(X_list)
+                y_all = np.concatenate(y_list)
+        
+                # ---- NEW: cap AR training rows for fairness ----
+                n_rows = X_all.shape[0]
+                if n_rows > AR_TRAIN_TARGET_POINTS:
+                    rng = np.random.default_rng(AR_TRAIN_RANDOM_SEED + p)
+                    idx = rng.choice(n_rows, size=AR_TRAIN_TARGET_POINTS, replace=False)
+                    X_all = X_all[idx]
+                    y_all = y_all[idx]
+            else:
+                feat_dim = p if resample else (p + (p if include_dt_lags else 0))
+                X_all = np.zeros((0, feat_dim))
+                y_all = np.zeros((0,))
+        
+            lagged_by_p[p] = (X_all, y_all)
+
+
+        # Fit models for each p, lambda
+        for p in orders:
+            X_all, y_all = lagged_by_p[p]
+            for lam in lambdas:
+                lam_key = 0.0 if lam in (None, 0) else float(lam)
+                beta, y_hat, eps, mse = ridge_fit(X_all, y_all, lam)
+                rmse = float(np.sqrt(mse)) if mse == mse else float("nan")
+                results.append(
+                    {
+                        "mode": "RESAMPLED"
+                        if resample
+                        else ("RAW_ARX_dt" if include_dt_lags else "RAW_AR"),
+                        "delta_s": (float(delta) if resample else None),
+                        "order_p": int(p),
+                        "lambda": lam_key,
+                        "n_rows": int(X_all.shape[0]),
+                        "MSE": mse,
+                        "RMSE": rmse,
+                    }
+                )
+                models[((float(delta) if resample else None), int(p), lam_key)] = {
+                    "beta": beta,
+                    "mse": mse,
+                    "rmse": rmse,
+                    "n_rows": int(X_all.shape[0]),
+                    "feat_dim": int(X_all.shape[1]) if X_all.ndim == 2 else 0,
+                    "eps": eps,
+                    "y_hat": y_hat,
+                }
+
+    res_df = pd.DataFrame(results).sort_values(
+        ["mode", "delta_s", "order_p", "lambda"]
+    ).reset_index(drop=True)
+    return res_df, models, debug_pairs
+
+
+# ---------------- QUICK ARIMA EVAL (SAMPLED) ----------------
+def quick_arima_eval(
+    seg_series,
+    p, d, q,
+    target_points=5000,
+    min_len=10,
+    random_seed=42,
+):
+    """
+    Quickly evaluate one ARIMA(p,d,q) on a randomly chosen set of segments,
+    selected until we accumulate ~target_points total time points.
+
+    Returns (rmse, aic_mean, bic_mean, n_obs, n_segments_used).
+    """
+    if not seg_series:
+        print(f"[quick_arima_eval] seg_series is empty for (p,d,q)=({p},{d},{q})")
+        return float("nan"), float("nan"), float("nan"), 0, 0
+
+    # minimum length needed for ARIMA(p,d,q)
+    min_len_eff = max(min_len, p + d + q + 3)
+
+    # Randomize segment order
+    rng = random.Random(random_seed)
+    indices = list(range(len(seg_series)))
+    rng.shuffle(indices)
+
+    segs_used = []
+    cum_len = 0
+
+    for idx in indices:
+        s = seg_series[idx]
+        if len(s) < min_len_eff:
+            continue
+        segs_used.append(s)
+        cum_len += len(s)
+        if cum_len >= target_points:
+            break
+
+    if not segs_used:
+        print(
+            f"[quick_arima_eval] No segments long enough for (p,d,q)=({p},{d},{q}). "
+            f"min_len_eff={min_len_eff}"
+        )
+        return float("nan"), float("nan"), float("nan"), 0, 0
+
+    print(
+        f"[quick_arima_eval] ARIMA({p},{d},{q}): "
+        f"using {len(segs_used)} segments, total_len≈{cum_len} points "
+        f"(target={target_points})"
+    )
+
+    all_resid = []
+    aics = []
+    bics = []
+    n_obs = 0
+    n_seg_fit = 0
+    fail_count = 0
+
+    for local_idx, s in enumerate(segs_used):
+        try:
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=UserWarning)
+                warnings.filterwarnings("ignore", category=ConvergenceWarning)
+                model = ARIMA(
+                    s,
+                    order=(p, d, q),
+                    enforce_stationarity=False,
+                    enforce_invertibility=False,
+                )
+                res = model.fit()
+        except Exception as e:
+            fail_count += 1
+            if fail_count <= 5:
+                print(
+                    f"[quick_arima_eval] ARIMA failed for segment idx={local_idx}, "
+                    f"len={len(s)}, (p,d,q)=({p},{d},{q}): {repr(e)}"
+                )
+            continue
+
+        resid = np.asarray(res.resid, dtype="float64")
+        mask = np.isfinite(resid)
+        resid = resid[mask]
+        if resid.size == 0:
+            continue
+
+        all_resid.append(resid)
+        n_obs += resid.size
+        n_seg_fit += 1
+
+        if hasattr(res, "aic"):
+            aics.append(res.aic)
+        if hasattr(res, "bic"):
+            bics.append(res.bic)
+
+    if n_obs == 0:
+        print(
+            f"[quick_arima_eval] No successful fits for (p,d,q)=({p},{d},{q}). "
+            f"fail_count={fail_count}, attempted_segments={len(segs_used)}"
+        )
+        return float("nan"), float("nan"), float("nan"), 0, 0
+
+    resid_concat = np.concatenate(all_resid)
+    mse = float(np.mean(resid_concat ** 2))
+    rmse = float(np.sqrt(mse))
+    aic_mean = float(np.mean(aics)) if aics else float("nan")
+    bic_mean = float(np.mean(bics)) if bics else float("nan")
+
+    return rmse, aic_mean, bic_mean, n_obs, n_seg_fit
+
+
+# ---------- AR TEST DESIGN (10k points) ----------
+def build_ar_test_design(seg_series, p, target_points=10000, random_seed=123):
+    """
+    Build a test design matrix (X_test, y_test) for AR of order p,
+    from random segments until we accumulate ~target_points rows.
+    """
+    rng = random.Random(random_seed)
+    indices = list(range(len(seg_series)))
+    rng.shuffle(indices)
+
+    X_list = []
+    y_list = []
+    total_rows = 0
+
+    for idx in indices:
+        s = seg_series[idx]
+        if len(s) <= p:
+            continue
+        X_s, y_s = build_ar_design_from_resampled(s, p)
+        if X_s.shape[0] == 0:
+            continue
+        X_list.append(X_s)
+        y_list.append(y_s)
+        total_rows += X_s.shape[0]
+        if total_rows >= target_points:
+            break
+
+    if not X_list:
+        return np.zeros((0, p)), np.zeros((0,))
+
+    X_test = np.vstack(X_list)
+    y_test = np.concatenate(y_list)
+
+    # Optionally trim to exactly target_points rows
+    if X_test.shape[0] > target_points:
+        X_test = X_test[:target_points]
+        y_test = y_test[:target_points]
+
+    return X_test, y_test
+
+def build_arima_global_train_test_series(
+    seg_series,
+    train_target_points=15000,
+    test_target_points=10000,
+    random_seed=123,
+):
+    """
+    Build a single global train and test 1D series for ARIMA by concatenating segments.
+
+    - Randomly shuffles segments.
+    - Fills `train` up to ~train_target_points.
+    - Then fills `test` up to ~test_target_points from the remaining data.
+    - Returns (train_series, test_series) as 1D float64 numpy arrays.
+    """
+    if not seg_series:
+        return np.zeros((0,), dtype="float64"), np.zeros((0,), dtype="float64")
+
+    rng = random.Random(random_seed)
+    indices = list(range(len(seg_series)))
+    rng.shuffle(indices)
+
+    train_list = []
+    test_list = []
+    n_train = 0
+    n_test = 0
+
