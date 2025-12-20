@@ -16,7 +16,7 @@ describe('Schedule Component', () => {
     );
 
     // Rerender with different route
-    rerender(<Schedule selectedRoute="SOUTH" setSelectedRoute={mockSetSelectedRoute} />);
+    rerender(<Schedule selectedRoute="WEST" setSelectedRoute={mockSetSelectedRoute} />);
     expect(document.body).toBeTruthy();
   });
 });

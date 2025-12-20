@@ -7,7 +7,7 @@ describe('Config', () => {
     expect(typeof config.isStaging).toBe('boolean');
   });
 
-  it('isStaging is false by default', () => {
-    expect(config.isStaging).toBe(false);
+  it('isStaging is true by default (not production)', () => {
+    expect(config.isStaging).toBe(true);
   });
 });
