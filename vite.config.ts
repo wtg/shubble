@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
@@ -42,5 +42,17 @@ export default defineConfig({
   },
   define: {
     'import.meta.env.GIT_REV': JSON.stringify(process.env.GIT_REV || 'unknown')
+  },
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: './client/src/test/setup.ts',
+    coverage: {
+      reporter: ['text', 'json', 'html'],
+      exclude: [
+        'node_modules/',
+        'client/src/test/',
+      ]
+    }
   }
 })
