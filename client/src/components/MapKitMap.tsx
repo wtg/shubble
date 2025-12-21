@@ -5,6 +5,7 @@ import ShuttleIcon from "./ShuttleIcon";
 
 import type { ShuttleRouteData, ShuttleStopData } from "../ts/types/route";
 import type { VehicleInformationMap } from "../ts/types/vehicleLocation";
+import DataAgeIndicator from "./DataAgeIndicator";
 
 import {
   type Coordinate,
@@ -135,6 +136,7 @@ export default function MapKitMap({ routeData, displayVehicles = true, generateR
   const token = import.meta.env.VITE_MAPKIT_KEY;
   const [map, setMap] = useState<(mapkit.Map | null)>(null);
   const [vehicles, setVehicles] = useState<VehicleInformationMap | null>(null);
+  const [dataAge, setDataAge] = useState<number | null>(null);
 
   const vehicleOverlays = useRef<Record<string, mapkit.ShuttleAnnotation>>({});
   const vehicleAnimationStates = useRef<Record<string, {
@@ -175,33 +177,54 @@ export default function MapKitMap({ routeData, displayVehicles = true, generateR
     mapkitScript();
   }, []);
 
-    // Fetch location data on component mount and set up polling
-    useEffect(() => {
-      if (!displayVehicles) return;
+  // Fetch location data on component mount and set up polling synced with server
+  useEffect(() => {
+    if (!displayVehicles) return;
 
-      const pollLocation = async () => {
-        try {
-          const response = await fetch('/api/locations');
-          if (!response.ok) {
-            throw new Error('Network response was not ok');
-          }
-          const data = await response.json();
-          setVehicles(data);
-        } catch (error) {
-          console.error('Error fetching location:', error);
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let isMounted = true;
+
+    const pollLocation = async () => {
+      try {
+        const response = await fetch('/api/locations');
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
+        }
+        const data = await response.json();
+        setVehicles(data);
+
+        // Read data age from response header
+        const dataAgeHeader = response.headers.get('X-Data-Age-Seconds');
+        setDataAge(dataAgeHeader ? parseFloat(dataAgeHeader) : null);
+
+        // Calculate optimal delay for next fetch to sync with server's 5-second update cycle
+        // If data is N seconds old, next update should arrive in (5 - (N % 5)) seconds
+        // Add a small buffer (200ms) to ensure the server has updated
+        const currentDataAge = dataAgeHeader ? parseFloat(dataAgeHeader) : 0;
+        const nextUpdateIn = Math.max(1000, (5 - (currentDataAge % 5)) * 1000 + 200);
+
+        if (isMounted) {
+          timeoutId = setTimeout(pollLocation, nextUpdateIn);
+        }
+      } catch (error) {
+        console.error('Error fetching location:', error);
+        // On error, retry after 5 seconds
+        if (isMounted) {
+          timeoutId = setTimeout(pollLocation, 5000);
         }
       }
-  
-      pollLocation();
-  
-      // refresh location every 5 seconds
-      const refreshLocation = setInterval(pollLocation, 5000);
-  
-      return () => {
-        clearInterval(refreshLocation);
+    }
+
+    pollLocation();
+
+    return () => {
+      isMounted = false;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
       }
-  
-    }, []);
+    }
+
+  }, [displayVehicles]);
 
   // create the map
   useEffect(() => {
@@ -748,6 +771,7 @@ export default function MapKitMap({ routeData, displayVehicles = true, generateR
       className={isFullscreen ? 'map-fullscreen' : 'map'}
       ref={mapRef}
     >
+      {displayVehicles && <DataAgeIndicator dataAge={dataAge} />}
     </div>
   );
 };
