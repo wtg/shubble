@@ -3,7 +3,7 @@ Unit tests for database models
 """
 import pytest
 from datetime import datetime
-from server.models import Vehicle, GeofenceEvent, VehicleLocation, Driver, DriverVehicleAssignment
+from backend.models import Vehicle, GeofenceEvent, VehicleLocation, Driver, DriverVehicleAssignment
 
 
 @pytest.mark.unit

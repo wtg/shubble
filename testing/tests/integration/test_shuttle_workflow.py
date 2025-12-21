@@ -3,7 +3,7 @@ Integration tests for complete shuttle tracking workflow
 """
 import pytest
 from datetime import datetime, timezone
-from server.models import Vehicle, GeofenceEvent, VehicleLocation
+from backend.models import Vehicle, GeofenceEvent, VehicleLocation
 
 
 @pytest.mark.integration

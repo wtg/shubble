@@ -1,15 +1,23 @@
+import sys
+from pathlib import Path
+
+# Add project root and current directory to path for imports
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(Path(__file__).parent))
+
 from flask import Flask, jsonify, request, send_from_directory
 from threading import Thread, Lock
 import time
 import os
 import logging
 
-from server.time_utils import get_campus_start_of_day
-from .shuttle import Shuttle, ShuttleState
+from backend.time_utils import get_campus_start_of_day
+from shuttle import Shuttle, ShuttleState
 from data.stops import Stops
 from datetime import datetime, date
-from server.models import Vehicle, GeofenceEvent, VehicleLocation
-from server.config import Config
+from backend.models import Vehicle, GeofenceEvent, VehicleLocation
+from backend.config import Config
 from sqlalchemy import func, and_
 from flask_sqlalchemy import SQLAlchemy
 import numpy as np

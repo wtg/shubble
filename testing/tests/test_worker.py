@@ -4,8 +4,8 @@ Unit tests for worker functions
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime, timezone
-from server.worker import get_vehicles_in_geofence
-from server.models import GeofenceEvent, Vehicle
+from backend.worker import get_vehicles_in_geofence
+from backend.models import GeofenceEvent, Vehicle
 
 
 @pytest.mark.unit

@@ -3,7 +3,7 @@ Pytest configuration and fixtures
 """
 import pytest
 import os
-from server import create_app, db, cache
+from backend import create_app, db, cache
 
 
 @pytest.fixture(scope='session')

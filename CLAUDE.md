@@ -13,36 +13,103 @@ Shubble is a real-time shuttle tracking application for RPI shuttles. It integra
 - Worker: Background polling service for GPS updates
 - Deployment: Docker containers (Dokploy/Dokku)
 
+## Directory Structure
+
+```
+shuttletracker-new/
+├── backend/              # Flask backend application
+│   ├── __init__.py      # Flask app factory, db/cache/migrations
+│   ├── routes.py        # API endpoints
+│   ├── models.py        # SQLAlchemy database models
+│   ├── worker.py        # Background GPS polling service
+│   ├── config.py        # Configuration from environment
+│   └── time_utils.py    # Campus timezone utilities
+│
+├── frontend/            # React frontend application
+│   ├── src/
+│   │   ├── components/  # React components
+│   │   ├── pages/       # Page components
+│   │   ├── ts/          # TypeScript utilities
+│   │   └── data/        # Static data (copied from /data during build)
+│   ├── public/          # Static assets
+│   └── dist/            # Build output
+│
+├── data/                # Static data and algorithms
+│   ├── schedules.py     # Schedule matching algorithm (Hungarian)
+│   ├── stops.py         # Route and stop definitions
+│   ├── parseSchedule.js # Build-time schedule parser
+│   ├── schedule.json    # Master schedule (manually edited)
+│   ├── aggregated_schedule.json  # Generated schedule
+│   └── routes.json      # Route polylines and coordinates
+│
+├── testing/             # Testing infrastructure
+│   ├── tests/           # Pytest test suite
+│   │   ├── conftest.py
+│   │   ├── test_api_endpoints.py
+│   │   ├── test_models.py
+│   │   ├── test_worker.py
+│   │   └── integration/
+│   │       └── test_shuttle_workflow.py
+│   ├── test-server/     # Mock Samsara API for development
+│   │   ├── server.py
+│   │   └── shuttle.py
+│   └── test-client/     # UI for controlling test shuttles
+│
+├── docker/              # Docker configuration
+│   ├── Dockerfile.backend
+│   ├── Dockerfile.frontend
+│   ├── Dockerfile.worker
+│   └── docker-compose.yml
+│
+├── docs/                # Documentation
+│   ├── ARCHITECTURE.md  # Technical architecture
+│   ├── DEPLOYMENT.md    # Deployment guide
+│   ├── INSTALLATION.md  # Setup instructions
+│   ├── TESTING.md       # Testing guide
+│   └── OVERVIEW.md      # Project overview
+│
+├── migrations/          # Database migrations (Alembic)
+├── shubble.py          # Main entry point
+├── requirements.txt    # Python dependencies
+├── package.json        # Node.js dependencies
+└── pytest.ini          # Pytest configuration
+```
+
 ## Quick Reference
 
 ### Start Development Environment
 ```bash
 # Using Docker (recommended)
+cd docker
 docker-compose up -d
 docker-compose logs -f
 
 # Native setup
 # Terminal 1: Backend
-flask --app server:create_app run
+flask --app backend:create_app run
 
 # Terminal 2: Frontend
 npm run dev
 
 # Terminal 3: Worker
-python -m server.worker
+python -m backend.worker
 ```
 
 ### Common Commands
 ```bash
 # Database migrations
-docker-compose exec backend flask --app server:create_app db upgrade
-docker-compose exec backend flask --app server:create_app db migrate -m "description"
+docker-compose exec backend flask --app backend:create_app db upgrade
+docker-compose exec backend flask --app backend:create_app db migrate -m "description"
 
 # Build frontend for production
 npm run build
 
 # Lint frontend
 npm run lint
+
+# Run tests
+pytest                    # Backend tests
+npm test                 # Frontend tests
 
 # Access database
 docker-compose exec postgres psql -U shubble -d shubble
@@ -69,11 +136,11 @@ React Frontend
 
 #### 1. Geofence Events (Webhooks)
 - Samsara sends POST to `/api/webhook` when vehicles enter/exit campus geofence
-- Server stores events in `geofence_events` table
+- Backend stores events in `geofence_events` table
 - Cache `vehicles_in_geofence` is invalidated
 
 #### 2. Location Polling (Worker Process)
-- Background worker (`server/worker.py`) runs infinite loop with 5-second sleep
+- Background worker (`backend/worker.py`) runs infinite loop with 5-second sleep
 - Queries vehicles currently in geofence (latest event = `geofenceEntry`)
 - Fetches GPS data from Samsara API for active vehicles only
 - Stores location data in `vehicle_locations` table
@@ -96,7 +163,7 @@ React Frontend
 
 ### Database Models
 
-Located in `server/models.py`:
+Located in `backend/models.py`:
 
 - **Vehicle**: GPS-tracked shuttles (id, name, license_plate, vin, gateway info)
 - **GeofenceEvent**: Entry/exit events for campus boundary (event_type, event_time)
@@ -107,8 +174,8 @@ Located in `server/models.py`:
 ### Critical Files and Their Roles
 
 #### Backend
-- `server/__init__.py` - Flask app factory, initializes db/cache/migrations
-- `server/routes.py` - API endpoints
+- `backend/__init__.py` - Flask app factory, initializes db/cache/migrations
+- `backend/routes.py` - API endpoints
   - `/api/locations` - Current vehicle positions with route matching
   - `/api/webhook` - Samsara webhook handler for geofence events
   - `/api/matched-schedules` - Schedule algorithm results (cached)
@@ -116,15 +183,15 @@ Located in `server/models.py`:
   - `/api/routes` - Route polylines from JSON
   - `/api/schedule` - Schedule data from JSON
 
-- `server/worker.py` - Background GPS polling service
+- `backend/worker.py` - Background GPS polling service
   - `update_locations(app)` - Fetches GPS data for vehicles in geofence
   - `update_driver_assignments(app, vehicle_ids)` - Syncs driver assignments
   - `get_vehicles_in_geofence()` - Cached query returning set of vehicle IDs
   - Runs in infinite loop with 5-second sleep
 
-- `server/models.py` - SQLAlchemy database models
-- `server/config.py` - Configuration from environment variables
-- `server/time_utils.py` - Campus timezone utilities
+- `backend/models.py` - SQLAlchemy database models
+- `backend/config.py` - Configuration from environment variables
+- `backend/time_utils.py` - Campus timezone utilities
   - `get_campus_start_of_day()` - Returns 4am ET as "start of day" (shuttle service day boundary)
 
 #### Data Processing
@@ -144,16 +211,16 @@ Located in `server/models.py`:
   - Runs before `npm run dev` and `npm run build` via package.json scripts
 
 #### Frontend
-- `client/src/App.tsx` - React Router setup, route definitions
-- `client/src/pages/LiveLocation.tsx` - Main page combining map + schedule
-- `client/src/components/MapKitMap.tsx` - Apple MapKit integration
+- `frontend/src/App.tsx` - React Router setup, route definitions
+- `frontend/src/pages/LiveLocation.tsx` - Main page combining map + schedule
+- `frontend/src/components/MapKitMap.tsx` - Apple MapKit integration
   - Displays routes, stops, and animated shuttle positions
   - Handles real-time updates and smooth transitions
   - Uses heading/speed for animation between GPS updates
 
-- `client/src/components/Schedule.tsx` - Schedule display component
-- `client/src/ts/config.ts` - Frontend configuration
-- `client/src/ts/mapUtils.ts` - Map utility functions
+- `frontend/src/components/Schedule.tsx` - Schedule display component
+- `frontend/src/ts/config.ts` - Frontend configuration
+- `frontend/src/ts/mapUtils.ts` - Map utility functions
 
 #### Static Data
 - `data/schedule.json` - Master schedule (manually edited)
@@ -178,7 +245,7 @@ Environment variables (`.env`):
 - `FLASK_DEBUG` - `true` or `false`
 - `LOG_LEVEL` - Logging level (INFO, DEBUG, WARNING, ERROR)
 
-Campus timezone is hardcoded to `America/New_York` in `server/config.py`.
+Campus timezone is hardcoded to `America/New_York` in `backend/config.py`.
 
 ### Caching Strategy (Redis)
 
@@ -190,7 +257,7 @@ Cache keys and TTLs:
 - `labeled_stops:{date}` - Daily stop visit data (10 min TTL)
 
 Cache invalidation triggers:
-- New geofence events → invalidate `vehicles_in_geofence`
+- New geofence events → invalidate `vehicles_in_geofence` and `vehicle_locations`
 - New location data → invalidate `vehicle_locations` and `schedule_entries`
 
 ### Important Implementation Details
@@ -226,19 +293,40 @@ Stop detection is cached per coordinate to avoid repeated calculations.
 
 ### Testing
 
-#### Test Server
-`test-server/` contains a mock Samsara API server:
-- Simulates vehicle movement along routes
-- Returns mock GPS data and geofence events
-- Useful for local development without real API credentials
+#### Test Suite
+- **Backend Tests**: `testing/tests/` - Pytest test suite
+  - Unit tests for models, worker functions
+  - Integration tests for API endpoints
+  - End-to-end workflow tests
+  - Run with: `pytest` or `python -m pytest testing/tests/`
 
-To use:
+- **Frontend Tests**: `frontend/src/test/` - Vitest test suite
+  - Component tests
+  - Integration tests for vehicle movement
+  - Run with: `npm test`
+
+#### Test Server & Client
+- **Test Server**: `testing/test-server/` - Mock Samsara API server
+  - Simulates vehicle movement along routes
+  - Returns mock GPS data and geofence events
+  - Useful for local development without real API credentials
+  - Run with: `cd testing/test-server && python server.py`
+
+- **Test Client**: `testing/test-client/` - UI for controlling test shuttles
+  - Web interface to create/control simulated shuttles
+  - Set routes, speeds, and states
+  - Served by test-server at http://localhost:4000
+
+To use test mode:
 ```bash
-cd test-server
+# Start test server
+cd testing/test-server
 python server.py
-```
 
-Set `FLASK_ENV=development` and leave `API_KEY` empty to automatically use test server.
+# In another terminal, set FLASK_ENV=development
+# Leave API_KEY empty to automatically use test server
+flask --app backend:create_app run
+```
 
 #### Manual Testing Endpoints
 ```bash
@@ -261,10 +349,10 @@ curl http://localhost:8000/api/today
 4. Restart backend/worker to pick up changes
 
 #### Making Database Schema Changes
-1. Edit `server/models.py`
-2. Create migration: `flask --app server:create_app db migrate -m "description"`
+1. Edit `backend/models.py`
+2. Create migration: `flask --app backend:create_app db migrate -m "description"`
 3. Review migration file in `migrations/versions/`
-4. Apply migration: `flask --app server:create_app db upgrade`
+4. Apply migration: `flask --app backend:create_app db upgrade`
 
 #### Debugging Cache Issues
 ```bash
@@ -296,7 +384,7 @@ docker-compose logs -f worker
 
 ### Performance Considerations
 
-- Worker polls every 5 seconds - adjust in `server/worker.py` if rate limited
+- Worker polls every 5 seconds - adjust in `backend/worker.py` if rate limited
 - Frontend polls every 5 seconds - adjust in MapKitMap.tsx if needed
 - Schedule matching is expensive - cached for 1 hour
 - Stop detection is expensive - cached for 24 hours
@@ -314,13 +402,13 @@ docker-compose logs -f worker
 ## Common Development Tasks
 
 ### Add a new API endpoint
-1. Add route function in `server/routes.py` with `@bp.route()` decorator
+1. Add route function in `backend/routes.py` with `@bp.route()` decorator
 2. Add database queries if needed
 3. Return JSON with `jsonify()`
 4. Test with curl or frontend
 
 ### Add a new database table
-1. Add model class in `server/models.py` inheriting from `db.Model`
+1. Add model class in `backend/models.py` inheriting from `db.Model`
 2. Define columns with `db.Column()`
 3. Add relationships with `db.relationship()` if needed
 4. Create migration and apply
@@ -332,12 +420,14 @@ docker-compose logs -f worker
 4. Restart frontend to pick up changes
 
 ### Change polling intervals
-- Worker: Edit sleep time in `server/worker.py` (default: 5 seconds)
+- Worker: Edit sleep time in `backend/worker.py` (default: 5 seconds)
 - Frontend: Edit polling interval in `MapKitMap.tsx` (default: 5000ms)
 - Cache: Edit TTL values in respective cache.set() calls
 
 ## Related Documentation
 
 - [README.md](README.md) - Project overview and quick start
-- [INSTALLATION.md](INSTALLATION.md) - Development setup instructions
-- [DEPLOYMENT.md](DEPLOYMENT.md) - Production deployment guide
+- [docs/INSTALLATION.md](docs/INSTALLATION.md) - Development setup instructions
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - Production deployment guide
+- [docs/TESTING.md](docs/TESTING.md) - Testing guide
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - Detailed technical architecture

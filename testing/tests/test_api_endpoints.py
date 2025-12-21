@@ -3,7 +3,7 @@ Integration tests for API endpoints
 """
 import pytest
 from datetime import datetime, timezone
-from server.models import Vehicle, GeofenceEvent, VehicleLocation
+from backend.models import Vehicle, GeofenceEvent, VehicleLocation
 
 
 @pytest.mark.integration
