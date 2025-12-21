@@ -11,7 +11,6 @@ def app():
     """Create application for testing"""
     # Set test configuration
     os.environ['DATABASE_URL'] = 'sqlite:///:memory:'
-    os.environ['REDIS_URL'] = 'redis://localhost:6379/1'  # Use DB 1 for tests
     os.environ['FLASK_ENV'] = 'testing'
 
     app = create_app()
