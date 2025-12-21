@@ -5,7 +5,7 @@ import pytest
 from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime, timezone
 from server.worker import get_vehicles_in_geofence
-from server.models import GeofenceEvent
+from server.models import GeofenceEvent, Vehicle
 
 
 @pytest.mark.unit
@@ -21,6 +21,13 @@ def test_get_vehicles_in_geofence_empty(app, db_session):
 def test_get_vehicles_in_geofence_with_entry(app, db_session):
     """Test get_vehicles_in_geofence returns vehicles with entry events"""
     with app.app_context():
+        # Create vehicle first
+        vehicle = Vehicle(
+            id="vehicle_1",
+            name="Test Shuttle"
+        )
+        db_session.add(vehicle)
+
         # Create entry event
         event = GeofenceEvent(
             id="event_1",
@@ -39,6 +46,13 @@ def test_get_vehicles_in_geofence_with_entry(app, db_session):
 def test_get_vehicles_in_geofence_with_exit(app, db_session):
     """Test get_vehicles_in_geofence excludes vehicles with exit events"""
     with app.app_context():
+        # Create vehicle first
+        vehicle = Vehicle(
+            id="vehicle_1",
+            name="Test Shuttle"
+        )
+        db_session.add(vehicle)
+
         # Create entry event
         entry_event = GeofenceEvent(
             id="event_1",

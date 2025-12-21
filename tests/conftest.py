@@ -3,7 +3,7 @@ Pytest configuration and fixtures
 """
 import pytest
 import os
-from server import create_app, db
+from server import create_app, db, cache
 
 
 @pytest.fixture(scope='session')
@@ -16,6 +16,7 @@ def app():
 
     app = create_app()
     app.config['TESTING'] = True
+    app.config['CACHE_TYPE'] = 'SimpleCache'  # Use simple cache for testing
 
     with app.app_context():
         db.create_all()
@@ -29,10 +30,22 @@ def client(app):
     return app.test_client()
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope='function', autouse=True)
 def db_session(app):
     """Create a new database session for a test"""
     with app.app_context():
-        db.session.begin_nested()
+        # Clear cache before each test
+        cache.clear()
+
         yield db.session
+
+        # Clear all data after each test
         db.session.rollback()
+
+        # Delete all data from tables
+        for table in reversed(db.metadata.sorted_tables):
+            db.session.execute(table.delete())
+        db.session.commit()
+
+        # Clear cache after each test
+        cache.clear()

@@ -105,6 +105,11 @@ class Schedule:
 
         at_stops = cls.load_and_label_stops()
 
+        # Check if at_stops is a dict (empty case) or DataFrame
+        if isinstance(at_stops, dict):
+            logger.warning("at_stops is empty (dict returned), returning empty match.")
+            return {}
+
         sched = Stops.schedule_data
 
         # Determine day from first timestamp

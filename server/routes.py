@@ -224,10 +224,11 @@ def webhook():
             )
 
         db.session.commit()
-        
-        # Invalidate Cache
-        cache.delete('vehicles_in_geofence') 
-        
+
+        # Invalidate caches
+        cache.delete('vehicles_in_geofence')
+        cache.delete('vehicle_locations')
+
         return jsonify({'status': 'success'}), 200
 
     except Exception as e:
