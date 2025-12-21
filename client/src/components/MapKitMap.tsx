@@ -16,6 +16,17 @@ import {
   getAngleDifference
 } from "../ts/mapUtils";
 
+// Helper function to remove consecutive duplicate points from a route
+function removeDuplicateConsecutivePoints(route: [number, number][]): [number, number][] {
+  if (route.length <= 1) return route;
+
+  return route.filter((point, index) => {
+    if (index === 0) return true;
+    const prevPoint = route[index - 1];
+    return point[0] !== prevPoint[0] || point[1] !== prevPoint[1];
+  });
+}
+
 async function generateRoutePolylines(updatedRouteData: ShuttleRouteData) {
   // Use MapKit Directions API to generate polylines for each route segment
   const directions = new mapkit.Directions();
@@ -78,6 +89,13 @@ async function generateRoutePolylines(updatedRouteData: ShuttleRouteData) {
       if (destStop === realStops[currentRealIndex + 1]) {
         currentRealIndex++;
       }
+    }
+  }
+
+  // Remove consecutive duplicate points from all routes
+  for (const routeInfo of Object.values(updatedRouteData)) {
+    if (routeInfo.ROUTES) {
+      routeInfo.ROUTES = routeInfo.ROUTES.map(removeDuplicateConsecutivePoints);
     }
   }
 
