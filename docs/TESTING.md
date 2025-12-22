@@ -28,7 +28,7 @@ npm run test:coverage
 
 ### Writing Tests
 
-Frontend tests are located in `client/src/test/` and follow the pattern `*.test.tsx` or `*.test.ts`.
+Frontend tests are located in `frontend/src/test/` and follow the pattern `*.test.tsx` or `*.test.ts`.
 
 **Example test:**
 ```typescript
@@ -44,11 +44,18 @@ describe('MyComponent', () => {
 });
 ```
 
+### Test Structure
+
+- **Test configuration**: `vite.config.ts`
+- **Test setup file**: `frontend/src/test/setup.ts`
+- **Component tests**: `frontend/src/test/components/`
+- **Integration tests**: `frontend/src/test/integration/`
+- **API tests**: `frontend/src/test/api/`
+- **Utility tests**: `frontend/src/test/utils/`
+
 ### Test Setup
 
-- Test configuration: `vite.config.ts`
-- Test setup file: `client/src/test/setup.ts`
-- Global test utilities from `@testing-library/react`
+Global test utilities from `@testing-library/react` are available, along with mocks for browser APIs (like `scrollIntoView`, `DOMPoint`) in the setup file.
 
 ## Backend Tests (pytest)
 
@@ -62,13 +69,13 @@ pytest
 pytest -v
 
 # Run with coverage
-pytest --cov=server --cov-report=html
+pytest --cov=backend --cov-report=html
 
 # Run specific test file
-pytest tests/test_models.py
+pytest testing/tests/test_models.py
 
 # Run specific test
-pytest tests/test_models.py::test_vehicle_creation
+pytest testing/tests/test_models.py::test_vehicle_creation
 
 # Run tests by marker
 pytest -m unit              # Only unit tests
@@ -78,12 +85,12 @@ pytest -m "not slow"        # Exclude slow tests
 
 ### Writing Tests
 
-Backend tests are located in `tests/` and follow the pattern `test_*.py`.
+Backend tests are located in `testing/tests/` and follow the pattern `test_*.py`.
 
 **Example test:**
 ```python
 import pytest
-from server.models import Vehicle
+from backend.models import Vehicle
 
 @pytest.mark.unit
 def test_vehicle_creation():
@@ -97,6 +104,13 @@ def test_vehicle_creation():
     assert vehicle.name == "Test Shuttle"
 ```
 
+### Test Structure
+
+- **Test configuration**: `pytest.ini` (testpaths set to `testing/tests`)
+- **Test fixtures**: `testing/tests/conftest.py`
+- **Unit tests**: `testing/tests/test_*.py`
+- **Integration tests**: `testing/tests/integration/`
+
 ### Test Markers
 
 Use markers to categorize tests:
@@ -106,7 +120,7 @@ Use markers to categorize tests:
 
 ### Test Fixtures
 
-Common fixtures are defined in `tests/conftest.py`:
+Common fixtures are defined in `testing/tests/conftest.py`:
 - `app` - Flask application instance
 - `client` - Test client for making requests
 - `db_session` - Database session with automatic rollback
@@ -122,7 +136,7 @@ docker-compose exec frontend npm run test:coverage
 ### Backend
 ```bash
 docker-compose exec backend pytest
-docker-compose exec backend pytest --cov=server
+docker-compose exec backend pytest --cov=backend
 ```
 
 ## Continuous Integration
@@ -134,54 +148,54 @@ Tests should be run before every commit:
 npm test && pytest
 
 # Full check with coverage
-npm run test:coverage && pytest --cov=server --cov-report=html
+npm run test:coverage && pytest --cov=backend --cov-report=html
 ```
 
 ## Coverage Reports
 
 ### Frontend Coverage
-After running `npm run test:coverage`, open `client/coverage/index.html` in your browser.
+After running `npm run test:coverage`, open `frontend/coverage/index.html` in your browser.
 
 ### Backend Coverage
-After running `pytest --cov=server --cov-report=html`, open `htmlcov/index.html` in your browser.
+After running `pytest --cov=backend --cov-report=html`, open `htmlcov/index.html` in your browser.
 
-## Test Data
+## Development Tools (Not Automated Tests)
 
-### Using Mock Samsara API (Development Tool)
+### Using Mock Samsara API
 
 For local development without real GPS credentials, use the mock server:
 
 ```bash
 # Terminal 1: Start mock Samsara API server
-cd test-server
+cd testing/test-server
 python server.py
-
-# Terminal 2: Start test client UI (optional)
-cd test-client
-npm install
-npm run dev
-# Access UI at http://localhost:5173
+# Mock API runs on http://localhost:4000
+# Test client UI served at http://localhost:4000
 ```
 
 In your `.env`, set:
 ```bash
 FLASK_ENV=development
-# Leave API_KEY empty or remove it
+# Leave API_KEY empty or remove it to use mock server
 ```
 
-The mock server (`test-server/`) will:
+The mock server (`testing/test-server/`) will:
 - Simulate vehicle movement along routes
 - Provide fake geofence events
 - Return mock GPS data
 - Allow manual control of shuttle states
+- Serve the test client UI
 
-The test client UI (`test-client/`) provides:
+The test client UI (served by test-server) provides:
 - Visual shuttle management interface
 - Ability to trigger state changes (entering, looping, exiting)
 - Automated test scenario execution from JSON files
 - Event monitoring and debugging
 
-**Note**: The `test-server/` and `test-client/` directories are development tools, not automated test suites. For automated tests, use the `tests/` directory (pytest) and `client/src/test/` (vitest).
+**Important Distinction**:
+- `testing/test-server/` and `testing/test-client/` = Development tools for manual testing
+- `testing/tests/` = Automated test suite (pytest)
+- `frontend/src/test/` = Automated frontend tests (vitest)
 
 ## Best Practices
 
@@ -190,6 +204,7 @@ The test client UI (`test-client/`) provides:
 2. Use `screen.getByRole()` for accessibility-friendly queries
 3. Mock external dependencies (API calls, MapKit)
 4. Keep tests fast and independent
+5. Use descriptive test names
 
 ### Backend
 1. Use fixtures for common test setup
@@ -197,6 +212,7 @@ The test client UI (`test-client/`) provides:
 3. Test edge cases and error conditions
 4. Use in-memory SQLite for fast unit tests
 5. Roll back database changes after each test
+6. Clear cache before and after each test
 
 ## Troubleshooting
 
@@ -210,47 +226,114 @@ npm install
 **Issue**: Tests timeout
 - Increase timeout in `vite.config.ts`
 - Check for infinite loops or slow operations
+- Ensure mocks are properly set up
+
+**Issue**: MapKit errors in tests
+- Check that `frontend/src/test/setup.ts` has proper MapKit mocks
+- Verify `global.mapkit` is properly mocked in test files
 
 ### Backend Tests Fail
 
 **Issue**: Database connection errors
 ```bash
 # Check DATABASE_URL in test config
-# Use SQLite in-memory for tests: sqlite:///:memory:
+# Tests use SQLite in-memory: sqlite:///:memory:
+# Check testing/tests/conftest.py
 ```
 
 **Issue**: Redis connection errors
 ```bash
-# Ensure Redis is running
-redis-cli ping
-
-# Or use fakeredis for tests
-pip install fakeredis
+# Tests use SimpleCache, not Redis
+# Check testing/tests/conftest.py for cache configuration
 ```
 
-**Issue**: Import errors
+**Issue**: Import errors (`ModuleNotFoundError: No module named 'backend'`)
 ```bash
 # Ensure you're in virtual environment
 source venv/bin/activate
 pip install -r requirements.txt
+
+# Check pytest.ini testpaths setting
+```
+
+**Issue**: Foreign key constraint errors
+```bash
+# Ensure proper test data setup
+# Create parent records (Vehicle) before child records (GeofenceEvent)
 ```
 
 ## Adding New Tests
 
 ### For Frontend Features
-1. Create `ComponentName.test.tsx` next to component
-2. Import testing utilities
+1. Create test file in appropriate `frontend/src/test/` subdirectory
+2. Import testing utilities from `vitest` and `@testing-library/react`
 3. Write descriptive test cases
 4. Run `npm test` to verify
+5. Check coverage with `npm run test:coverage`
+
+Example:
+```typescript
+// frontend/src/test/components/MyComponent.test.tsx
+import { describe, it, expect } from 'vitest';
+import { render } from '@testing-library/react';
+import MyComponent from '../../components/MyComponent';
+
+describe('MyComponent', () => {
+  it('should render without crashing', () => {
+    const { container } = render(<MyComponent />);
+    expect(container).toBeTruthy();
+  });
+});
+```
 
 ### For Backend Features
-1. Create `test_feature.py` in `tests/`
-2. Add appropriate markers
+1. Create `test_feature.py` in `testing/tests/`
+2. Add appropriate markers (`@pytest.mark.unit` or `@pytest.mark.integration`)
 3. Use fixtures from `conftest.py`
 4. Run `pytest` to verify
+5. Check coverage with `pytest --cov=backend`
+
+Example:
+```python
+# testing/tests/test_feature.py
+import pytest
+from backend.models import MyModel
+
+@pytest.mark.unit
+def test_my_feature():
+    """Test description"""
+    result = MyModel.do_something()
+    assert result == expected_value
+```
+
+## Test Organization
+
+```
+testing/
+├── tests/                  # Automated pytest tests
+│   ├── conftest.py        # Test fixtures and configuration
+│   ├── test_api_endpoints.py
+│   ├── test_models.py
+│   ├── test_worker.py
+│   └── integration/       # Integration tests
+│       └── test_shuttle_workflow.py
+│
+├── test-server/           # Mock Samsara API (dev tool)
+│   ├── server.py
+│   └── shuttle.py
+│
+└── test-client/           # UI for controlling mock shuttles (dev tool)
+
+frontend/src/test/         # Automated vitest tests
+├── setup.ts              # Test setup and global mocks
+├── components/           # Component tests
+├── integration/          # Integration tests
+├── api/                  # API tests
+└── utils/                # Utility tests
+```
 
 ## Related Documentation
 
 - [INSTALLATION.md](INSTALLATION.md) - Development setup
 - [ARCHITECTURE.md](ARCHITECTURE.md) - Code architecture
-- [README.md](README.md) - Project overview
+- [README.md](../README.md) - Project overview

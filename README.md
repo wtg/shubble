@@ -24,7 +24,45 @@ Shubble is a real-time shuttle tracking application that helps RPI students trac
 
 ## Quick Start
 
-### Using Docker (Recommended)
+### Option 1: Native Setup (Recommended for Development)
+
+**Faster iteration with instant reloads!**
+
+```bash
+# 1. Clone and install
+git clone https://github.com/your-org/shuttletracker-new.git
+cd shuttletracker-new
+
+# 2. Install PostgreSQL and Redis (macOS)
+brew install postgresql@16 redis
+brew services start postgresql@16 redis
+
+# 3. Set up backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+# Edit .env with your database settings
+
+# 4. Run migrations
+flask --app backend:create_app db upgrade
+
+# 5. Start services (3 terminals)
+# Terminal 1: Backend
+flask --app backend:create_app run
+
+# Terminal 2: Frontend
+npm install && npm run dev
+
+# Terminal 3: Worker
+python -m backend.worker
+
+# Access at:
+# Frontend: http://localhost:5173
+# Backend: http://localhost:5000
+```
+
+### Option 2: Docker Setup
 
 ```bash
 # 1. Clone the repository
@@ -43,16 +81,21 @@ docker-compose up -d
 # Backend API: http://localhost:8000
 ```
 
-### Manual Setup
+**Why Native?**
+- Instant frontend reloads with Vite HMR
+- Faster backend reloads (no container rebuilds)
+- Easier debugging and lower resource usage
+- Direct test execution
 
-See [INSTALLATION.md](INSTALLATION.md) for detailed installation instructions.
+See [docs/INSTALLATION.md](docs/INSTALLATION.md) for detailed setup instructions.
 
 ## Documentation
 
-- **[INSTALLATION.md](INSTALLATION.md)** - Local development setup (Docker & native)
-- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Production deployment guide (Dokploy)
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Technical architecture and development guide
-- **[TESTING.md](TESTING.md)** - Testing guide (Vitest & pytest)
+- **[docs/INSTALLATION.md](docs/INSTALLATION.md)** - Local development setup (native & Docker)
+- **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** - Production deployment guide (Dokploy)
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Technical architecture details
+- **[docs/TESTING.md](docs/TESTING.md)** - Testing guide (Vitest & pytest)
+- **[CLAUDE.md](CLAUDE.md)** - Quick reference for common commands
 
 ## Architecture Overview
 
@@ -65,7 +108,7 @@ See [INSTALLATION.md](INSTALLATION.md) for detailed installation instructions.
        │ Polling (location data)
        ↓
 ┌──────────────────────────────────────┐
-│           Backend Services            │
+│           Backend Services           │
 ├──────────────┬───────────────────────┤
 │  Flask API   │  Background Worker    │
 │  (Routes)    │  (GPS Polling)        │
@@ -103,19 +146,36 @@ See [INSTALLATION.md](INSTALLATION.md) for detailed installation instructions.
 
 ## Development
 
+### Native Development
+
 ```bash
-# Start all services with Docker
+# Run tests
+npm test                    # Frontend tests (vitest)
+pytest                      # Backend tests (pytest)
+
+# Database migrations
+flask --app backend:create_app db migrate -m "description"
+flask --app backend:create_app db upgrade
+
+# Build frontend for production
+npm run build               # Output: frontend/dist/
+```
+
+### Docker Development
+
+```bash
+# Start all services
 docker-compose up -d
 
 # View logs
 docker-compose logs -f
 
 # Run automated tests
-npm test                    # Frontend tests (vitest)
-pytest                      # Backend tests (pytest)
+docker-compose exec frontend npm test
+docker-compose exec backend pytest
 
 # Run database migrations
-docker-compose exec backend flask --app server:create_app db upgrade
+docker-compose exec backend flask --app backend:create_app db upgrade
 
 # Access database
 docker-compose exec postgres psql -U shubble -d shubble
@@ -126,17 +186,40 @@ docker-compose down
 
 ### Development without Samsara API
 
-Use the mock server and test client for local development:
+Use the mock server for local development without API credentials:
 
 ```bash
-# Start mock Samsara API
-cd test-server && python server.py
+# Start mock Samsara API (serves test UI at :4000)
+cd testing/test-server
+python server.py
 
-# Start test client UI (optional)
-cd test-client && npm install && npm run dev
+# In .env, leave API_KEY empty or remove it
+# Backend will automatically use mock server in development
 ```
 
-See [INSTALLATION.md](INSTALLATION.md) for more development commands.
+The mock server provides:
+- Simulated vehicle movement along routes
+- Mock geofence events
+- Test UI for controlling shuttles at http://localhost:4000
+
+See [docs/INSTALLATION.md](docs/INSTALLATION.md) for more details.
+
+## Project Structure
+
+```
+shuttletracker-new/
+├── backend/              # Flask backend application
+├── frontend/             # React frontend application
+├── data/                 # Static data and algorithms
+├── testing/              # All testing infrastructure
+│   ├── tests/           # Automated pytest tests
+│   ├── test-server/     # Mock Samsara API (dev tool)
+│   └── test-client/     # UI for controlling mock shuttles
+├── docker/              # Docker configuration
+├── docs/                # Documentation
+├── migrations/          # Database migrations
+└── docker-compose.yml   # Docker services configuration
+```
 
 ## Contributing
 
@@ -147,14 +230,30 @@ This is an open source project under Rensselaer Polytechnic Institute's Renssela
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
 3. Make your changes
-4. Run tests and linting
+4. Run tests and linting:
+   ```bash
+   npm test && pytest
+   npm run lint
+   ```
 5. Commit your changes (`git commit -m 'Add amazing feature'`)
 6. Push to the branch (`git push origin feature/amazing-feature`)
 7. Open a Pull Request
 
+### Development Tips
+
+- **Use native setup** for faster iteration during development
+- **Run tests** before committing (`npm test && pytest`)
+- **Check coverage** with `npm run test:coverage && pytest --cov=backend`
+- **Follow existing patterns** in the codebase
+- **Update documentation** when adding features
+
 ### Getting Help
 
-If you have questions or want help getting started, please reach out to [Joel McCandless](mailto:mail@joelmccandless.com).
+If you have questions or want help getting started:
+- Check the [docs/](docs/) directory for guides
+- Review [CLAUDE.md](CLAUDE.md) for common commands
+- Open an issue on GitHub
+- Contact [Joel McCandless](mailto:mail@joelmccandless.com)
 
 ## License
 

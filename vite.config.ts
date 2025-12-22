@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
-  root: 'client',
+  root: 'frontend',
   plugins: [
     react(),
     VitePWA({
@@ -37,7 +37,7 @@ export default defineConfig({
     })
   ],
   build: {
-    outDir: '../client/dist',
+    outDir: '../frontend/dist',
     emptyOutDir: true
   },
   define: {
@@ -46,12 +46,12 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
-    setupFiles: './client/src/test/setup.ts',
+    setupFiles: './frontend/src/test/setup.ts',
     coverage: {
       reporter: ['text', 'json', 'html'],
       exclude: [
         'node_modules/',
-        'client/src/test/',
+        'frontend/src/test/',
       ]
     }
   }

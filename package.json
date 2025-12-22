@@ -4,8 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node data/parseSchedule.js && shx cp -r data/ client/src/ && vite",
-    "build": "node data/parseSchedule.js && shx cp -r data/ client/src/ && vite build",
+    "dev": "node data/parseSchedule.js && shx cp -r data/ frontend/src/ && vite",
+    "build": "node data/parseSchedule.js && shx cp -r data/ frontend/src/ && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest",

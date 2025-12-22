@@ -14,7 +14,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --root-user-action=ignore -r requirements.txt
 
 # Copy application code
-COPY server/ ./server/
+COPY backend/ ./backend/
 COPY data/ ./data/
 
 # Create non-root user
@@ -23,7 +23,7 @@ USER shubble
 
 # Health check (worker should be running)
 HEALTHCHECK --interval=60s --timeout=10s --start-period=10s --retries=3 \
-    CMD pgrep -f "python -m server.worker" > /dev/null || exit 1
+    CMD pgrep -f "python -m backend.worker" > /dev/null || exit 1
 
 # Run worker
-CMD ["python", "-m", "server.worker"]
+CMD ["python", "-m", "backend.worker"]
