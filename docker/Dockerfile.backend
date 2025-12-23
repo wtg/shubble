@@ -24,16 +24,16 @@ RUN useradd -m -u 1000 shubble && chown -R shubble:shubble /app
 USER shubble
 
 # Expose port
-EXPOSE 8000
+EXPOSE 5001
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8000/api/locations', timeout=5)"
+    CMD python -c "import requests; requests.get('http://localhost:5001/api/locations', timeout=5)"
 
 # Run database migrations and start gunicorn
 CMD flask --app backend:create_app db upgrade && \
     gunicorn shubble:app \
-    --bind 0.0.0.0:8000 \
+    --bind 0.0.0.0:5001 \
     --workers 2 \
     --threads 4 \
     --timeout 120 \

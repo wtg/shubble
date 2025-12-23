@@ -1,12 +1,16 @@
 import json
 import numpy as np
 import math
+from pathlib import Path
 
 class Stops:
-    with open('data/routes.json', 'r') as f:
+    # Get absolute paths relative to this file's location
+    _data_dir = Path(__file__).parent
+
+    with open(_data_dir / 'routes.json', 'r') as f:
         routes_data = json.load(f)
 
-    with open('data/schedule.json', 'r') as f:
+    with open(_data_dir / 'schedule.json', 'r') as f:
         schedule_data = json.load(f)
 
     # get active routes from schedule

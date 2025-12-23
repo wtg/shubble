@@ -30,8 +30,8 @@ Shubble is a real-time shuttle tracking application that helps RPI students trac
 
 ```bash
 # 1. Clone and install
-git clone https://github.com/your-org/shuttletracker-new.git
-cd shuttletracker-new
+git clone git@github.com:wtg/shubble.git
+cd shubble
 
 # 2. Install PostgreSQL and Redis (macOS)
 brew install postgresql@16 redis
@@ -59,15 +59,15 @@ python -m backend.worker
 
 # Access at:
 # Frontend: http://localhost:5173
-# Backend: http://localhost:5000
+# Backend: http://localhost:5001
 ```
 
 ### Option 2: Docker Setup
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-org/shuttletracker-new.git
-cd shuttletracker-new
+git clone git@github.com:wtg/shubble.git
+cd shubble
 
 # 2. Set up environment
 cp .env.example .env
@@ -76,9 +76,14 @@ cp .env.example .env
 # 3. Start all services
 docker-compose up -d
 
+# OR: Start with Mock Samsara API for development/testing
+docker-compose --profile dev up -d
+
 # 4. Access the application
 # Frontend: http://localhost:3000
 # Backend API: http://localhost:8000
+# Mock Samsara API: http://localhost:4000 (with --profile dev)
+# Test Client UI: http://localhost:4001 (with --profile dev)
 ```
 
 **Why Native?**
@@ -188,26 +193,45 @@ docker-compose down
 
 Use the mock server for local development without API credentials:
 
+**Native:**
 ```bash
-# Start mock Samsara API (serves test UI at :4000)
+# Terminal 1: Start mock Samsara API
 cd testing/test-server
 python server.py
+
+# Terminal 2: Start test client UI
+cd testing/test-client
+npm install && npm run dev
 
 # In .env, leave API_KEY empty or remove it
 # Backend will automatically use mock server in development
 ```
 
+**Docker:**
+```bash
+# Start all services including mock Samsara API and test client
+docker-compose --profile dev up -d
+# Mock server: http://localhost:4000
+# Test client UI: http://localhost:4001
+```
+
 The mock server provides:
 - Simulated vehicle movement along routes
 - Mock geofence events
-- Test UI for controlling shuttles at http://localhost:4000
+- Separate test client UI for controlling shuttles
+
+**Port Reference:**
+| Service | Native Port | Docker Port |
+|---------|-------------|-------------|
+| Test Server API | 4000 | 4000 |
+| Test Client UI | 5173 | 4001 |
 
 See [docs/INSTALLATION.md](docs/INSTALLATION.md) for more details.
 
 ## Project Structure
 
 ```
-shuttletracker-new/
+shubble/
 ├── backend/              # Flask backend application
 ├── frontend/             # React frontend application
 ├── data/                 # Static data and algorithms
@@ -257,7 +281,7 @@ If you have questions or want help getting started:
 
 ## License
 
-[Add your license here]
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Acknowledgments
 

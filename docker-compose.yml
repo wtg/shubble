@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -33,15 +31,23 @@ services:
   backend:
     build:
       context: .
-      dockerfile: Dockerfile.backend
+      dockerfile: docker/Dockerfile.backend
     ports:
-      - "8000:8000"
+      - "5001:5001"
     environment:
+      # Service URLs
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      BACKEND_URL: ${BACKEND_URL:-http://localhost:5001}
+      TEST_FRONTEND_URL: ${TEST_FRONTEND_URL:-http://localhost:5174}
+      TEST_BACKEND_URL: ${TEST_BACKEND_URL:-http://localhost:4000}
+      # Database & Cache
       DATABASE_URL: postgresql://shubble:shubble@postgres:5432/shubble
       REDIS_URL: redis://redis:6379/0
+      # Flask Config
       FLASK_ENV: development
       FLASK_DEBUG: "true"
       LOG_LEVEL: INFO
+      # Samsara API
       API_KEY: ${API_KEY:-}
       SAMSARA_SECRET: ${SAMSARA_SECRET:-}
     depends_on:
@@ -54,12 +60,17 @@ services:
   worker:
     build:
       context: .
-      dockerfile: Dockerfile.worker
+      dockerfile: docker/Dockerfile.worker
     environment:
+      # Service URLs
+      BACKEND_URL: ${BACKEND_URL:-http://localhost:5001}
+      # Database & Cache
       DATABASE_URL: postgresql://shubble:shubble@postgres:5432/shubble
       REDIS_URL: redis://redis:6379/0
+      # Flask Config
       FLASK_ENV: development
       LOG_LEVEL: INFO
+      # Samsara API
       API_KEY: ${API_KEY:-}
     depends_on:
       postgres:
@@ -73,12 +84,58 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: Dockerfile.frontend
+      dockerfile: docker/Dockerfile.frontend
     ports:
-      - "3000:80"
+      - "5173:80"
+    environment:
+      # Backend URL for nginx proxy configuration
+      BACKEND_URL: http://backend:5001
     depends_on:
       - backend
     restart: unless-stopped
+
+  test-server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.test-server
+    ports:
+      - "4000:4000"
+    environment:
+      # Service URLs
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      TEST_FRONTEND_URL: ${TEST_FRONTEND_URL:-http://localhost:5174}
+      # Database & Cache
+      DATABASE_URL: postgresql://shubble:shubble@postgres:5432/shubble
+      REDIS_URL: redis://redis:6379/0
+      # Flask Config
+      FLASK_ENV: development
+      FLASK_DEBUG: "true"
+      LOG_LEVEL: INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - dev
+      - test
+
+  test-client:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.test-client
+    ports:
+      - "5174:80"
+    environment:
+      # Test backend URL for nginx proxy configuration
+      TEST_BACKEND_URL: http://test-server:4000
+    depends_on:
+      - test-server
+    restart: unless-stopped
+    profiles:
+      - dev
+      - test
 
 volumes:
   postgres_data:

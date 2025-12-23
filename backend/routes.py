@@ -133,6 +133,9 @@ def get_locations():
 
     # Add timing metadata as HTTP headers to help frontend synchronize with Samsara API
     now = datetime.now(timezone.utc)
+    # Ensure oldest_timestamp is timezone-aware (SQLite may return naive datetimes)
+    if oldest_timestamp and oldest_timestamp.tzinfo is None:
+        oldest_timestamp = oldest_timestamp.replace(tzinfo=timezone.utc)
     data_age = (now - oldest_timestamp).total_seconds() if oldest_timestamp else None
     
     resp = jsonify(response)

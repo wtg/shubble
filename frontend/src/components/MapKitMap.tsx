@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import '../styles/MapKitMap.css';
 import ShuttleIcon from "./ShuttleIcon";
+import { apiFetch } from "../ts/api";
 
 import type { ShuttleRouteData, ShuttleStopData } from "../ts/types/route";
 import type { VehicleInformationMap } from "../ts/types/vehicleLocation";
@@ -186,7 +187,7 @@ export default function MapKitMap({ routeData, displayVehicles = true, generateR
 
     const pollLocation = async () => {
       try {
-        const response = await fetch('/api/locations');
+        const response = await apiFetch('/api/locations');
         if (!response.ok) {
           throw new Error('Network response was not ok');
         }

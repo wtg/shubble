@@ -1,208 +1,162 @@
-# Setup
+# Contributing to Shubble
 
-### Prerequisites
+Thank you for your interest in contributing to Shubble! This project is part of Rensselaer Polytechnic Institute's Rensselaer Center for Open Source (RCOS), and we welcome all contributions.
 
-- Python 3.8 or higher
-- Node.js 14 or higher
-- PostgreSQL 17 or higher
+## Getting Started
 
-You can install these using your system's package manager or download them from their official websites. When installing PostgreSQL, make sure to disable password authentication for localhost connections.
+### 1. Set Up Your Development Environment
 
-### Clone the Repo
+Follow the setup instructions in [docs/INSTALLATION.md](docs/INSTALLATION.md) to get Shubble running locally. We recommend the native setup for active development.
 
+**Quick Start:**
 ```bash
+# Clone the repository
 git clone git@github.com:wtg/shubble.git
 cd shubble
+
+# Follow native or Docker setup in INSTALLATION.md
 ```
 
-### Install dependencies
+### 2. Find Something to Work On
+
+**Good First Steps:**
+- Browse open issues on GitHub labeled `good first issue`
+- Check for documentation improvements
+- Fix bugs or add tests for existing features
+- Improve error messages or user experience
+
+**Ideas for Contributions:**
+- **Frontend**: UI improvements, new visualizations, mobile experience
+- **Backend**: API optimizations, new endpoints, data analysis features
+- **Algorithm**: Schedule matching improvements, route prediction
+- **Testing**: Add test coverage, improve test infrastructure
+- **Documentation**: Clarify setup steps, add code comments, create guides
+- **DevOps**: Docker improvements, CI/CD enhancements
+
+### 3. Development Workflow
+
+1. **Create a branch** for your feature or bug fix:
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+
+2. **Make your changes** following existing code patterns:
+   - Use native setup for faster iteration
+   - Refer to [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for development commands
+   - Follow the existing code style and conventions
+
+3. **Test your changes**:
+   ```bash
+   # Frontend tests
+   npm test
+
+   # Backend tests
+   pytest
+
+   # Linting
+   npm run lint
+   ```
+
+   See [testing/README.md](testing/README.md) for comprehensive testing guide.
+
+4. **Commit your changes** with clear commit messages:
+   ```bash
+   git add .
+   git commit -m "Add feature: brief description of what you did"
+   ```
+
+5. **Push to your fork** and create a Pull Request:
+   ```bash
+   git push origin feature/your-feature-name
+   ```
+
+6. **Open a Pull Request** on GitHub:
+   - Describe what your PR does
+   - Reference any related issues
+   - Include screenshots for UI changes
+   - Explain how you tested the changes
+
+## Development Guidelines
+
+### Code Quality
+
+**Before committing:**
+- Run tests and ensure they pass
+- Run linter and fix any issues
+- Test manually in your browser/with API calls
+- Ensure your changes don't break existing functionality
+
+**Code Standards:**
+- Follow existing patterns in the codebase
+- Write clear, descriptive variable and function names
+- Add comments for complex logic
+- Keep functions focused and single-purpose
+- Update documentation when adding features
+
+### Testing
+
+- Add tests for new features
+- Update tests when modifying existing code
+- Ensure all tests pass before submitting PR
+- See [testing/README.md](testing/README.md) for testing guide
+
+### Documentation
+
+Update documentation when:
+- Adding new features or API endpoints
+- Changing setup/configuration requirements
+- Modifying database schema
+- Adding environment variables
+- Changing deployment process
+
+## Pull Request Process
+
+1. **Create PR** with clear title and description
+2. **Link related issues** using "Fixes #123" syntax
+3. **Wait for review** from maintainers
+4. **Address feedback** by pushing new commits
+5. **Merge** once approved (maintainer will merge)
+
+**PR Checklist:**
+- [ ] Tests pass (`npm test && pytest`)
+- [ ] Linting passes (`npm run lint`)
+- [ ] Documentation updated (if applicable)
+- [ ] Commit messages are clear
+- [ ] No merge conflicts with main branch
 
-```bash
-# Python dependencies
-pip install -r requirements.txt
-# Node.js dependencies
-npm install
-```
+## Getting Help
 
-Note: you may want to install Python requirements in a virtual environment to avoid conflicts with other projects.
+**Need assistance?**
+- Check documentation in [docs/](docs/) directory
+- Review [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for common commands
+- Review [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for system design
+- Open a GitHub issue with questions
+- Contact: [Joel McCandless](mailto:mail@joelmccandless.com)
 
-### Setup Database
+**Resources:**
+- [INSTALLATION.md](docs/INSTALLATION.md) - Setup instructions
+- [DEVELOPMENT.md](docs/DEVELOPMENT.md) - Development commands and workflows
+- [ARCHITECTURE.md](docs/ARCHITECTURE.md) - System architecture and structure
+- [testing/README.md](testing/README.md) - Testing guide (unit tests, mock API)
+- [PORTS.md](PORTS.md) - Port reference for all services
 
-Create a new database named `shubble`:
+## Code of Conduct
 
-```bash
-createdb shubble
-```
+Be respectful and inclusive:
+- Use welcoming and inclusive language
+- Be respectful of differing viewpoints
+- Accept constructive criticism gracefully
+- Focus on what's best for the community
+- Show empathy towards other community members
 
-Initialize the database:
+## License
 
-```bash
-flask db upgrade
-```
+By contributing, you agree that your contributions will be licensed under the same license as the project.
 
-### Verify Database Setup
+## Questions?
 
-To verify that the database is set up correctly, you can run the following command to open a PostgreSQL interactive terminal:
+Don't hesitate to ask questions! We're here to help new contributors get started. Open an issue or reach out directly.
 
-```bash
-psql shubble
-```
+---
 
-This will connect you to the `shubble` database. You can then run SQL commands to check the tables and data. For example, to list all tables:
-
-```sql
-\dt
-```
-
-You should see the tables `vehicles`, `geofence_events`, and `vehicle_locations` listed.
-
-If you don't have a `.env` file in the project root, create one and add the following line to it:
-`DATABASE_URL=postgresql://localhost:5432/shubble`\
-If you have authentication setup on PostgreSQL, the database URL is in the format
-`DATABASE_URL=postgresql://<username>:<password>@localhost:5432/shubble`\
-The default `<username>` is `postgres`.\
-This tells the backend where to find the PostgreSQL database.
-
-### Redis Setup
-
-First make sure that docker destop is downloaded (feel free to use docker CLI instead):
-https://www.docker.com/products/docker-desktop/
-
-Go to this link to run Redis on docker:
-https://hub.docker.com/_/redis
-
-Press on "run in docker desktop"
-
-This should open up your docker desktop application and run it. On this display you should see a localhost port that redis is running on. (e.g https://localhost:32678)
-
-<img width="288" height="94" alt="image" src="https://github.com/user-attachments/assets/fe1816b9-a47e-4ede-91f6-530290e80606" />
-
-Copy this localhost with the port and put the following in your env
-
-```
-REDIS_URL=redis://localhost:{port}
-```
-
-replacing port with your actual port
-
-# Running the frontend
-
-To run the frontend, `cd` to the project root and run:
-
-```bash
-npm run dev
-```
-
-This will start the development server and open the frontend in your default web browser. The frontend will automatically reload when you make changes to the source files.
-Note: `npm run dev` is for development only. It serves dynamic files and will not work with the backend. You should only use `npm run dev` when you are developing a purely frontend change.
-
-To build the frontend for the backend to use, run:
-
-```bash
-npm run build
-```
-
-This will create a static build of the frontend in the `/client/dist` directory, which the backend can serve. **You must build the frontend before you run the backend**.
-
-# Running the backend
-
-To run the backend, you need to run the _server_ and the _worker_. They must be running simultaneously for Shubble to work correctly. This means you may have to make 2 terminal tabs.
-
-#### To run the backend server, you have 2 options:
-
-#### Option 1. `cd` to the project root and run:
-
-```bash
-flask run --port 8000
-```
-
-This will start the Flask development server on port 8000. The backend will serve the built frontend files from the `/client/dist` directory.
-
-#### Option 2. Run the backend using `gunicorn`, which is what Shubble's production server runs:
-
-```bash
-gunicorn shubble:app
-```
-
-#### To run the worker, `cd` to the project root and run:
-
-```bash
-python -m server.worker
-```
-
-This will start the worker process that handles background tasks, such as updating vehicle locations. It's important that you run it using `python -m server.worker` (as a python package) so that it can find its local imports.
-
-# Testing the backend
-
-To test the backend, Shubble provides another Flask app that mimics the Samsara API. The test app enables users to trigger shuttle entry, exit, and location updates without needing to set up a real Samsara account or API keys. This is useful for development and testing purposes.
-**Note**: even if you're not developing the backend, you may still want to run the test to populate Shubble with data.
-Like Shubble, the test app is built using Flask and React. Therefore, you must build the frontend before running the test app.
-To build the frontend for the test app, `cd` to the `/test-client` directory and run:
-
-```bash
-npm run build
-```
-
-This will create a static build of the test app in the `/test-client/dist` directory.
-Then, you can run the test app using Flask. From the project root:
-
-```bash
-python -m test-server.server
-```
-
-This will start a server at `localhost://8001`, which simulates what the Samsara API server would be doing for Shubble in production. It sends simulated webhook requests for vehicles entering/exiting the RPI geofence and sends simulated shuttle location data.
-It expects the Shubble server to be running on `localhost://8000`, so make sure to start the backend server first.
-
-#### For instructions on using the automated testing module, see /test-client/testing.md
-
-# Database Migrations
-
-Most of the time, you will not need to worry about the database schema. However, if you do need to make changes, you can use Flask-Migrate to handle database migrations.
-
-Some background: PostgreSQL is a _database management system_, a system for creating, managing, and querying databases.
-PostgreSQL (often abbreviated as Postgres) is a powerful, open-source _object-relational_ database system.
-Object-relational means that it stores data in a tabular format.
-
-Some organization and terminology:
-
-```
-database: shubble (you create this)
-    |
-    schema: public (default schema, don't worry about this for now)
-        |
-        tables: vehicles, geofence_events, vehicle_locations
-            |
-            rows: representing shuttles (vehicles), entry/exit events (geofence_events), and instances of vehicle location data (vehicle_locations)
-                |
-                columns: attributes, such as shuttle ids, event types, timestamps, etc.
-```
-
-When you need to make changes to the database schema, you can use Flask-Migrate to handle database migrations. This allows you to version control your database schema and apply changes incrementally.
-
-To create a new migration, modify `models.py` to reflect your change and then run:
-
-```bash
-flask db migrate -m "Add new attribute"
-```
-
-Then apply the migration using:
-
-```bash
-flask db upgrade
-```
-
-Migration files will be generated in the `migrations` directory. You should commit these files to the Git repository so that any database changes you make can be mirrored by others using `upgrade`.
-
-# Staging Domains
-
-A staging domain is a server that mimics the production environment. It allows you to test changes in an environment that is similar to production before deploying them live.
-
-**When should I use a staging domain?**
-
-Not every change needs to be tested on a staging domain. However, you should use a staging domain when you need to test changes that are related to external services, such as the Apple MapKit JS integration or the Samsara API integration. These services cannot be tested locally because they require a publicly accessible URL.
-
-Shubble has a staging domain you can use for testing. The domain is [https://staging-web-shuttles.rpi.edu/](https://staging-web-shuttles.rpi.edu/).
-
-To deploy your code to the staging domain, push your code to a branch and then go to the Shubble GitHub Repository > Actions > Deploy to Staging. On the right, there's an option to run the workflow. Select your branch and click the green "Run workflow" button. You can monitor the progress of the deployment in the Actions tab. Your code will need to be approved by a trusted contributor before it is loaded onto the staging server. A few minutes after someone approves it, your code should be live on the staging domain.
-
-If you use a staging domain, please notify other developers through the Shubble Developers Discord. This is important because the staging domain is shared among all developers, and you don't want to interfere with someone else's testing.
+**Thank you for contributing to Shubble! 🚌**

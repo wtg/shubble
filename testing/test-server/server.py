@@ -6,7 +6,8 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(Path(__file__).parent))
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request
+from flask_cors import CORS
 from threading import Thread, Lock
 import time
 import os
@@ -29,8 +30,20 @@ route_names = Stops.active_routes
 
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__, static_folder="../test-client/dist", static_url_path="")
+app = Flask(__name__)
 app.config.from_object(Config)
+
+# Enable CORS for cross-origin requests from test-client
+# Allow requests from configured frontend URLs
+cors_origins = [
+    os.environ.get('FRONTEND_URL', 'http://localhost:5173'),
+    os.environ.get('TEST_FRONTEND_URL', 'http://localhost:5174'),
+]
+CORS(app,
+     resources={r"/*": {"origins": cors_origins}},
+     supports_credentials=True,
+     allow_headers=["Content-Type"],
+     methods=["GET", "POST", "DELETE", "OPTIONS", "PUT", "PATCH"])
 
 db = SQLAlchemy()
 db.init_app(app)
@@ -83,8 +96,14 @@ def setup():
     for loc, vehicle in results:
         shuttles[vehicle.id] = Shuttle(vehicle.id, loc.latitude, loc.longitude)
 
+# Try to initialize from database, but don't fail if database is unavailable
 with app.app_context():
-    setup()
+    try:
+        setup()
+        logger.info("Mock server initialized with shuttles from database")
+    except Exception as e:
+        logger.warning(f"Could not initialize from database (this is OK for standalone mock server): {e}")
+        logger.info("Mock server starting with no shuttles. Use POST /api/shuttles to create shuttles.")
 
 # --- Background Thread ---
 def update_loop():
@@ -142,75 +161,81 @@ def get_routes():
 
 @app.route("/api/events/today", methods=["GET"])
 def get_events_today():
-    start_of_today = get_campus_start_of_day()
-    loc_count = db.session.query(VehicleLocation).filter(VehicleLocation.timestamp >= start_of_today).count()
-    geo_count = db.session.query(GeofenceEvent).filter(GeofenceEvent.event_time >= start_of_today).count()
-    return jsonify({
-        'locationCount': loc_count,
-        'geofenceCount': geo_count
-    })
+    try:
+        start_of_today = get_campus_start_of_day()
+        loc_count = db.session.query(VehicleLocation).filter(VehicleLocation.timestamp >= start_of_today).count()
+        geo_count = db.session.query(GeofenceEvent).filter(GeofenceEvent.event_time >= start_of_today).count()
+        return jsonify({
+            'locationCount': loc_count,
+            'geofenceCount': geo_count
+        })
+    except Exception as e:
+        logger.warning(f"Database not available for event count: {e}")
+        return jsonify({
+            'locationCount': 0,
+            'geofenceCount': 0
+        })
 
 @app.route("/api/events/today", methods=["DELETE"])
 def clear_events_today():
-    keep_shuttles = request.args.get("keepShuttles", "false").lower() == "true"
-    start_of_today = get_campus_start_of_day()
+    try:
+        keep_shuttles = request.args.get("keepShuttles", "false").lower() == "true"
+        start_of_today = get_campus_start_of_day()
 
-    db.session.query(VehicleLocation).filter(VehicleLocation.timestamp >= start_of_today).delete()
-    logger.info(f"Deleted vehicle location events past {start_of_today}")
+        db.session.query(VehicleLocation).filter(VehicleLocation.timestamp >= start_of_today).delete()
+        logger.info(f"Deleted vehicle location events past {start_of_today}")
 
-    if not keep_shuttles:
-        db.session.query(GeofenceEvent).filter(GeofenceEvent.event_time >= start_of_today).delete()
-        logger.info(f"Deleted geofence events past {start_of_today}")
+        if not keep_shuttles:
+            db.session.query(GeofenceEvent).filter(GeofenceEvent.event_time >= start_of_today).delete()
+            logger.info(f"Deleted geofence events past {start_of_today}")
 
-        global shuttle_counter
+            global shuttle_counter
+            with shuttle_lock:
+                shuttles.clear()
+                shuttle_counter = 1
+            logger.info(f"Deleted all shuttles")
+        else:
+            '''
+            Delete all geofence events >= start_of_today except for: each vehicle's latest one (if it
+            is a geofenceEntry. geofenceExits are still deleted). This allows all currently running
+            shuttles to keep running in the test suite.
+            '''
+
+            # Get today's geofence events
+            today_events = db.session.query(GeofenceEvent).filter(
+                GeofenceEvent.event_time >= start_of_today
+            ).subquery()
+            # Get latest event per vehicle from today's geofence events
+            latest_times = db.session.query(
+                today_events.c.vehicle_id,
+                func.max(today_events.c.event_time).label("latest_time")
+            ).group_by(today_events.c.vehicle_id).subquery()
+            # Join back to get the full event row, select to keep only geofenceEntry, project on id
+            latest_entries = db.session.query(today_events.c.id).join(
+                latest_times,
+                and_(
+                    today_events.c.vehicle_id == latest_times.c.vehicle_id,
+                    today_events.c.event_time == latest_times.c.latest_time
+                )
+            ).filter(today_events.c.event_type == 'geofenceEntry').subquery()
+            # Delete all in today_events that aren't in latest_entries
+            db.session.query(GeofenceEvent).filter(
+                GeofenceEvent.id.in_(db.session.query(today_events.c.id))
+            ).filter(
+                ~GeofenceEvent.id.in_(db.session.query(latest_entries.c.id))
+            ).delete()
+
+            logger.info(f"Deleted geofence events past {start_of_today} except for currently running shuttles")
+
+        db.session.commit()
+        return "", 204
+    except Exception as e:
+        logger.warning(f"Database not available for clearing events: {e}")
+        # Still clear in-memory shuttles even if DB operations fail
         with shuttle_lock:
             shuttles.clear()
-            shuttle_counter = 1
-        logger.info(f"Deleted all shuttles")
-    else:
-        '''
-        Delete all geofence events >= start_of_today except for: each vehicle's latest one (if it
-        is a geofenceEntry. geofenceExits are still deleted). This allows all currently running
-        shuttles to keep running in the test suite.
-        '''
-
-        # Get today's geofence events
-        today_events = db.session.query(GeofenceEvent).filter(
-            GeofenceEvent.event_time >= start_of_today
-        ).subquery()
-        # Get latest event per vehicle from today's geofence events
-        latest_times = db.session.query(
-            today_events.c.vehicle_id,
-            func.max(today_events.c.event_time).label("latest_time")
-        ).group_by(today_events.c.vehicle_id).subquery()
-        # Join back to get the full event row, select to keep only geofenceEntry, project on id
-        latest_entries = db.session.query(today_events.c.id).join(
-            latest_times,
-            and_(
-                today_events.c.vehicle_id == latest_times.c.vehicle_id,
-                today_events.c.event_time == latest_times.c.latest_time
-            )
-        ).filter(today_events.c.event_type == 'geofenceEntry').subquery()
-        # Delete all in today_events that aren't in latest_entries
-        db.session.query(GeofenceEvent).filter(
-            GeofenceEvent.id.in_(db.session.query(today_events.c.id))
-        ).filter(
-            ~GeofenceEvent.id.in_(db.session.query(latest_entries.c.id))
-        ).delete()
-
-        logger.info(f"Deleted geofence events past {start_of_today} except for currently running shuttles")
-
-    db.session.commit()
-    return "", 204
-
-# --- Frontend Serving ---
-@app.route("/")
-@app.route("/<path:path>")
-def serve_frontend(path=""):
-    if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
-        return send_from_directory(app.static_folder, path)
-    else:
-        return send_from_directory(app.static_folder, "index.html")
+        logger.info("Cleared in-memory shuttles (database operations skipped)")
+        return "", 204
 
 @app.route('/fleet/vehicles/stats')
 def mock_stats():

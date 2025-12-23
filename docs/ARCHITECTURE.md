@@ -1,6 +1,6 @@
 # Architecture Guide
 
-Technical architecture and development guide for Shubble.
+Technical architecture and project structure for Shubble.
 
 ## Project Overview
 
@@ -9,52 +9,74 @@ Shubble is a real-time shuttle tracking application for RPI shuttles. It integra
 **Tech Stack:**
 - Frontend: React 19 + TypeScript + Vite + Apple MapKit JS
 - Backend: Flask (Python) + SQLAlchemy + PostgreSQL
-- Cache: Redis
+- Cache: Redis for performance optimization
 - Worker: Background polling service for GPS updates
 - Deployment: Docker containers (Dokploy/Dokku)
 
-## Quick Reference
+## Directory Structure
 
-### Start Development Environment
-```bash
-# Using Docker (recommended)
-docker-compose up -d
-docker-compose logs -f
-
-# Native setup
-# Terminal 1: Backend
-flask --app server:create_app run
-
-# Terminal 2: Frontend
-npm run dev
-
-# Terminal 3: Worker
-python -m server.worker
 ```
-
-### Common Commands
-```bash
-# Database migrations
-docker-compose exec backend flask --app server:create_app db upgrade
-docker-compose exec backend flask --app server:create_app db migrate -m "description"
-
-# Run tests
-npm test                    # Frontend tests
-pytest                      # Backend tests
-npm run test:coverage       # Frontend with coverage
-pytest --cov=server         # Backend with coverage
-
-# Build frontend for production
-npm run build
-
-# Lint frontend
-npm run lint
-
-# Access database
-docker-compose exec postgres psql -U shubble -d shubble
-
-# Access Redis
-docker-compose exec redis redis-cli
+shubble/
+├── backend/              # Flask backend application
+│   ├── __init__.py      # Flask app factory, db/cache/migrations initialization
+│   ├── routes.py        # API endpoints
+│   ├── models.py        # SQLAlchemy database models
+│   ├── worker.py        # Background GPS polling service
+│   ├── config.py        # Configuration from environment variables
+│   └── time_utils.py    # Campus timezone utilities
+│
+├── frontend/            # React frontend application
+│   ├── src/
+│   │   ├── components/  # React components
+│   │   ├── pages/       # Page components
+│   │   ├── ts/          # TypeScript utilities
+│   │   └── data/        # Static data (copied from /data during build)
+│   ├── public/          # Static assets
+│   └── dist/            # Build output (generated)
+│
+├── data/                # Static data and algorithms
+│   ├── schedules.py     # Schedule matching algorithm (Hungarian)
+│   ├── stops.py         # Route and stop definitions
+│   ├── parseSchedule.js # Build-time schedule parser (Node.js)
+│   ├── schedule.json    # Master schedule (manually edited)
+│   ├── aggregated_schedule.json  # Generated schedule (do not edit)
+│   └── routes.json      # Route polylines and stop coordinates
+│
+├── testing/             # Testing infrastructure
+│   ├── tests/           # Pytest test suite (automated tests)
+│   │   ├── conftest.py
+│   │   ├── test_api_endpoints.py
+│   │   ├── test_models.py
+│   │   ├── test_worker.py
+│   │   └── integration/
+│   │       └── test_shuttle_workflow.py
+│   ├── test-server/     # Mock Samsara API backend (development tool)
+│   │   ├── server.py
+│   │   └── shuttle.py
+│   └── test-client/     # UI for controlling test shuttles
+│
+├── docker/              # Docker configuration
+│   ├── Dockerfile.backend
+│   ├── Dockerfile.frontend
+│   ├── Dockerfile.worker
+│   ├── Dockerfile.test-server
+│   └── Dockerfile.test-client
+│
+├── docs/                # Documentation
+│   ├── ARCHITECTURE.md  # This file - project structure
+│   ├── INSTALLATION.md  # Setup instructions
+│   ├── DEVELOPMENT.md   # Development commands and workflows
+│   ├── DEPLOYMENT.md    # Production deployment guide
+│   ├── TESTING.md       # Automated testing documentation
+│   └── OVERVIEW.md      # Project overview
+│
+├── migrations/          # Database migrations (Alembic/Flask-Migrate)
+├── shubble.py          # Main entry point for Flask app
+├── requirements.txt    # Python dependencies
+├── package.json        # Node.js dependencies and scripts
+├── docker-compose.yml  # Docker services configuration
+├── .env.example        # Example environment configuration
+└── PORTS.md            # Port reference documentation
 ```
 
 ## System Architecture
@@ -62,24 +84,42 @@ docker-compose exec redis redis-cli
 ### Data Flow
 
 ```
-Samsara API
-    ↓ (webhooks + polling)
-Backend Worker (every 5s)
-    ↓ (writes to DB)
-PostgreSQL + Redis
-    ↓ (API reads)
-Backend API
-    ↓ (frontend polls every 5s)
-React Frontend
+┌─────────────┐
+│   Samsara   │  GPS Provider
+│   GPS API   │
+└──────┬──────┘
+       │ Webhooks (geofence events)
+       │ Polling (location data every 5s)
+       ↓
+┌──────────────────────────────────────┐
+│           Backend Services           │
+├──────────────┬───────────────────────┤
+│  Flask API   │  Background Worker    │
+│  (Routes)    │  (GPS Polling)        │
+└──────┬───────┴──────┬────────────────┘
+       │              │
+       ↓              ↓
+┌─────────────────────────────────┐
+│     PostgreSQL + Redis          │
+│  (Storage + Cache)              │
+└─────────────┬───────────────────┘
+              │
+              ↓ API polling (every 5s)
+       ┌──────────────┐
+       │   React UI   │
+       │  (MapKit JS) │
+       └──────────────┘
 ```
+
+### Component Responsibilities
 
 #### 1. Geofence Events (Webhooks)
 - Samsara sends POST to `/api/webhook` when vehicles enter/exit campus geofence
-- Server stores events in `geofence_events` table
+- Backend stores events in `geofence_events` table
 - Cache `vehicles_in_geofence` is invalidated
 
 #### 2. Location Polling (Worker Process)
-- Background worker (`server/worker.py`) runs infinite loop with 5-second sleep
+- Background worker (`backend/worker.py`) runs infinite loop with 5-second sleep
 - Queries vehicles currently in geofence (latest event = `geofenceEntry`)
 - Fetches GPS data from Samsara API for active vehicles only
 - Stores location data in `vehicle_locations` table
@@ -100,300 +140,335 @@ React Frontend
 - Animates shuttle movement between polling intervals using heading/speed
 - MapKit displays shuttles on route polylines with direction indicators
 
-### Database Models
+## Database Schema
 
-Located in `server/models.py`:
+Located in `backend/models.py`:
 
-- **Vehicle**: GPS-tracked shuttles (id, name, license_plate, vin, gateway info)
-- **GeofenceEvent**: Entry/exit events for campus boundary (event_type, event_time)
-- **VehicleLocation**: GPS coordinates with timestamp (latitude, longitude, heading, speed)
-- **Driver**: Driver records from Samsara (id, name)
-- **DriverVehicleAssignment**: Tracks driver-vehicle assignments (start/end times, null end = active)
+### Tables
 
-### Critical Files and Their Roles
+**Vehicle**
+- Represents GPS-tracked shuttles
+- Fields: id, name, license_plate, vin, gateway info
+- Primary key: id (string)
 
-#### Backend
-- `server/__init__.py` - Flask app factory, initializes db/cache/migrations
-- `server/routes.py` - API endpoints
-  - `/api/locations` - Current vehicle positions with route matching
-  - `/api/webhook` - Samsara webhook handler for geofence events
-  - `/api/matched-schedules` - Schedule algorithm results (cached)
-  - `/api/today` - All location data for current day
-  - `/api/routes` - Route polylines from JSON
-  - `/api/schedule` - Schedule data from JSON
+**GeofenceEvent**
+- Entry/exit events for campus boundary
+- Fields: id, vehicle_id, event_type, event_time, latitude, longitude
+- Indexed on: vehicle_id, event_time
 
-- `server/worker.py` - Background GPS polling service
-  - `update_locations(app)` - Fetches GPS data for vehicles in geofence
-  - `update_driver_assignments(app, vehicle_ids)` - Syncs driver assignments
-  - `get_vehicles_in_geofence()` - Cached query returning set of vehicle IDs
-  - Runs in infinite loop with 5-second sleep
+**VehicleLocation**
+- GPS coordinates with timestamp
+- Fields: id, vehicle_id, latitude, longitude, heading, speed, timestamp
+- Indexed on: vehicle_id, timestamp
 
-- `server/models.py` - SQLAlchemy database models
-- `server/config.py` - Configuration from environment variables
-- `server/time_utils.py` - Campus timezone utilities
-  - `get_campus_start_of_day()` - Returns 4am ET as "start of day" (shuttle service day boundary)
+**Driver**
+- Driver records from Samsara API
+- Fields: id, name
+- Primary key: id (string)
 
-#### Data Processing
-- `data/schedules.py` - Schedule matching algorithm
-  - `match_shuttles_to_schedules()` - Hungarian algorithm for schedule assignment
-  - `load_and_label_stops()` - Labels location data with stop information
-  - Uses extensive Redis caching for performance
+**DriverVehicleAssignment**
+- Tracks driver-vehicle assignments over time
+- Fields: id, driver_id, vehicle_id, start_time, end_time
+- Null end_time indicates active assignment
 
-- `data/stops.py` - Route and stop definitions
-  - `Stops.get_closest_point(coords)` - Find closest point on route polylines
-  - `Stops.is_at_stop(coords)` - Returns (route_name, stop_name) or (None, None)
-  - Contains hardcoded coordinate data for all routes and stops
+## Backend Components
 
-- `data/parseSchedule.js` - Build-time script (Node.js)
-  - Parses `schedule.json` into `aggregated_schedule.json`
-  - Groups schedules by day and route for efficient lookup
-  - Runs before `npm run dev` and `npm run build` via package.json scripts
+### API Endpoints (`backend/routes.py`)
 
-#### Frontend
-- `client/src/App.tsx` - React Router setup, route definitions
-- `client/src/pages/LiveLocation.tsx` - Main page combining map + schedule
-- `client/src/components/MapKitMap.tsx` - Apple MapKit integration
+- `GET /api/locations` - Current vehicle positions with route matching
+- `POST /api/webhook` - Samsara webhook handler for geofence events
+- `GET /api/matched-schedules` - Schedule algorithm results (cached)
+- `GET /api/today` - All location data for current day
+- `GET /api/routes` - Route polylines from JSON
+- `GET /api/schedule` - Schedule data from JSON
+
+### Worker Service (`backend/worker.py`)
+
+Background service that:
+- Runs in infinite loop with 5-second intervals
+- `update_locations(app)` - Fetches GPS data for vehicles in geofence
+- `update_driver_assignments(app, vehicle_ids)` - Syncs driver assignments
+- `get_vehicles_in_geofence()` - Cached query returning set of vehicle IDs
+
+### Configuration (`backend/config.py`)
+
+Loads settings from environment variables:
+- Database and Redis connection strings
+- Service URLs for CORS and port binding
+- API credentials for Samsara
+- Flask environment and debug settings
+- Campus timezone (hardcoded to America/New_York)
+
+### Time Utilities (`backend/time_utils.py`)
+
+- `get_campus_start_of_day()` - Returns 4am ET as "start of day"
+- Shuttle service day boundary (overnight shuttles count toward same day)
+
+## Data Processing Components
+
+### Schedule Algorithm (`data/schedules.py`)
+
+Hungarian algorithm for matching shuttles to scheduled routes:
+
+- `match_shuttles_to_schedules()` - Main algorithm entry point
+  1. Loads all vehicle locations from today since 4am ET
+  2. Labels each location with (route_name, stop_name) using proximity
+  3. Matches vehicle stop visits to scheduled stop times
+  4. Computes cost matrix based on time differences
+  5. Uses scipy's `linear_sum_assignment` for optimal assignment
+  6. Returns matched schedules with confidence scores
+
+- `load_and_label_stops()` - Labels location data with stop information
+- Uses extensive Redis caching for performance
+
+### Route and Stop Definitions (`data/stops.py`)
+
+Hardcoded coordinate data for all routes and stops:
+
+- `Stops.get_closest_point(coords)` - Find closest point on route polylines
+- `Stops.is_at_stop(coords)` - Returns (route_name, stop_name) or (None, None)
+- `Stops.active_routes` - Set of currently active route names
+- Contains polyline coordinates and stop positions for all shuttle routes
+
+### Schedule Parser (`data/parseSchedule.js`)
+
+Build-time Node.js script:
+- Parses `schedule.json` into `aggregated_schedule.json`
+- Groups schedules by day of week and route
+- Runs automatically before `npm run dev` and `npm run build`
+- Output format: Array indexed by day (0=Sunday), containing route → times mapping
+
+## Frontend Components
+
+### Application Structure
+
+**App.tsx**
+- React Router setup
+- Route definitions for pages
+
+**Pages:**
+- `pages/LiveLocation.tsx` - Main page combining map + schedule
+- `pages/Data.tsx` - Data analysis and historical views
+
+**Components:**
+- `components/MapKitMap.tsx` - Apple MapKit integration
   - Displays routes, stops, and animated shuttle positions
   - Handles real-time updates and smooth transitions
-  - Uses heading/speed for animation between GPS updates
+  - Uses heading/speed for prediction between GPS updates
+  - Implements polyline snapping for accurate route following
 
-- `client/src/components/Schedule.tsx` - Schedule display component
-- `client/src/ts/config.ts` - Frontend configuration
-- `client/src/ts/mapUtils.ts` - Map utility functions
+- `components/Schedule.tsx` - Schedule display component
+- `components/DataAgeIndicator.tsx` - Shows age of location data
 
-#### Static Data
-- `data/schedule.json` - Master schedule (manually edited)
-  - Format: `{ "MONDAY": "BUS_SCHEDULE_A", "BUS_SCHEDULE_A": { "BUS_1": [["10:00", "ROUTE_NAME"], ...] } }`
+**Utilities:**
+- `ts/api.ts` - API wrapper and endpoint configuration
+- `ts/config.ts` - Frontend configuration
+- `ts/mapUtils.ts` - Map calculation utilities (bearing, distance, etc.)
+- `ts/types/` - TypeScript type definitions
 
-- `data/aggregated_schedule.json` - Generated from schedule.json (do not edit)
-  - Array indexed by day of week (0=Sunday)
-  - Each day contains routes mapped to arrays of times
+## Static Data Files
 
-- `data/routes.json` - Route polylines and stop coordinates
-  - Contains lat/lon arrays for drawing routes on map
-  - Stop locations for proximity detection
+### schedule.json (Master Schedule)
 
-### Configuration & Environment
+Manually edited file defining shuttle schedules:
 
-Environment variables (`.env`):
+```json
+{
+  "MONDAY": "BUS_SCHEDULE_A",
+  "BUS_SCHEDULE_A": {
+    "BUS_1": [
+      ["10:00", "ROUTE_NAME"],
+      ["10:30", "ANOTHER_ROUTE"]
+    ]
+  }
+}
+```
+
+### aggregated_schedule.json (Generated)
+
+**Do not edit directly** - generated by parseSchedule.js:
+- Array indexed by day of week (0=Sunday)
+- Each day contains routes mapped to arrays of times
+- Optimized format for runtime lookups
+
+### routes.json
+
+Route polylines and stop coordinates:
+- Lat/lon arrays for drawing routes on map
+- Stop locations for proximity detection
+- Polyline stop ordering for route following
+
+## Caching Strategy
+
+### Redis Cache Keys
+
+**vehicle_locations** (5 min TTL)
+- Current vehicle positions from latest worker poll
+
+**vehicles_in_geofence** (5 min TTL)
+- Set of active vehicle IDs currently on campus
+
+**schedule_entries** (1 hour TTL)
+- Matched schedule algorithm results
+
+**coords:{lat}:{lon}** (24 hour TTL)
+- Stop detection results for coordinate pairs
+
+**labeled_stops:{date}** (10 min TTL)
+- Daily stop visit data with labels
+
+### Cache Invalidation
+
+Triggers for cache invalidation:
+- New geofence events → `vehicles_in_geofence`, `vehicle_locations`
+- New location data → `vehicle_locations`, `schedule_entries`
+- Manual clear via Redis CLI when needed
+
+## Testing Infrastructure
+
+### Automated Tests
+
+**Frontend Tests** (`frontend/src/test/`)
+- Framework: Vitest
+- Component tests with React Testing Library
+- Integration tests for API interaction
+- Pattern: `*.test.tsx` or `*.test.ts`
+
+**Backend Tests** (`testing/tests/`)
+- Framework: Pytest
+- Unit tests for models, utilities, algorithms
+- Integration tests for API endpoints
+- End-to-end workflow tests
+- Pattern: `test_*.py`
+
+### Mock Samsara API (Development Tool)
+
+**Test Server** (`testing/test-server/`)
+- Flask API simulating Samsara GPS endpoints
+- Generates mock geofence events and GPS data
+- Controls simulated shuttle movement
+- Useful for development without API credentials
+
+**Test Client** (`testing/test-client/`)
+- React UI for controlling mock shuttles
+- Create/manage simulated vehicles
+- Trigger state changes and movement
+- Monitor events in real-time
+
+## Configuration & Environment
+
+### Environment Variables
+
+**Required:**
 - `DATABASE_URL` - PostgreSQL connection string
 - `REDIS_URL` - Redis connection string
-- `API_KEY` - Samsara API key for GPS data
-- `SAMSARA_SECRET` - Base64-encoded webhook signature secret (optional)
-- `FLASK_ENV` - `development` or `production`
-- `FLASK_DEBUG` - `true` or `false`
-- `LOG_LEVEL` - Logging level (INFO, DEBUG, WARNING, ERROR)
 
-Campus timezone is hardcoded to `America/New_York` in `server/config.py`.
+**Service URLs:**
+- `FRONTEND_URL` - Frontend URL (for CORS)
+- `BACKEND_URL` - Backend URL (for CORS and port binding)
+- `TEST_FRONTEND_URL` - Test client URL (for CORS)
+- `TEST_BACKEND_URL` - Test server URL
 
-### Caching Strategy (Redis)
+**Optional (Production):**
+- `API_KEY` - Samsara API key
+- `SAMSARA_SECRET` - Base64-encoded webhook secret
 
-Cache keys and TTLs:
-- `vehicle_locations` - Current vehicle positions (5 min TTL)
-- `vehicles_in_geofence` - Set of active vehicle IDs (5 min TTL)
-- `schedule_entries` - Matched schedule results (1 hour TTL)
-- `coords:{lat}:{lon}` - Stop detection results (24 hour TTL)
-- `labeled_stops:{date}` - Daily stop visit data (10 min TTL)
+**Flask Settings:**
+- `FLASK_ENV` - development or production
+- `FLASK_DEBUG` - true or false
+- `LOG_LEVEL` - INFO, DEBUG, WARNING, ERROR
 
-Cache invalidation triggers:
-- New geofence events → invalidate `vehicles_in_geofence`
-- New location data → invalidate `vehicle_locations` and `schedule_entries`
+## Deployment Architecture
 
-### Important Implementation Details
+### Docker Services
 
-#### Schedule Matching Algorithm
-The Hungarian algorithm in `data/schedules.py` works by:
-1. Loading all vehicle locations from today since 4am ET
-2. Labeling each location with (route_name, stop_name) using proximity detection
-3. Matching vehicle stop visits to scheduled stop times
-4. Computing assignment cost matrix based on time differences
-5. Using scipy's `linear_sum_assignment` to find optimal matching
-6. Caching results for 1 hour
+**backend** - Flask API server
+- Runs gunicorn with multiple workers
+- Automatically runs database migrations on startup
+- Health check endpoint
 
-#### Stop Detection
-A vehicle is considered "at a stop" if:
-- Within threshold distance of a stop coordinate (default 0.050 degrees ~5.5km)
-- Closest to a specific route polyline
+**worker** - Background GPS poller
+- Polls Samsara API every 5 seconds
+- Updates database with latest positions
+- No HTTP interface
 
-Stop detection is cached per coordinate to avoid repeated calculations.
+**frontend** - React application
+- nginx serving static files
+- Reverse proxy for /api/* requests to backend
+- Gzip compression and caching headers
 
-#### Geofence Logic
-- Vehicles are tracked only when inside geofence (on campus)
-- Latest geofence event determines if vehicle is active
-- If latest event = `geofenceEntry` → vehicle is active
-- If latest event = `geofenceExit` → vehicle is inactive
-- Worker only polls active vehicles to minimize API calls
+**postgres** - PostgreSQL database
+- Persistent volume for data
+- Shared by backend, worker, and test services
 
-#### Time Handling
-- All times stored in UTC in database
-- Campus timezone (America/New_York) used for display and "day" calculations
-- "Start of day" = 4am ET (shuttle service starts late night/early morning)
-- This ensures overnight shuttles count towards the same service day
+**redis** - Redis cache
+- Persistent volume with AOF
+- Shared by all backend services
 
-### Testing
+**test-server** (optional, --profile dev)
+- Mock Samsara API for development
+- Shares database with main app
 
-#### Unit and Integration Tests
+**test-client** (optional, --profile dev)
+- UI for controlling mock server
+- nginx with proxy to test-server
 
-The project uses **Vitest** for frontend testing and **pytest** for backend testing.
+## Important Implementation Details
 
-**Frontend Tests** (`client/src/test/`)
-```bash
-# Run tests
-npm test
+### Schedule Matching Algorithm
 
-# Watch mode
-npm test -- --watch
+The Hungarian algorithm matches vehicles to routes by:
+1. Creating cost matrix of (vehicle, route) pairs
+2. Cost = time difference between observed and scheduled stops
+3. Optimal assignment minimizes total cost
+4. Handles missing data and partial routes gracefully
 
-# With UI
-npm run test:ui
+### Stop Detection
 
-# With coverage
-npm run test:coverage
-```
+Vehicle considered "at stop" when:
+- Within 0.050 degrees (~5.5km) of stop coordinates
+- Closest to that route's polyline
+- Results cached per coordinate to avoid recalculation
 
-Test files use the pattern `*.test.tsx` or `*.test.ts`.
+### Geofence Logic
 
-**Backend Tests** (`tests/`)
-```bash
-# Run all tests
-pytest
+Only vehicles inside campus geofence are tracked:
+- Latest geofence event determines active status
+- `geofenceEntry` = active, poll GPS
+- `geofenceExit` = inactive, stop polling
+- Minimizes API calls and processing
 
-# With coverage
-pytest --cov=server --cov-report=html
+### Time Handling
 
-# Run specific markers
-pytest -m unit              # Unit tests only
-pytest -m integration       # Integration tests only
-pytest -m "not slow"        # Exclude slow tests
-```
+All database times in UTC:
+- Campus timezone: America/New_York
+- "Start of day" = 4am ET (service day boundary)
+- Overnight shuttles belong to same service day
+- Display times converted to ET for users
 
-Test files use the pattern `test_*.py`.
+## Security Considerations
 
-#### Mock Samsara API Server (Development Tool)
-`test-server/` is a mock Samsara API server for local development (NOT automated tests):
-- Simulates vehicle movement along routes
-- Returns mock GPS data and geofence events
-- Includes Flask API endpoints for controlling simulated shuttles
-- Useful for local development without real API credentials
+- **Webhook Validation**: HMAC SHA256 signature verification
+- **Docker Security**: Non-root user (uid 1000) in containers
+- **Secrets Management**: Environment variables only, never committed
+- **CORS**: Configured to allow only known frontend origins
+- **Headers**: Security headers in nginx (X-Frame-Options, etc.)
+- **WSGI**: Gunicorn for production (not Flask dev server)
 
-`test-client/` is a React UI for managing the mock server:
-- Control shuttle states (entering, looping, exiting)
-- Run automated test scenarios from JSON files
-- View location and geofence event counts
-- Manage multiple simulated shuttles
+## Performance Considerations
 
-To use the mock server:
-```bash
-# Terminal 1: Start mock server
-cd test-server
-python server.py
-
-# Terminal 2: Start test client UI
-cd test-client
-npm install
-npm run dev
-```
-
-Set `FLASK_ENV=development` and leave `API_KEY` empty to use mock server instead of real Samsara API.
-
-#### Manual Testing Endpoints
-```bash
-# Get current locations
-curl http://localhost:8000/api/locations
-
-# Force recompute schedule matching
-curl "http://localhost:8000/api/matched-schedules?force_recompute=true"
-
-# Check today's location data
-curl http://localhost:8000/api/today
-```
-
-### Development Workflow
-
-#### Making Changes to Schedule Data
-1. Edit `data/schedule.json` manually
-2. Run `node data/parseSchedule.js` to regenerate aggregated_schedule.json
-3. Or run `npm run dev` or `npm run build` (runs parseSchedule automatically)
-4. Restart backend/worker to pick up changes
-
-#### Making Database Schema Changes
-1. Edit `server/models.py`
-2. Create migration: `flask --app server:create_app db migrate -m "description"`
-3. Review migration file in `migrations/versions/`
-4. Apply migration: `flask --app server:create_app db upgrade`
-
-#### Debugging Cache Issues
-```bash
-# Access Redis
-docker-compose exec redis redis-cli
-
-# Check what's cached
-KEYS *
-
-# Manually delete cache
-DEL schedule_entries
-DEL vehicle_locations
-
-# Monitor cache activity
-MONITOR
-```
-
-#### Debugging Worker Issues
-```bash
-# Check worker logs
-docker-compose logs -f worker
-
-# Common issues:
-# - API_KEY not set or invalid
-# - No vehicles in geofence (check geofence_events table)
-# - Redis connection errors
-# - Database connection errors
-```
-
-### Performance Considerations
-
-- Worker polls every 5 seconds - adjust in `server/worker.py` if rate limited
-- Frontend polls every 5 seconds - adjust in MapKitMap.tsx if needed
-- Schedule matching is expensive - cached for 1 hour
-- Stop detection is expensive - cached for 24 hours
-- Consider increasing cache TTLs if API costs are high
-- Consider decreasing polling intervals if real-time accuracy is critical
-
-### Security Notes
-
-- Webhook signature validation uses HMAC SHA256 (Samsara standard)
-- Non-root user in Docker containers (uid 1000)
-- Secrets should be in environment variables, never committed
-- Frontend runs on nginx with security headers
-- Backend runs with Gunicorn (production WSGI server)
-
-## Common Development Tasks
-
-### Add a new API endpoint
-1. Add route function in `server/routes.py` with `@bp.route()` decorator
-2. Add database queries if needed
-3. Return JSON with `jsonify()`
-4. Test with curl or frontend
-
-### Add a new database table
-1. Add model class in `server/models.py` inheriting from `db.Model`
-2. Define columns with `db.Column()`
-3. Add relationships with `db.relationship()` if needed
-4. Create migration and apply
-
-### Add a new route to the map
-1. Add polyline coordinates to `data/routes.json`
-2. Add stop coordinates with route association
-3. Update schedule in `data/schedule.json` if applicable
-4. Restart frontend to pick up changes
-
-### Change polling intervals
-- Worker: Edit sleep time in `server/worker.py` (default: 5 seconds)
-- Frontend: Edit polling interval in `MapKitMap.tsx` (default: 5000ms)
-- Cache: Edit TTL values in respective cache.set() calls
+- Worker polling interval: 5 seconds (adjustable)
+- Frontend polling interval: 5 seconds (adjustable)
+- Schedule algorithm: Expensive, cached for 1 hour
+- Stop detection: Expensive, cached for 24 hours
+- Database queries: Indexed on commonly queried fields
+- Redis caching: Reduces database load significantly
 
 ## Related Documentation
 
-- [README.md](README.md) - Project overview and quick start
-- [INSTALLATION.md](INSTALLATION.md) - Development setup instructions
-- [DEPLOYMENT.md](DEPLOYMENT.md) - Production deployment guide
+- [INSTALLATION.md](INSTALLATION.md) - Setup instructions
+- [DEVELOPMENT.md](DEVELOPMENT.md) - Development commands and workflows
+- [testing/README.md](../testing/README.md) - Testing guide
+- [DEPLOYMENT.md](DEPLOYMENT.md) - Production deployment
+- [../PORTS.md](../PORTS.md) - Port reference
+- [../README.md](../README.md) - Project overview

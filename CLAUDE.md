@@ -16,7 +16,7 @@ Shubble is a real-time shuttle tracking application for RPI shuttles. It integra
 ## Directory Structure
 
 ```
-shuttletracker-new/
+shubble/
 ├── backend/              # Flask backend application
 │   ├── __init__.py      # Flask app factory, db/cache/migrations
 │   ├── routes.py        # API endpoints
@@ -79,9 +79,12 @@ shuttletracker-new/
 
 ### Start Development Environment
 ```bash
-# Using Docker (recommended)
-cd docker
+# Using Docker
 docker-compose up -d
+docker-compose logs -f
+
+# Using Docker with Mock Samsara API (for development/testing)
+docker-compose --profile dev up -d
 docker-compose logs -f
 
 # Native setup
@@ -93,6 +96,14 @@ npm run dev
 
 # Terminal 3: Worker
 python -m backend.worker
+
+# Terminal 4 (optional): Mock Samsara API
+cd testing/test-server
+python server.py
+
+# Terminal 5 (optional): Test Client UI
+cd testing/test-client
+npm install && npm run dev
 ```
 
 ### Common Commands
@@ -306,22 +317,34 @@ Stop detection is cached per coordinate to avoid repeated calculations.
   - Run with: `npm test`
 
 #### Test Server & Client
-- **Test Server**: `testing/test-server/` - Mock Samsara API server
+- **Test Server**: `testing/test-server/` - Mock Samsara API backend
   - Simulates vehicle movement along routes
   - Returns mock GPS data and geofence events
   - Useful for local development without real API credentials
-  - Run with: `cd testing/test-server && python server.py`
+  - Run with:
+    - Native: `cd testing/test-server && python server.py` (port 4000)
+    - Docker: `docker-compose --profile dev up -d`
 
-- **Test Client**: `testing/test-client/` - UI for controlling test shuttles
+- **Test Client**: `testing/test-client/` - React UI for controlling test shuttles
   - Web interface to create/control simulated shuttles
   - Set routes, speeds, and states
-  - Served by test-server at http://localhost:4000
+  - Run with:
+    - Native: `cd testing/test-client && npm run dev` (port 5173)
+    - Docker: `docker-compose --profile dev up -d` (port 4001)
 
 To use test mode:
 ```bash
-# Start test server
+# Native: Start test server and client
+# Terminal 1:
 cd testing/test-server
 python server.py
+
+# Terminal 2:
+cd testing/test-client
+npm install && npm run dev
+
+# OR Docker: Start with test server and client
+docker-compose --profile dev up -d
 
 # In another terminal, set FLASK_ENV=development
 # Leave API_KEY empty to automatically use test server
