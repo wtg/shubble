@@ -116,8 +116,8 @@ nano .env  # or use your favorite editor
 **Edit `.env` for native setup:**
 ```bash
 # Service URLs
-FRONTEND_URL=http://localhost:5173
-BACKEND_URL=http://localhost:5001
+VITE_FRONTEND_URL=http://localhost:5173
+VITE_BACKEND_URL=http://localhost:5001
 
 # Database & Cache (use localhost for native)
 DATABASE_URL=postgresql://shubble:shubble@localhost:5432/shubble
@@ -196,12 +196,12 @@ nano .env  # or use your favorite editor
 **Edit `.env` for Docker setup:**
 ```bash
 # Service URLs
-FRONTEND_URL=http://localhost:5173
-BACKEND_URL=http://localhost:5001
+VITE_FRONTEND_URL=http://localhost:5173
+VITE_BACKEND_URL=http://localhost:5001
 
 # Database & Cache (use service names for Docker)
-DATABASE_URL=postgresql://shubble:shubble@postgres:5432/shubble
-REDIS_URL=redis://redis:6379/0
+DATABASE_URL=postgresql://shubble:shubble@localhost:5432/shubble
+REDIS_URL=redis://localhost:6379/0
 
 # Flask Config
 FLASK_ENV=development
@@ -272,7 +272,7 @@ docker-compose up -d postgres redis
 # Use localhost since you're connecting FROM native TO Docker
 DATABASE_URL=postgresql://shubble:shubble@localhost:5432/shubble
 REDIS_URL=redis://localhost:6379/0
-BACKEND_URL=http://localhost:5001
+VITE_BACKEND_URL=http://localhost:5001
 API_KEY=
 ```
 
@@ -404,17 +404,17 @@ REDIS_URL=redis://localhost:6379/0
 **Connecting from Docker to Docker services:**
 ```bash
 # Docker app → Docker database
-DATABASE_URL=postgresql://shubble:shubble@postgres:5432/shubble
-REDIS_URL=redis://redis:6379/0
+DATABASE_URL=postgresql://shubble:shubble@localhost:5432/shubble
+REDIS_URL=redis://localhost:6379/0
 ```
 
 **Backend URL for frontend:**
 ```bash
 # Both native OR both Docker
-BACKEND_URL=http://localhost:5001
+VITE_BACKEND_URL=http://localhost:5001
 
-# Mixed: doesn't matter, frontend uses proxy or localhost
-BACKEND_URL=http://localhost:5001
+# Mixed: doesn't matter, frontend makes requests to localhost
+VITE_BACKEND_URL=http://localhost:5001
 ```
 
 ---
@@ -585,7 +585,7 @@ curl http://localhost:5001/api/locations
 
 **Common fixes:**
 - Verify backend is running on port 5001
-- Check BACKEND_URL in `.env` or Vite proxy config
+- Check VITE_BACKEND_URL in `.env`
 - Check browser console for CORS errors
 - Verify firewall isn't blocking localhost connections
 

@@ -2,10 +2,9 @@
  * API configuration and utilities
  */
 
-// Get backend URL from environment variable, default to empty string (relative URLs)
-// In development: defaults to proxy behavior (relative URLs)
+// Get backend URL from environment variable, default to http://localhost:5001
 // In production: should be set to the backend URL
-const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || '';
+const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001';
 
 /**
  * Get the full API URL for a given endpoint
@@ -13,7 +12,7 @@ const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || '';
  * @returns The full URL
  */
 export function getApiUrl(endpoint: string): string {
-    // If API_BASE_URL is empty, return endpoint as-is (relative URL, uses proxy or same origin)
+    // If API_BASE_URL is empty, return endpoint as-is (relative URL, for same origin)
     // Otherwise, concatenate base URL with endpoint
     return API_BASE_URL ? `${API_BASE_URL}${endpoint}` : endpoint;
 }

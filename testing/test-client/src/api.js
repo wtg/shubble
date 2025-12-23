@@ -1,10 +1,10 @@
 // api wrappers
 
-// API base URL - uses proxy by default, can be overridden with VITE_TEST_BACKEND_URL
-// Native: uses Vite proxy (/api/* → http://localhost:4000/api/*)
-// Docker: uses nginx proxy (/api/* → http://test-server:4000/api/*)
-// Direct: set VITE_TEST_BACKEND_URL=http://localhost:4000 to bypass proxy
-const API_BASE = import.meta.env.VITE_TEST_BACKEND_URL || '';
+// API base URL - defaults to http://localhost:4000, can be overridden with VITE_TEST_BACKEND_URL
+
+
+const API_BASE = import.meta.env.VITE_TEST_BACKEND_URL || 'http://localhost:4000';
+console.log("API_BASE is", API_BASE);
 
 export function fetchShuttles() {
     return fetch(`${API_BASE}/api/shuttles`);

@@ -14,10 +14,10 @@ class Config:
     LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO').upper()
 
     # service URLs
-    FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
-    BACKEND_URL = os.environ.get('BACKEND_URL', 'http://localhost:5001')
-    TEST_FRONTEND_URL = os.environ.get('TEST_FRONTEND_URL', 'http://localhost:5174')
-    TEST_BACKEND_URL = os.environ.get('TEST_BACKEND_URL', 'http://localhost:4000')
+    FRONTEND_URL = os.environ.get('VITE_FRONTEND_URL', 'http://localhost:5173')
+    BACKEND_URL = os.environ.get('VITE_BACKEND_URL', 'http://localhost:5001')
+    TEST_FRONTEND_URL = os.environ.get('VITE_TEST_FRONTEND_URL', 'http://localhost:5174')
+    TEST_BACKEND_URL = os.environ.get('VITE_TEST_BACKEND_URL', 'http://localhost:4000')
 
     # CORS allowed origins - allow requests from frontend and test frontend
     CORS_ORIGINS = [FRONTEND_URL, TEST_FRONTEND_URL]

@@ -1,5 +1,5 @@
 # Frontend Dockerfile for Shubble
-FROM node:20-alpine AS builder
+FROM node:20-alpine
 
 WORKDIR /app
 
@@ -16,60 +16,6 @@ COPY data/ ./data/
 COPY vite.config.ts ./
 COPY tsconfig*.json ./
 
-# Build the application (includes parseSchedule.js and data copy)
-# Note: VITE_BACKEND_URL is not set, so frontend will use relative URLs
-RUN npm run build
+EXPOSE 5173
 
-# Production stage with nginx
-FROM nginx:alpine
-
-# Copy built files to nginx
-COPY --from=builder /app/frontend/dist /usr/share/nginx/html
-
-# Create nginx configuration template with environment variable substitution
-COPY <<'EOF' /etc/nginx/templates/default.conf.template
-server {
-    listen 80;
-    server_name _;
-    root /usr/share/nginx/html;
-    index index.html;
-
-    # Enable gzip compression
-    gzip on;
-    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
-
-    # Proxy API requests to backend
-    location /api/ {
-        proxy_pass ${BACKEND_URL};
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    # Handle SPA routing
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    # Cache static assets
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-
-    # Security headers
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-}
-EOF
-
-EXPOSE 80
-
-# nginx:alpine automatically processes templates in /etc/nginx/templates/ with envsubst
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

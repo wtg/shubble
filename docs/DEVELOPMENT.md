@@ -111,7 +111,7 @@ The frontend will be available at http://localhost:5173.
 - Instant hot module replacement
 - Fast refresh for React components
 - Source maps for debugging
-- Auto-proxy to backend at /api/*
+
 
 ### Frontend Development
 
@@ -249,8 +249,8 @@ DATABASE_URL=postgresql://shubble:shubble@localhost:5432/shubble
 REDIS_URL=redis://localhost:6379/0
 
 # Service URLs
-FRONTEND_URL=http://localhost:5173
-BACKEND_URL=http://localhost:5001
+VITE_FRONTEND_URL=http://localhost:5173
+VITE_BACKEND_URL=http://localhost:5001
 
 # Optional (for production)
 API_KEY=your_samsara_api_key
@@ -373,7 +373,7 @@ docker-compose up -d postgres redis backend worker
 npm run dev
 ```
 
-Frontend will automatically proxy API requests to http://localhost:5001 (Docker backend).
+Frontend will automatically make API requests to http://localhost:5001 (Docker backend).
 
 **Example: Native backend, Docker infrastructure:**
 

@@ -365,9 +365,9 @@ Triggers for cache invalidation:
 
 **Service URLs:**
 - `FRONTEND_URL` - Frontend URL (for CORS)
-- `BACKEND_URL` - Backend URL (for CORS and port binding)
+- `VITE_BACKEND_URL` - Backend URL (for CORS and port binding)
 - `TEST_FRONTEND_URL` - Test client URL (for CORS)
-- `TEST_BACKEND_URL` - Test server URL
+- `VITE_TEST_BACKEND_URL` - Test server URL
 
 **Optional (Production):**
 - `API_KEY` - Samsara API key
@@ -394,7 +394,7 @@ Triggers for cache invalidation:
 
 **frontend** - React application
 - nginx serving static files
-- Reverse proxy for /api/* requests to backend
+
 - Gzip compression and caching headers
 
 **postgres** - PostgreSQL database
@@ -411,7 +411,7 @@ Triggers for cache invalidation:
 
 **test-client** (optional, --profile dev)
 - UI for controlling mock server
-- nginx with proxy to test-server
+
 
 ## Important Implementation Details
 

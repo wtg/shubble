@@ -336,8 +336,7 @@ The test server simulates the Samsara GPS API with mock vehicle data.
 ### Port Configuration
 
 - **Native**: `http://localhost:4000`
-- **Docker**: `http://localhost:4000` (from host), `http://test-server:4000` (from Docker network)
-
+- **Docker**: `http://localhost:4000` (from host)
 ### Running Test Server - Native
 
 ```bash
@@ -416,7 +415,7 @@ npm run dev
 
 **Requirements:**
 - Test server must be running on `http://localhost:4000`
-- Vite proxy automatically forwards `/api/*` requests to test server
+- Native test client directly requests test server at `VITE_TEST_BACKEND_URL` (defaults to `http://localhost:4000`)
 
 ### Running Test Client - Docker
 
@@ -432,7 +431,7 @@ docker-compose logs -f test-client
 
 **Requirements:**
 - Test server container must be running
-- Nginx proxy automatically forwards `/api/*` requests to test server
+
 
 ### Test Client Features
 
@@ -686,26 +685,14 @@ REDIS_URL=redis://localhost:6379/0
 Create `testing/test-client/.env`:
 
 ```bash
-# API Base URL (Optional - leave empty to use proxy)
+# API Base URL (Optional - defaults to http://localhost:4000)
 VITE_TEST_BACKEND_URL=
 
 # If empty, Vite proxies /api/* to http://localhost:4000
 # If set, makes direct requests to specified URL
 ```
 
-**Proxy configuration** (in `testing/test-client/vite.config.js`):
 
-```javascript
-server: {
-  port: 5174,
-  proxy: {
-    '/api': {
-      target: process.env.VITE_API_URL || 'http://localhost:4000',
-      changeOrigin: true,
-    },
-  },
-}
-```
 
 ---
 
@@ -805,7 +792,7 @@ curl http://localhost:4000/api/routes
 # 2. Check if test client is running
 curl http://localhost:5174
 
-# 3. Check proxy is working
+# 3. Check test client connects directly to test server
 curl http://localhost:5174/api/routes
 
 # 4. Check Docker services (if using Docker)

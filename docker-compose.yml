@@ -36,11 +36,11 @@ services:
       - "5001:5001"
     environment:
       # Service URLs
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
-      BACKEND_URL: ${BACKEND_URL:-http://localhost:5001}
-      TEST_FRONTEND_URL: ${TEST_FRONTEND_URL:-http://localhost:5174}
-      TEST_BACKEND_URL: ${TEST_BACKEND_URL:-http://localhost:4000}
-      # Database & Cache
+      VITE_FRONTEND_URL: ${VITE_FRONTEND_URL:-http://localhost:5173}
+      VITE_BACKEND_URL: ${VITE_BACKEND_URL:-http://localhost:5001}
+      VITE_TEST_FRONTEND_URL: ${VITE_TEST_FRONTEND_URL:-http://localhost:5174}
+      VITE_TEST_BACKEND_URL: ${VITE_TEST_BACKEND_URL:-http://localhost:4000}
+      # Database & Cache (use service names in Docker)
       DATABASE_URL: postgresql://shubble:shubble@postgres:5432/shubble
       REDIS_URL: redis://redis:6379/0
       # Flask Config
@@ -63,8 +63,8 @@ services:
       dockerfile: docker/Dockerfile.worker
     environment:
       # Service URLs
-      BACKEND_URL: ${BACKEND_URL:-http://localhost:5001}
-      # Database & Cache
+      VITE_BACKEND_URL: ${VITE_BACKEND_URL:-http://localhost:5001}
+      # Database & Cache (use service names in Docker)
       DATABASE_URL: postgresql://shubble:shubble@postgres:5432/shubble
       REDIS_URL: redis://redis:6379/0
       # Flask Config
@@ -86,10 +86,9 @@ services:
       context: .
       dockerfile: docker/Dockerfile.frontend
     ports:
-      - "5173:80"
+      - "5173:5173"
     environment:
-      # Backend URL for nginx proxy configuration
-      BACKEND_URL: http://backend:5001
+      VITE_BACKEND_URL: http://localhost:5001
     depends_on:
       - backend
     restart: unless-stopped
@@ -102,9 +101,9 @@ services:
       - "4000:4000"
     environment:
       # Service URLs
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
-      TEST_FRONTEND_URL: ${TEST_FRONTEND_URL:-http://localhost:5174}
-      # Database & Cache
+      VITE_FRONTEND_URL: ${VITE_FRONTEND_URL:-http://localhost:5173}
+      VITE_TEST_FRONTEND_URL: ${VITE_TEST_FRONTEND_URL:-http://localhost:5174}
+      # Database & Cache (use service names in Docker)
       DATABASE_URL: postgresql://shubble:shubble@postgres:5432/shubble
       REDIS_URL: redis://redis:6379/0
       # Flask Config
@@ -126,10 +125,10 @@ services:
       context: .
       dockerfile: docker/Dockerfile.test-client
     ports:
-      - "5174:80"
+      - "5174:5174"
     environment:
-      # Test backend URL for nginx proxy configuration
-      TEST_BACKEND_URL: http://test-server:4000
+
+      VITE_TEST_BACKEND_URL: http://localhost:4000
     depends_on:
       - test-server
     restart: unless-stopped
