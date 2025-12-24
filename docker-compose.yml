@@ -37,6 +37,7 @@ services:
     ports:
       - "8000:8000"
     environment:
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
       DATABASE_URL: postgresql://shubble:shubble@postgres:5432/shubble
       REDIS_URL: redis://redis:6379/0
       FLASK_ENV: development

@@ -1,4 +1,5 @@
 from flask import Flask, jsonify, request, send_from_directory
+from flask_cors import CORS
 from threading import Thread, Lock
 import time
 import os
@@ -23,6 +24,9 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder="../test-client/dist", static_url_path="")
 app.config.from_object(Config)
+
+# Configure CORS for test-client
+CORS(app, origins=[app.config.get('TEST_FRONTEND_URL', 'http://localhost:5174')], supports_credentials=True)
 
 db = SQLAlchemy()
 db.init_app(app)

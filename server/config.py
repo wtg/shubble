@@ -12,6 +12,10 @@ class Config:
     ENV = os.environ.get('FLASK_ENV', 'development').lower()
     LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO').upper()
 
+    # CORS settings
+    FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
+    TEST_FRONTEND_URL = os.environ.get('TEST_FRONTEND_URL', 'http://localhost:5174')
+
     # database settings
     SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL")
     if SQLALCHEMY_DATABASE_URI.startswith('postgres://'):
