@@ -1,0 +1,75 @@
+# Test Client Dockerfile for Mock Samsara UI
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Copy package files
+COPY test-client/package*.json ./test-client/
+
+# Install dependencies
+WORKDIR /app/test-client
+RUN npm ci
+
+# Copy source files
+COPY test-client/ ./
+
+# Build the application with a placeholder that will be replaced at runtime
+ENV VITE_TEST_BACKEND_URL=__VITE_TEST_BACKEND_URL__
+RUN npm run build
+
+# Production stage with nginx
+FROM nginx:alpine
+
+# Install gettext for envsubst
+RUN apk add --no-cache gettext
+
+# Copy built files to nginx
+COPY --from=builder /app/test-client/dist /usr/share/nginx/html
+
+# Copy nginx configuration
+COPY <<EOF /etc/nginx/conf.d/default.conf
+server {
+    listen 80;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Enable gzip compression
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+
+    # Handle SPA routing
+    location / {
+        try_files \$uri \$uri/ /index.html;
+    }
+
+    # Cache static assets
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+}
+EOF
+
+# Create entrypoint script to substitute environment variables at runtime
+COPY <<'EOF' /docker-entrypoint.sh
+#!/bin/sh
+set -e
+
+# Replace __VITE_TEST_BACKEND_URL__ placeholder with actual environment variable value
+find /usr/share/nginx/html -type f -name "*.js" -exec sed -i "s|__VITE_TEST_BACKEND_URL__|${VITE_TEST_BACKEND_URL:-http://localhost:4000}|g" {} \;
+
+# Start nginx
+exec nginx -g "daemon off;"
+EOF
+
+RUN chmod +x /docker-entrypoint.sh
+
+EXPOSE 80
+
+CMD ["/docker-entrypoint.sh"]

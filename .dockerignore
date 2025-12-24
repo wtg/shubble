@@ -30,7 +30,8 @@ yarn-error.log*
 client/node_modules/
 client/dist/
 client/.vite/
-test-client/
+test-client/node_modules/
+test-client/dist/
 
 # Environment
 .env

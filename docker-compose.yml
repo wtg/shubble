@@ -85,6 +85,44 @@ services:
       - backend
     restart: unless-stopped
 
+  test-server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.test-server
+    ports:
+      - "${TEST_BACKEND_PORT:-4000}:4000"
+    extra_hosts:
+      - "localhost:host-gateway"
+    environment:
+      TEST_FRONTEND_URL: ${TEST_FRONTEND_URL:-http://localhost:5174}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://shubble:shubble@postgres:5432/shubble}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      FLASK_ENV: ${FLASK_ENV:-development}
+      FLASK_DEBUG: ${FLASK_DEBUG:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - test
+
+  test-client:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.test-client
+    ports:
+      - "${TEST_FRONTEND_PORT:-5174}:80"
+    environment:
+      VITE_TEST_BACKEND_URL: ${VITE_TEST_BACKEND_URL:-http://localhost:4000}
+    depends_on:
+      - test-server
+    restart: unless-stopped
+    profiles:
+      - test
+
 volumes:
   postgres_data:
   redis_data:
