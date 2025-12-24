@@ -16,11 +16,16 @@ COPY data/ ./data/
 COPY vite.config.ts ./
 COPY tsconfig*.json ./
 
-# Build the application (includes parseSchedule.js and data copy)
+# Build the application with a placeholder that will be replaced at runtime
+# This allows the backend URL to be configured via environment variable
+ENV VITE_BACKEND_URL=__VITE_BACKEND_URL__
 RUN npm run build
 
 # Production stage with nginx
 FROM nginx:alpine
+
+# Install gettext for envsubst
+RUN apk add --no-cache gettext
 
 # Copy built files to nginx
 COPY --from=builder /app/client/dist /usr/share/nginx/html
@@ -55,6 +60,20 @@ server {
 }
 EOF
 
+# Create entrypoint script to substitute environment variables at runtime
+COPY <<'EOF' /docker-entrypoint.sh
+#!/bin/sh
+set -e
+
+# Replace __VITE_BACKEND_URL__ placeholder with actual environment variable value
+find /usr/share/nginx/html -type f -name "*.js" -exec sed -i "s|__VITE_BACKEND_URL__|${VITE_BACKEND_URL:-http://localhost:8000}|g" {} \;
+
+# Start nginx
+exec nginx -g "daemon off;"
+EOF
+
+RUN chmod +x /docker-entrypoint.sh
+
 EXPOSE 80
 
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["/docker-entrypoint.sh"]

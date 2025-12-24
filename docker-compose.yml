@@ -1,16 +1,14 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: shubble
-      POSTGRES_USER: shubble
-      POSTGRES_PASSWORD: shubble
+      POSTGRES_DB: ${POSTGRES_DB:-shubble}
+      POSTGRES_USER: ${POSTGRES_USER:-shubble}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-shubble}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U shubble"]
       interval: 10s
@@ -23,7 +21,7 @@ services:
     volumes:
       - redis_data:/data
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -33,16 +31,18 @@ services:
   backend:
     build:
       context: .
-      dockerfile: Dockerfile.backend
+      dockerfile: docker/Dockerfile.backend
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8000}:8000"
+    extra_hosts:
+      - "localhost:host-gateway"
     environment:
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
-      DATABASE_URL: postgresql://shubble:shubble@postgres:5432/shubble
-      REDIS_URL: redis://redis:6379/0
-      FLASK_ENV: development
-      FLASK_DEBUG: "true"
-      LOG_LEVEL: INFO
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://shubble:shubble@postgres:5432/shubble}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      FLASK_ENV: ${FLASK_ENV:-development}
+      FLASK_DEBUG: ${FLASK_DEBUG:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       API_KEY: ${API_KEY:-}
       SAMSARA_SECRET: ${SAMSARA_SECRET:-}
     depends_on:
@@ -55,12 +55,14 @@ services:
   worker:
     build:
       context: .
-      dockerfile: Dockerfile.worker
+      dockerfile: docker/Dockerfile.worker
+    extra_hosts:
+      - "localhost:host-gateway"
     environment:
-      DATABASE_URL: postgresql://shubble:shubble@postgres:5432/shubble
-      REDIS_URL: redis://redis:6379/0
-      FLASK_ENV: development
-      LOG_LEVEL: INFO
+      DATABASE_URL: ${DATABASE_URL:-postgresql://shubble:shubble@postgres:5432/shubble}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      FLASK_ENV: ${FLASK_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       API_KEY: ${API_KEY:-}
     depends_on:
       postgres:
@@ -74,9 +76,11 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: Dockerfile.frontend
+      dockerfile: docker/Dockerfile.frontend
     ports:
-      - "3000:80"
+      - "${FRONTEND_PORT:-3000}:80"
+    environment:
+      VITE_BACKEND_URL: ${VITE_BACKEND_URL:-http://localhost:8000}
     depends_on:
       - backend
     restart: unless-stopped
