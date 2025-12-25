@@ -7,6 +7,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Request, Depends, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi_cache import FastAPICache
 from fastapi_cache.decorator import cache
 from sqlalchemy import func, and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
