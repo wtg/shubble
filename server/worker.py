@@ -5,15 +5,15 @@ import os
 from datetime import datetime, timezone
 
 import httpx
-from sqlalchemy import func, and_, select
+from sqlalchemy import select
 from fastapi_cache import FastAPICache
 from fastapi_cache.backends.redis import RedisBackend
 from redis import asyncio as aioredis
 
 from .config import settings
 from .database import create_async_db_engine, create_session_factory
-from .time_utils import get_campus_start_of_day
-from .models import VehicleLocation, GeofenceEvent, Driver, DriverVehicleAssignment
+from .models import VehicleLocation, Driver, DriverVehicleAssignment
+from .utils import get_vehicles_in_geofence
 
 # Logging config
 numeric_level = logging._nameToLevel.get(settings.LOG_LEVEL.upper(), logging.INFO)
@@ -24,49 +24,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-async def get_vehicles_in_geofence(session_factory):
-    """
-    Returns a set of vehicle_ids where the latest geofence event from today
-    is a geofenceEntry.
-    """
-    async with session_factory() as session:
-        start_of_today = get_campus_start_of_day()
-
-        # Subquery to get latest event per vehicle from today's events
-        subquery = (
-            select(
-                GeofenceEvent.vehicle_id,
-                func.max(GeofenceEvent.event_time).label("latest_time"),
-            )
-            .where(GeofenceEvent.event_time >= start_of_today)
-            .group_by(GeofenceEvent.vehicle_id)
-            .subquery()
-        )
-
-        # Join back to get the latest event row where type is entry
-        query = (
-            select(GeofenceEvent.vehicle_id)
-            .join(
-                subquery,
-                and_(
-                    GeofenceEvent.vehicle_id == subquery.c.vehicle_id,
-                    GeofenceEvent.event_time == subquery.c.latest_time,
-                ),
-            )
-            .where(GeofenceEvent.event_type == "geofenceEntry")
-        )
-
-        result = await session.execute(query)
-        rows = result.all()
-        return {row.vehicle_id for row in rows}
-
-
 async def update_locations(session_factory):
     """
     Fetches and updates vehicle locations for vehicles currently in the geofence.
     Uses pagination token to fetch subsequent pages.
     """
-    # Get the current list of vehicles in the geofence
+    # Get the current list of vehicles in the geofence (cached)
     current_vehicle_ids = await get_vehicles_in_geofence(session_factory)
 
     # No vehicles to update
@@ -174,6 +137,8 @@ async def update_locations(session_factory):
                         logger.info(
                             f"Updated locations for {len(current_vehicle_ids)} vehicles - {new_records_added} new records"
                         )
+                        # Invalidate cache for locations
+                        FastAPICache.clear(namespace="locations")
                     else:
                         logger.info(
                             f"No new location data for {len(current_vehicle_ids)} vehicles"
@@ -330,7 +295,7 @@ async def run_worker():
         redis = await aioredis.from_url(
             settings.REDIS_URL,
             encoding="utf-8",
-            decode_responses=True,
+            decode_responses=False,
         )
         FastAPICache.init(RedisBackend(redis), prefix="fastapi-cache")
         logger.info("Redis cache initialized")
@@ -341,7 +306,7 @@ async def run_worker():
     try:
         while True:
             try:
-                # Get current vehicles in geofence before updating
+                # Get current vehicles in geofence before updating (cached)
                 current_vehicle_ids = await get_vehicles_in_geofence(session_factory)
 
                 # Update locations
@@ -350,9 +315,6 @@ async def run_worker():
                 # Update driver assignments for vehicles in geofence
                 if current_vehicle_ids:
                     await update_driver_assignments(session_factory, current_vehicle_ids)
-
-                # Note: Schedule matching is now handled by the API endpoint with caching
-                # The @cache decorator on the endpoint handles it automatically
 
             except Exception as e:
                 logger.exception(f"Error in worker loop: {e}")

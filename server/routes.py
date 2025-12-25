@@ -17,6 +17,7 @@ from .database import get_db
 from .models import Vehicle, GeofenceEvent, VehicleLocation, DriverVehicleAssignment
 from .config import settings
 from .time_utils import get_campus_start_of_day
+from .utils import get_vehicles_in_geofence_query
 from data.stops import Stops
 # from data.schedules import Schedule
 
@@ -26,40 +27,15 @@ router = APIRouter()
 
 
 @router.get("/api/locations")
-@cache(expire=5)
+@cache(expire=60, namespace="locations")
 async def get_locations(db: AsyncSession = Depends(get_db)):
     """
     Returns the latest location for each vehicle currently inside the geofence.
     The vehicle is considered inside the geofence if its latest geofence event
     today is a 'geofenceEntry'.
     """
-    # Start of today for filtering today's geofence events
-    start_of_today = get_campus_start_of_day()
-
-    # Subquery: latest geofence event today per vehicle
-    latest_geofence_events = (
-        select(
-            GeofenceEvent.vehicle_id,
-            func.max(GeofenceEvent.event_time).label("latest_time"),
-        )
-        .where(GeofenceEvent.event_time >= start_of_today)
-        .group_by(GeofenceEvent.vehicle_id)
-        .subquery()
-    )
-
-    # Join to get full geofence event rows where event is geofenceEntry
-    geofence_entries = (
-        select(GeofenceEvent.vehicle_id)
-        .join(
-            latest_geofence_events,
-            and_(
-                GeofenceEvent.vehicle_id == latest_geofence_events.c.vehicle_id,
-                GeofenceEvent.event_time == latest_geofence_events.c.latest_time,
-            ),
-        )
-        .where(GeofenceEvent.event_type == "geofenceEntry")
-        .subquery()
-    )
+    # Get query for vehicles in geofence and convert to subquery
+    geofence_entries = get_vehicles_in_geofence_query().subquery()
 
     # Subquery: latest vehicle location per vehicle
     latest_locations = (
@@ -273,8 +249,8 @@ async def webhook(request: Request, db: AsyncSession = Depends(get_db)):
 
         await db.commit()
 
-        # Note: Cache invalidation for fastapi-cache2 would need to be implemented differently
-        # For now, we rely on TTL expiration
+        # Invalidate cache for vehicles in geofence
+        FastAPICache.clear(namespace="vehicles_in_geofence")
 
         return {"status": "success"}
 
@@ -388,7 +364,7 @@ async def get_aggregated_shuttle_schedule():
 
 
 @router.get("/api/matched-schedules")
-@cache(expire=3600)
+@cache(expire=3600, namespace="matched_schedules")
 async def get_matched_shuttle_schedules(force_recompute: bool = False):
     """
     Return cached matched schedules unless force_recompute=true,
