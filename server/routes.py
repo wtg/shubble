@@ -25,22 +25,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-# Frontend routes - serve React app
-@router.get("/")
-@router.get("/schedule")
-@router.get("/about")
-@router.get("/data")
-@router.get("/map")
-@router.get("/generate-static-routes")
-async def serve_react():
-    """Serve the React app's index.html for all main routes."""
-    root_dir = Path(__file__).parent.parent / "client" / "dist"
-    index_path = root_dir / "index.html"
-    if index_path.exists():
-        return FileResponse(index_path)
-    raise HTTPException(status_code=404, detail="Frontend not built")
-
-
 @router.get("/api/locations")
 @cache(expire=300)
 async def get_locations(db: AsyncSession = Depends(get_db)):

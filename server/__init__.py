@@ -75,13 +75,6 @@ def create_app() -> FastAPI:
     from .routes import router
     app.include_router(router)
 
-    # Mount static files for frontend (this should be last)
-    try:
-        app.mount("/", StaticFiles(directory="../client/dist", html=True), name="static")
-    except RuntimeError:
-        # Static directory doesn't exist yet (development mode)
-        logger.warning("Static files directory not found. Skipping static file mounting.")
-
     return app
 
 
