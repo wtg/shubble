@@ -1,7 +1,7 @@
 """SQLAlchemy models for async database operations."""
 from datetime import datetime, timezone
 from typing import Optional
-from sqlalchemy import String, Integer, Float, Boolean, DateTime, ForeignKey
+from sqlalchemy import String, Integer, Float, Boolean, DateTime, ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base
 
@@ -29,6 +29,9 @@ class Vehicle(Base):
 
 class GeofenceEvent(Base):
     __tablename__ = "geofence_events"
+    __table_args__ = (
+        Index("ix_geofence_events_vehicle_time", "vehicle_id", "event_time"),
+    )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)  # eventId from webhook
     vehicle_id: Mapped[str] = mapped_column(String, ForeignKey("vehicles.id"), nullable=False)
@@ -49,9 +52,12 @@ class GeofenceEvent(Base):
 
 class VehicleLocation(Base):
     __tablename__ = "vehicle_locations"
+    __table_args__ = (
+        Index("ix_vehicle_locations_vehicle_timestamp", "vehicle_id", "timestamp"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    vehicle_id: Mapped[str] = mapped_column(String, ForeignKey("vehicles.id"), nullable=False, index=True)
+    vehicle_id: Mapped[str] = mapped_column(String, ForeignKey("vehicles.id"), nullable=False)
     name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     latitude: Mapped[float] = mapped_column(Float, nullable=False)
