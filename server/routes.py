@@ -251,7 +251,7 @@ async def webhook(request: Request, db: AsyncSession = Depends(get_db)):
         await db.commit()
 
         # Invalidate cache for vehicles in geofence
-        FastAPICache.clear(namespace="vehicles_in_geofence")
+        await FastAPICache.clear(namespace="vehicles_in_geofence")
 
         return {"status": "success"}
 

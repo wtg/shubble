@@ -1,7 +1,7 @@
 """SQLAlchemy models for async database operations."""
 from datetime import datetime, timezone
 from typing import Optional
-from sqlalchemy import String, Integer, Float, Boolean, DateTime, ForeignKey, Index
+from sqlalchemy import String, Integer, Float, Boolean, DateTime, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base
 
@@ -54,6 +54,7 @@ class VehicleLocation(Base):
     __tablename__ = "vehicle_locations"
     __table_args__ = (
         Index("ix_vehicle_locations_vehicle_timestamp", "vehicle_id", "timestamp"),
+        UniqueConstraint("vehicle_id", "timestamp", name="uq_vehicle_locations_vehicle_timestamp"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

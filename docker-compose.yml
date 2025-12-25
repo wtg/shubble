@@ -46,8 +46,7 @@ services:
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       DATABASE_URL: ${DATABASE_URL:-postgresql://shubble:shubble@postgres:5432/shubble}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      FLASK_ENV: ${FLASK_ENV:-development}
-      FLASK_DEBUG: ${FLASK_DEBUG:-true}
+      DEBUG: ${DEBUG:-true}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       API_KEY: ${API_KEY:-}
       SAMSARA_SECRET: ${SAMSARA_SECRET:-}
@@ -69,7 +68,6 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://shubble:shubble@postgres:5432/shubble}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      FLASK_ENV: ${FLASK_ENV:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       API_KEY: ${API_KEY:-}
     depends_on:
@@ -107,8 +105,7 @@ services:
       TEST_FRONTEND_URL: ${TEST_FRONTEND_URL:-http://localhost:5174}
       DATABASE_URL: ${DATABASE_URL:-postgresql://shubble:shubble@postgres:5432/shubble}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      FLASK_ENV: ${FLASK_ENV:-development}
-      FLASK_DEBUG: ${FLASK_DEBUG:-true}
+      DEBUG: ${DEBUG:-true}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:
       postgres:

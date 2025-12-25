@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 import httpx
 from sqlalchemy import select
+from sqlalchemy.dialects import postgresql
 from fastapi_cache import FastAPICache
 from fastapi_cache.backends.redis import RedisBackend
 from redis import asyncio as aioredis
@@ -101,19 +102,8 @@ async def update_locations(session_factory):
                             timestamp_str.replace("Z", "+00:00")
                         )
 
-                        # Check if record already exists
-                        exists_query = select(VehicleLocation).where(
-                            VehicleLocation.vehicle_id == vehicle_id,
-                            VehicleLocation.timestamp == timestamp,
-                        )
-                        result = await session.execute(exists_query)
-                        exists = result.scalar_one_or_none()
-
-                        if exists:
-                            continue  # Skip if record already exists
-
-                        # Create and add new VehicleLocation
-                        loc = VehicleLocation(
+                        # Use PostgreSQL upsert with ON CONFLICT DO NOTHING and RETURNING
+                        insert_stmt = postgresql.insert(VehicleLocation).values(
                             vehicle_id=vehicle_id,
                             timestamp=timestamp,
                             name=vehicle_name,
@@ -128,8 +118,19 @@ async def update_locations(session_factory):
                             address_id=gps.get("address", {}).get("id"),
                             address_name=gps.get("address", {}).get("name"),
                         )
-                        session.add(loc)
-                        new_records_added += 1
+                        # ON CONFLICT on the composite index (vehicle_id, timestamp) DO NOTHING
+                        insert_stmt = insert_stmt.on_conflict_do_nothing(
+                            index_elements=["vehicle_id", "timestamp"]
+                        )
+                        # RETURNING id to check if insert occurred
+                        insert_stmt = insert_stmt.returning(VehicleLocation.id)
+
+                        result = await session.execute(insert_stmt)
+                        inserted_id = result.scalar_one_or_none()
+
+                        # If a row was returned, an insert occurred
+                        if inserted_id:
+                            new_records_added += 1
 
                     # Only commit if we actually added new records
                     if new_records_added > 0:
@@ -138,7 +139,7 @@ async def update_locations(session_factory):
                             f"Updated locations for {len(current_vehicle_ids)} vehicles - {new_records_added} new records"
                         )
                         # Invalidate cache for locations
-                        FastAPICache.clear(namespace="locations")
+                        await FastAPICache.clear(namespace="vehicles_in_geofence")
                     else:
                         logger.info(
                             f"No new location data for {len(current_vehicle_ids)} vehicles"
