@@ -26,7 +26,7 @@ router = APIRouter()
 
 
 @router.get("/api/locations")
-@cache(expire=300)
+@cache(expire=5)
 async def get_locations(db: AsyncSession = Depends(get_db)):
     """
     Returns the latest location for each vehicle currently inside the geofence.
