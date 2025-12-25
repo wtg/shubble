@@ -26,8 +26,12 @@ class Settings(BaseSettings):
     # Redis settings
     REDIS_URL: str = "redis://localhost:6379/0"
 
-    # Samsara API settings
+    # Samsara API secret (base64 encoded)
+    # for webhook signature verification
     SAMSARA_SECRET_BASE64: Optional[str] = None
+
+    # Samsara API key
+    API_KEY: Optional[str] = None
 
     # Shubble settings
     CAMPUS_TZ: ZoneInfo = ZoneInfo("America/New_York")

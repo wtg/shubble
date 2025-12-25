@@ -79,7 +79,7 @@ async def update_locations(session_factory):
     if settings.ENV == "development":
         url = "http://localhost:4000/fleet/vehicles/stats"
     else:
-        api_key = os.environ.get("API_KEY")
+        api_key = settings.API_KEY
         if not api_key:
             logger.error("API_KEY not set")
             return
@@ -199,7 +199,7 @@ async def update_driver_assignments(session_factory, vehicle_ids):
     if settings.ENV == "development":
         url = "http://localhost:4000/fleet/driver-vehicle-assignments"
     else:
-        api_key = os.environ.get("API_KEY")
+        api_key = settings.API_KEY
         if not api_key:
             logger.error("API_KEY not set for driver assignments")
             return
