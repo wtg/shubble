@@ -1,7 +1,9 @@
-from server import create_app
+"""ASGI application entry point for FastAPI."""
+from server import app
 
-app = create_app()
+# Export for uvicorn: uvicorn shubble:app
+__all__ = ["app"]
 
-if __name__ == '__main__':
-    # Run Flask app
-    app.run()
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

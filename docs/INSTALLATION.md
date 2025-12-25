@@ -7,7 +7,7 @@ This guide explains how to set up and run the Shubble development environment.
 The codebase is organized into three main areas:
 
 - **Frontend** - Main React application for end users
-- **Backend** - Flask API server, PostgreSQL database, Redis cache, and background worker
+- **Backend** - FastAPI server (async), PostgreSQL database, Redis cache, and background worker
 - **Test** - Mock Samsara API server and test client for development/testing
 
 ## Running Services: Docker vs Host
@@ -134,17 +134,17 @@ docker compose down -v
 
 4. **Run database migrations:**
    ```bash
-   flask db upgrade
+   alembic upgrade head
    ```
 
 5. **Start the backend server:**
    ```bash
-   python -m flask run --port 8000
+   uvicorn shubble:app --host 0.0.0.0 --port 8000 --reload
    ```
 
 6. **Start the worker (in a separate terminal):**
    ```bash
-   python -m celery -A app.worker worker --loglevel=info
+   python -m server.worker
    ```
 
 ### Frontend Setup
@@ -220,10 +220,10 @@ npm run dev
 docker compose up postgres redis
 
 # Terminal 2: Run backend on host
-python -m flask run --port 8000
+uvicorn shubble:app --host 0.0.0.0 --port 8000 --reload
 
 # Terminal 3: Run worker on host
-python -m celery -A app.worker worker --loglevel=info
+python -m server.worker
 
 # Terminal 4 (optional): Run frontend in Docker
 docker compose --profile frontend up
@@ -273,7 +273,7 @@ docker compose down -v
 docker compose up postgres
 
 # Run migrations
-flask db upgrade
+alembic upgrade head
 ```
 
 ### Dependency Issues

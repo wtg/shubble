@@ -1,33 +1,52 @@
+"""Configuration using Pydantic BaseSettings."""
 import base64
-from dotenv import load_dotenv
-import os
+from typing import Optional
 from zoneinfo import ZoneInfo
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-load_dotenv()
 
+class Settings(BaseSettings):
+    """Application settings loaded from environment variables."""
 
-class Config:
-    # hosting settings
-    DEBUG = os.environ.get('FLASK_DEBUG', 'true').lower() == 'true'
-    ENV = os.environ.get('FLASK_ENV', 'development').lower()
-    LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO').upper()
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    # Hosting settings
+    DEBUG: bool = True
+    ENV: str = "development"
+    LOG_LEVEL: str = "INFO"
 
     # CORS settings
-    FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
-    TEST_FRONTEND_URL = os.environ.get('TEST_FRONTEND_URL', 'http://localhost:5174')
+    FRONTEND_URL: str = "http://localhost:5173"
+    TEST_FRONTEND_URL: str = "http://localhost:5174"
 
-    # database settings
-    SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL")
-    if SQLALCHEMY_DATABASE_URI.startswith('postgres://'):
-        SQLALCHEMY_DATABASE_URI = SQLALCHEMY_DATABASE_URI.replace('postgres://', 'postgresql://', 1)
-    SQLALCHEMY_TRACK_MODIFICATIONS = False
+    # Database settings
+    DATABASE_URL: str
 
-    REDIS_URL = os.environ.get('REDIS_URL')
-    if secret := os.environ.get('SAMSARA_SECRET', None):
-        SAMSARA_SECRET = base64.b64decode(secret.encode('utf-8'))
-    else:
-        SAMSARA_SECRET = None
+    # Redis settings
+    REDIS_URL: str = "redis://localhost:6379/0"
+
+    # Samsara API settings
+    SAMSARA_SECRET_BASE64: Optional[str] = None
+
+    # Shubble settings
+    CAMPUS_TZ: ZoneInfo = ZoneInfo("America/New_York")
+
+    @field_validator("DATABASE_URL")
+    @classmethod
+    def fix_database_url(cls, v: str) -> str:
+        """Convert postgres:// to postgresql:// for SQLAlchemy compatibility."""
+        if v.startswith("postgres://"):
+            return v.replace("postgres://", "postgresql://", 1)
+        return v
+
+    @property
+    def SAMSARA_SECRET(self) -> Optional[bytes]:
+        """Decode base64 Samsara secret."""
+        if self.SAMSARA_SECRET_BASE64:
+            return base64.b64decode(self.SAMSARA_SECRET_BASE64.encode("utf-8"))
+        return None
 
 
-    # shubble settings
-    CAMPUS_TZ = ZoneInfo('America/New_York')
+# Global settings instance
+settings = Settings()
