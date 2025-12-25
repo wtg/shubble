@@ -40,11 +40,11 @@ To view the UI while you're developing, you’ll start the frontend's developmen
   This command launches a development server so you can run and test your frontend application locally.
 
 #### 2. Wait for the local address to appear:
-  Once the dev server starts, your terminal will show a link where the UI is running. It usually looks like:  
+  Once the dev server starts, your terminal will show a link where the UI is running. It usually looks like:
   ```bash
-  http://localhost:5173/
-  ``` 
-  The port your development server runs on may differ based on the project’s configuration and whichever ports are free on your system.
+  http://localhost:3000/
+  ```
+  The port your development server runs on may differ based on the project's configuration and whichever ports are free on your system.
 
   Open the link:
   - **Mac:** `Command + Click` the link the terminal prints.

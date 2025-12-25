@@ -1,322 +1,447 @@
-from flask import Flask, jsonify, request, send_from_directory
-from flask_cors import CORS
-from threading import Thread, Lock
-import time
-import os
+"""FastAPI test server - Mock Samsara API for development/testing."""
+import asyncio
 import logging
+import os
+from contextlib import asynccontextmanager
+from datetime import datetime
+from pathlib import Path
 
+import numpy as np
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import func, and_, select
+
+from server.config import settings
+from server.database import create_async_db_engine, create_session_factory
+from server.models import Vehicle, GeofenceEvent, VehicleLocation
 from server.time_utils import get_campus_start_of_day
 from .shuttle import Shuttle, ShuttleState
 from data.stops import Stops
-from datetime import datetime, date
-from server.models import Vehicle, GeofenceEvent, VehicleLocation
-from server.config import Config
-from sqlalchemy import func, and_
-from flask_sqlalchemy import SQLAlchemy
-import numpy as np
 
+# Global shuttle management
 shuttles = {}
 shuttle_counter = 1
-shuttle_lock = Lock()
+shuttle_lock = asyncio.Lock()
 route_names = Stops.active_routes
 
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__, static_folder="../test-client/dist", static_url_path="")
-app.config.from_object(Config)
 
-# Configure CORS for test-client
-CORS(app, origins=[app.config.get('TEST_FRONTEND_URL', 'http://localhost:5174')], supports_credentials=True)
+async def setup_shuttles(session_factory):
+    """Populate the shuttles dict from database."""
+    async with session_factory() as db:
+        start_of_today = get_campus_start_of_day()
 
-db = SQLAlchemy()
-db.init_app(app)
-
-# setup function to populate the shuttles dict, same as in server/routes
-def setup():
-    # Start of today for filtering today's geofence events
-    start_of_today = get_campus_start_of_day()
-
-    # Subquery: latest geofence event today per vehicle
-    # Returns a query result of (vehicle_id, event_time)
-    latest_geofence_events = db.session.query(
-        GeofenceEvent.vehicle_id,
-        func.max(GeofenceEvent.event_time).label('latest_time')
-    ).filter(
-        GeofenceEvent.event_time >= start_of_today
-    ).group_by(GeofenceEvent.vehicle_id).subquery()
-
-    # Join to get full geofence event rows where event is geofenceEntry
-    # Returns a query result of (vehicle_id, event_time, ...geofence fields including event_type)
-    geofence_entries = db.session.query(GeofenceEvent.vehicle_id).join(
-        latest_geofence_events,
-        and_(
-            GeofenceEvent.vehicle_id == latest_geofence_events.c.vehicle_id,
-            GeofenceEvent.event_time == latest_geofence_events.c.latest_time
+        # Subquery: latest geofence event today per vehicle
+        latest_geofence_events = (
+            select(
+                GeofenceEvent.vehicle_id,
+                func.max(GeofenceEvent.event_time).label("latest_time"),
+            )
+            .where(GeofenceEvent.event_time >= start_of_today)
+            .group_by(GeofenceEvent.vehicle_id)
+            .subquery()
         )
-    ).filter(GeofenceEvent.event_type == 'geofenceEntry').subquery()
 
-    # Subquery: latest vehicle location per vehicle
-    # Returns a query result of (vehicle_id, location_time)
-    latest_locations = db.session.query(
-        VehicleLocation.vehicle_id,
-        func.max(VehicleLocation.timestamp).label('latest_time')
-    ).filter(
-        VehicleLocation.vehicle_id.in_(db.session.query(geofence_entries.c.vehicle_id))
-    ).group_by(VehicleLocation.vehicle_id).subquery()
-
-    # Join to get full location and vehicle info for vehicles in geofence
-    results = db.session.query(VehicleLocation, Vehicle).join(
-        latest_locations,
-        and_(
-            VehicleLocation.vehicle_id == latest_locations.c.vehicle_id,
-            VehicleLocation.timestamp == latest_locations.c.latest_time
+        # Join to get full geofence event rows where event is geofenceEntry
+        geofence_entries = (
+            select(GeofenceEvent.vehicle_id)
+            .join(
+                latest_geofence_events,
+                and_(
+                    GeofenceEvent.vehicle_id == latest_geofence_events.c.vehicle_id,
+                    GeofenceEvent.event_time == latest_geofence_events.c.latest_time,
+                ),
+            )
+            .where(GeofenceEvent.event_type == "geofenceEntry")
+            .subquery()
         )
-    ).join(
-        Vehicle, VehicleLocation.vehicle_id == Vehicle.id
-    ).all()
 
-    # extract vehicle information
-    for loc, vehicle in results:
-        shuttles[vehicle.id] = Shuttle(vehicle.id, loc.latitude, loc.longitude)
+        # Subquery: latest vehicle location per vehicle
+        latest_locations = (
+            select(
+                VehicleLocation.vehicle_id,
+                func.max(VehicleLocation.timestamp).label("latest_time"),
+            )
+            .where(VehicleLocation.vehicle_id.in_(select(geofence_entries.c.vehicle_id)))
+            .group_by(VehicleLocation.vehicle_id)
+            .subquery()
+        )
 
-with app.app_context():
-    setup()
+        # Join to get full location and vehicle info for vehicles in geofence
+        query = (
+            select(VehicleLocation, Vehicle)
+            .join(
+                latest_locations,
+                and_(
+                    VehicleLocation.vehicle_id == latest_locations.c.vehicle_id,
+                    VehicleLocation.timestamp == latest_locations.c.latest_time,
+                ),
+            )
+            .join(Vehicle, VehicleLocation.vehicle_id == Vehicle.id)
+        )
 
-# --- Background Thread ---
-def update_loop():
+        result = await db.execute(query)
+        results = result.all()
+
+        # Extract vehicle information
+        async with shuttle_lock:
+            for loc, vehicle in results:
+                shuttles[vehicle.id] = Shuttle(vehicle.id, loc.latitude, loc.longitude)
+
+
+async def update_loop():
+    """Background task to update shuttle states."""
     while True:
-        time.sleep(0.1)
-        with shuttle_lock:
+        await asyncio.sleep(0.1)
+        async with shuttle_lock:
             for shuttle in shuttles.values():
                 shuttle.update_state()
 
-# Start background updater
-t = Thread(target=update_loop, daemon=True)
-t.start()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for startup and shutdown events."""
+    # Startup
+    logger.info("Starting test server...")
+
+    # Initialize database
+    app.state.db_engine = create_async_db_engine(
+        settings.DATABASE_URL, echo=settings.DEBUG
+    )
+    app.state.session_factory = create_session_factory(app.state.db_engine)
+    logger.info("Database initialized")
+
+    # Setup shuttles from database
+    await setup_shuttles(app.state.session_factory)
+    logger.info(f"Initialized {len(shuttles)} shuttles from database")
+
+    # Start background updater task
+    app.state.update_task = asyncio.create_task(update_loop())
+    logger.info("Background updater task started")
+
+    yield
+
+    # Shutdown
+    logger.info("Shutting down test server...")
+    app.state.update_task.cancel()
+    try:
+        await app.state.update_task
+    except asyncio.CancelledError:
+        pass
+    await app.state.db_engine.dispose()
+    logger.info("Test server shutdown complete")
+
+
+# Create FastAPI app
+app = FastAPI(
+    title="Mock Samsara API",
+    description="Test server for Shubble development",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+# Configure CORS for test-client
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[settings.TEST_FRONTEND_URL],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 # --- API Routes ---
-@app.route("/api/shuttles", methods=["GET"])
-def list_shuttles():
-    with shuttle_lock:
-        return jsonify([s.to_dict() for s in shuttles.values()])
+@app.get("/api/shuttles")
+async def list_shuttles():
+    """List all active shuttles."""
+    async with shuttle_lock:
+        return [s.to_dict() for s in shuttles.values()]
 
-@app.route("/api/shuttles", methods=["POST"])
-def create_shuttle():
+
+@app.post("/api/shuttles")
+async def create_shuttle():
+    """Create a new test shuttle."""
     global shuttle_counter
-    with shuttle_lock:
+    async with shuttle_lock:
         shuttle_id = str(shuttle_counter).zfill(15)
         shuttle = Shuttle(shuttle_id)
         shuttles[shuttle_id] = shuttle
         logger.info(f"Created shuttle {shuttle_counter}")
         shuttle_counter += 1
-        return jsonify(shuttle.to_dict()), 201
+        return JSONResponse(shuttle.to_dict(), status_code=201)
 
-@app.route("/api/shuttles/<shuttle_id>/set-next-state", methods=["POST"])
-def trigger_action(shuttle_id):
-    next_state = request.json.get("state")
-    with shuttle_lock:
+
+@app.post("/api/shuttles/{shuttle_id}/set-next-state")
+async def trigger_action(shuttle_id: str, request: Request):
+    """Set the next state for a shuttle."""
+    data = await request.json()
+    next_state = data.get("state")
+
+    async with shuttle_lock:
         shuttle = shuttles.get(shuttle_id)
         if not shuttle:
-            return {"error": "Shuttle not found"}, 404
+            raise HTTPException(status_code=404, detail="Shuttle not found")
 
         try:
             desired_state = ShuttleState(next_state)
         except ValueError:
-            return {"error": "Invalid action"}, 400
+            raise HTTPException(status_code=400, detail="Invalid action")
 
         shuttle.set_next_state(desired_state)
         if desired_state == ShuttleState.LOOPING:
-            route = request.json.get("route")
+            route = data.get("route")
             shuttle.set_next_route(route)
 
         logger.info(f"Set shuttle {shuttle_id} next state to {next_state}")
-        return jsonify(shuttle.to_dict())
+        return shuttle.to_dict()
 
-@app.route("/api/routes", methods=["GET"])
-def get_routes():
-    return jsonify(sorted(list(route_names)))
 
-@app.route("/api/events/today", methods=["GET"])
-def get_events_today():
-    start_of_today = get_campus_start_of_day()
-    loc_count = db.session.query(VehicleLocation).filter(VehicleLocation.timestamp >= start_of_today).count()
-    geo_count = db.session.query(GeofenceEvent).filter(GeofenceEvent.event_time >= start_of_today).count()
-    return jsonify({
-        'locationCount': loc_count,
-        'geofenceCount': geo_count
-    })
+@app.get("/api/routes")
+async def get_routes():
+    """Get list of available routes."""
+    return sorted(list(route_names))
 
-@app.route("/api/events/today", methods=["DELETE"])
-def clear_events_today():
-    keep_shuttles = request.args.get("keepShuttles", "false").lower() == "true"
-    start_of_today = get_campus_start_of_day()
 
-    db.session.query(VehicleLocation).filter(VehicleLocation.timestamp >= start_of_today).delete()
-    logger.info(f"Deleted vehicle location events past {start_of_today}")
+@app.get("/api/events/today")
+async def get_events_today(request: Request):
+    """Get count of events from today."""
+    async with request.app.state.session_factory() as db:
+        start_of_today = get_campus_start_of_day()
 
-    if not keep_shuttles:
-        db.session.query(GeofenceEvent).filter(GeofenceEvent.event_time >= start_of_today).delete()
-        logger.info(f"Deleted geofence events past {start_of_today}")
-
-        global shuttle_counter
-        with shuttle_lock:
-            shuttles.clear()
-            shuttle_counter = 1
-        logger.info(f"Deleted all shuttles")
-    else:
-        '''
-        Delete all geofence events >= start_of_today except for: each vehicle's latest one (if it
-        is a geofenceEntry. geofenceExits are still deleted). This allows all currently running
-        shuttles to keep running in the test suite.
-        '''
-
-        # Get today's geofence events
-        today_events = db.session.query(GeofenceEvent).filter(
+        loc_query = select(func.count()).select_from(VehicleLocation).where(
+            VehicleLocation.timestamp >= start_of_today
+        )
+        geo_query = select(func.count()).select_from(GeofenceEvent).where(
             GeofenceEvent.event_time >= start_of_today
-        ).subquery()
-        # Get latest event per vehicle from today's geofence events
-        latest_times = db.session.query(
-            today_events.c.vehicle_id,
-            func.max(today_events.c.event_time).label("latest_time")
-        ).group_by(today_events.c.vehicle_id).subquery()
-        # Join back to get the full event row, select to keep only geofenceEntry, project on id
-        latest_entries = db.session.query(today_events.c.id).join(
-            latest_times,
-            and_(
-                today_events.c.vehicle_id == latest_times.c.vehicle_id,
-                today_events.c.event_time == latest_times.c.latest_time
+        )
+
+        loc_result = await db.execute(loc_query)
+        geo_result = await db.execute(geo_query)
+
+        return {
+            "locationCount": loc_result.scalar(),
+            "geofenceCount": geo_result.scalar(),
+        }
+
+
+@app.delete("/api/events/today")
+async def clear_events_today(request: Request, keepShuttles: bool = False):
+    """Clear events from today."""
+    global shuttle_counter
+    async with request.app.state.session_factory() as db:
+        start_of_today = get_campus_start_of_day()
+
+        # Delete vehicle locations
+        await db.execute(
+            VehicleLocation.__table__.delete().where(
+                VehicleLocation.timestamp >= start_of_today
             )
-        ).filter(today_events.c.event_type == 'geofenceEntry').subquery()
-        # Delete all in today_events that aren't in latest_entries
-        db.session.query(GeofenceEvent).filter(
-            GeofenceEvent.id.in_(db.session.query(today_events.c.id))
-        ).filter(
-            ~GeofenceEvent.id.in_(db.session.query(latest_entries.c.id))
-        ).delete()
+        )
+        logger.info(f"Deleted vehicle location events past {start_of_today}")
 
-        logger.info(f"Deleted geofence events past {start_of_today} except for currently running shuttles")
+        if not keepShuttles:
+            # Delete all geofence events
+            await db.execute(
+                GeofenceEvent.__table__.delete().where(
+                    GeofenceEvent.event_time >= start_of_today
+                )
+            )
+            logger.info(f"Deleted geofence events past {start_of_today}")
 
-    db.session.commit()
-    return "", 204
+            # Clear all shuttles
+            async with shuttle_lock:
+                shuttles.clear()
+                shuttle_counter = 1
+            logger.info("Deleted all shuttles")
+        else:
+            # Keep latest geofenceEntry for each vehicle
+            today_events = (
+                select(GeofenceEvent)
+                .where(GeofenceEvent.event_time >= start_of_today)
+                .subquery()
+            )
 
-# --- Frontend Serving ---
-@app.route("/")
-@app.route("/<path:path>")
-def serve_frontend(path=""):
-    if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
-        return send_from_directory(app.static_folder, path)
-    else:
-        return send_from_directory(app.static_folder, "index.html")
+            latest_times = (
+                select(
+                    today_events.c.vehicle_id,
+                    func.max(today_events.c.event_time).label("latest_time"),
+                )
+                .group_by(today_events.c.vehicle_id)
+                .subquery()
+            )
 
-@app.route('/fleet/vehicles/stats')
-def mock_stats():
-    vehicle_ids = request.args.get('vehicleIds', '').split(',')
-    after = request.args.get('after')
+            latest_entries = (
+                select(today_events.c.id)
+                .join(
+                    latest_times,
+                    and_(
+                        today_events.c.vehicle_id == latest_times.c.vehicle_id,
+                        today_events.c.event_time == latest_times.c.latest_time,
+                    ),
+                )
+                .where(today_events.c.event_type == "geofenceEntry")
+                .scalar_subquery()
+            )
 
-    logger.info(f'[MOCK API] Received stats snapshot request for vehicles {vehicle_ids} after={after}')
+            # Delete events not in latest_entries
+            await db.execute(
+                GeofenceEvent.__table__.delete().where(
+                    GeofenceEvent.event_time >= start_of_today,
+                    ~GeofenceEvent.id.in_(latest_entries),
+                )
+            )
+            logger.info(
+                f"Deleted geofence events past {start_of_today} except for currently running shuttles"
+            )
 
-    # update timestamps
-    with shuttle_lock:
+        await db.commit()
+        return JSONResponse(content="", status_code=204)
+
+
+# --- Mock Samsara API Endpoints ---
+@app.get("/fleet/vehicles/stats")
+async def mock_stats(vehicleIds: str = "", after: str = None):
+    """Mock Samsara vehicle stats endpoint."""
+    vehicle_ids = vehicleIds.split(",") if vehicleIds else []
+
+    logger.info(
+        f"[MOCK API] Received stats snapshot request for vehicles {vehicle_ids} after={after}"
+    )
+
+    async with shuttle_lock:
         data = []
         for shuttle_id in vehicle_ids:
             if shuttle_id in shuttles:
-                # add error to location
+                # Add error to location
                 lat, lon = shuttles[shuttle_id].location
                 lat += np.random.normal(0, 0.00008)
                 lon += np.random.normal(0, 0.00008)
-                data.append({
-                    'id': shuttle_id,
-                    'name': shuttle_id[-3:],
-                    'gps': {
-                        'latitude': lat,
-                        'longitude': lon,
-                        'time': datetime.fromtimestamp(shuttles[shuttle_id].last_updated).isoformat(timespec='seconds').replace('+00:00', 'Z'),
-                        'speedMilesPerHour': shuttles[shuttle_id].speed,
-                        'headingDegrees': 90,
-                        'reverseGeo': {'formattedLocation': 'Test Location'}
+                data.append(
+                    {
+                        "id": shuttle_id,
+                        "name": shuttle_id[-3:],
+                        "gps": {
+                            "latitude": lat,
+                            "longitude": lon,
+                            "time": datetime.fromtimestamp(
+                                shuttles[shuttle_id].last_updated
+                            )
+                            .isoformat(timespec="seconds")
+                            .replace("+00:00", "Z"),
+                            "speedMilesPerHour": shuttles[shuttle_id].speed,
+                            "headingDegrees": 90,
+                            "reverseGeo": {"formattedLocation": "Test Location"},
+                        },
                     }
-                })
+                )
 
-        return jsonify({
-            'data': data,
-            'pagination': {
-                'hasNextPage': False,
-                'endCursor': 'fake-token-next'
-            }
-        })
+        return {
+            "data": data,
+            "pagination": {"hasNextPage": False, "endCursor": "fake-token-next"},
+        }
 
-@app.route('/fleet/vehicles/stats/feed')
-def mock_feed():
-    vehicle_ids = request.args.get('vehicleIds', '').split(',')
-    after = request.args.get('after')
 
-    logger.info(f'[MOCK API] Received stats feed request for vehicles {vehicle_ids} after={after}')
+@app.get("/fleet/vehicles/stats/feed")
+async def mock_feed(vehicleIds: str = "", after: str = None):
+    """Mock Samsara vehicle stats feed endpoint."""
+    vehicle_ids = vehicleIds.split(",") if vehicleIds else []
 
-    # update timestamps
-    with shuttle_lock:
+    logger.info(
+        f"[MOCK API] Received stats feed request for vehicles {vehicle_ids} after={after}"
+    )
+
+    async with shuttle_lock:
         data = []
         for shuttle_id in vehicle_ids:
             if shuttle_id in shuttles:
-                # add error to location
+                # Add error to location
                 lat, lon = shuttles[shuttle_id].location
                 lat += np.random.normal(0, 0.00008)
                 lon += np.random.normal(0, 0.00008)
-                data.append({
-                    'id': shuttle_id,
-                    'name': shuttle_id[-3:],
-                    'gps': [
-                        {
-                            'latitude': lat,
-                            'longitude': lon,
-                            'time': datetime.fromtimestamp(shuttles[shuttle_id].last_updated).isoformat(timespec='seconds').replace('+00:00', 'Z'),
-                            'speedMilesPerHour': shuttles[shuttle_id].speed,
-                            'headingDegrees': 90,
-                            'reverseGeo': {'formattedLocation': 'Test Location'}
-                        }
-                    ]
-                })
+                data.append(
+                    {
+                        "id": shuttle_id,
+                        "name": shuttle_id[-3:],
+                        "gps": [
+                            {
+                                "latitude": lat,
+                                "longitude": lon,
+                                "time": datetime.fromtimestamp(
+                                    shuttles[shuttle_id].last_updated
+                                )
+                                .isoformat(timespec="seconds")
+                                .replace("+00:00", "Z"),
+                                "speedMilesPerHour": shuttles[shuttle_id].speed,
+                                "headingDegrees": 90,
+                                "reverseGeo": {"formattedLocation": "Test Location"},
+                            }
+                        ],
+                    }
+                )
 
-        return jsonify({
-            'data': data,
-            'pagination': {
-                'hasNextPage': False,
-                'endCursor': 'fake-token-next'
-            }
-        })
+        return {
+            "data": data,
+            "pagination": {"hasNextPage": False, "endCursor": "fake-token-next"},
+        }
 
-@app.route('/fleet/driver-vehicle-assignments')
-def mock_driver_assignments():
+
+@app.get("/fleet/driver-vehicle-assignments")
+async def mock_driver_assignments(vehicleIds: str = ""):
     """Mock endpoint for driver-vehicle assignments."""
-    vehicle_ids = request.args.get('vehicleIds', '').split(',')
-    
-    logger.info(f'[MOCK API] Received driver-vehicle assignments request for vehicles {vehicle_ids}')
-    
-    with shuttle_lock:
+    vehicle_ids = vehicleIds.split(",") if vehicleIds else []
+
+    logger.info(
+        f"[MOCK API] Received driver-vehicle assignments request for vehicles {vehicle_ids}"
+    )
+
+    async with shuttle_lock:
         data = []
-        for i, shuttle_id in enumerate(vehicle_ids):
+        for shuttle_id in vehicle_ids:
             if shuttle_id in shuttles:
                 # Generate a mock driver for each active shuttle
-                driver_id = f'driver-{shuttle_id[-3:]}'
-                driver_name = f'Driver {shuttle_id[-3:]}'
-                data.append({
-                    'assignedAtTime': datetime.now().isoformat(timespec='seconds').replace('+00:00', 'Z'),
-                    'driver': {
-                        'id': driver_id,
-                        'name': driver_name,
-                    },
-                    'vehicle': {
-                        'id': shuttle_id,
+                driver_id = f"driver-{shuttle_id[-3:]}"
+                driver_name = f"Driver {shuttle_id[-3:]}"
+                data.append(
+                    {
+                        "assignedAtTime": datetime.now()
+                        .isoformat(timespec="seconds")
+                        .replace("+00:00", "Z"),
+                        "driver": {
+                            "id": driver_id,
+                            "name": driver_name,
+                        },
+                        "vehicle": {
+                            "id": shuttle_id,
+                        },
                     }
-                })
-        
-        return jsonify({
-            'data': data,
-            'pagination': {
-                'hasNextPage': False,
-                'endCursor': 'fake-token-next'
-            }
-        })
+                )
+
+        return {
+            "data": data,
+            "pagination": {"hasNextPage": False, "endCursor": "fake-token-next"},
+        }
+
+
+# --- Frontend Serving ---
+@app.get("/")
+@app.get("/{path:path}")
+async def serve_frontend(path: str = ""):
+    """Serve the test client frontend."""
+    static_folder = Path(__file__).parent.parent / "test-client" / "dist"
+
+    if path and (static_folder / path).exists():
+        return FileResponse(static_folder / path)
+    else:
+        index_path = static_folder / "index.html"
+        if index_path.exists():
+            return FileResponse(index_path)
+        raise HTTPException(status_code=404, detail="Frontend not built")
+
 
 if __name__ == "__main__":
-    app.run(debug=True, port=4000)
+    import uvicorn
 
+    uvicorn.run(app, host="0.0.0.0", port=4000)

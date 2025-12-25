@@ -166,7 +166,7 @@ docker compose down -v
    ```
 
 4. **Access the application:**
-   - Frontend: http://localhost:5173
+   - Frontend: http://localhost:3000
    - Backend API: http://localhost:8000
 
 ### Test Services Setup

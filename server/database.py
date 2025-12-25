@@ -1,4 +1,5 @@
 """Async database configuration for FastAPI."""
+from fastapi import Request
 from typing import AsyncGenerator, TYPE_CHECKING
 from sqlalchemy.ext.asyncio import (
     create_async_engine,
@@ -53,7 +54,7 @@ def create_session_factory(engine: AsyncEngine):
     )
 
 
-async def get_db(request: "Request") -> AsyncGenerator[AsyncSession, None]:
+async def get_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
     """
     FastAPI dependency for getting async database sessions.
 

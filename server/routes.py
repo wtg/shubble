@@ -11,6 +11,7 @@ from fastapi_cache.decorator import cache
 from sqlalchemy import func, and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.orm import selectinload
 
 from .database import get_db
 from .models import Vehicle, GeofenceEvent, VehicleLocation, DriverVehicleAssignment
@@ -89,7 +90,7 @@ async def get_locations(db: AsyncSession = Depends(get_db)):
 
     # Join to get full location and vehicle info for vehicles in geofence
     query = (
-        select(VehicleLocation, Vehicle)
+        select(VehicleLocation)
         .join(
             latest_locations,
             and_(
@@ -97,20 +98,23 @@ async def get_locations(db: AsyncSession = Depends(get_db)):
                 VehicleLocation.timestamp == latest_locations.c.latest_time,
             ),
         )
-        .join(Vehicle, VehicleLocation.vehicle_id == Vehicle.id)
+        .options(selectinload(VehicleLocation.vehicle))
     )
 
     result = await db.execute(query)
-    results = result.all()
+    results = result.scalars().all()
 
     # Get current driver assignments for all vehicles in results
-    vehicle_ids = [loc.vehicle_id for loc, _ in results]
+    vehicle_ids = [loc.vehicle_id for loc in results]
     current_assignments = {}
     if vehicle_ids:
-        assignments_query = select(DriverVehicleAssignment).where(
-            DriverVehicleAssignment.vehicle_id.in_(vehicle_ids),
-            DriverVehicleAssignment.assignment_end.is_(None),
-        )
+        assignments_query = (
+            select(DriverVehicleAssignment)
+            .where(
+                DriverVehicleAssignment.vehicle_id.in_(vehicle_ids),
+                DriverVehicleAssignment.assignment_end.is_(None),
+            )
+        ).options(selectinload(DriverVehicleAssignment.driver))
         assignments_result = await db.execute(assignments_query)
         assignments = assignments_result.scalars().all()
         for assignment in assignments:
@@ -118,7 +122,8 @@ async def get_locations(db: AsyncSession = Depends(get_db)):
 
     # Format response
     response = {}
-    for loc, vehicle in results:
+    for loc in results:
+        vehicle = loc.vehicle
         # Get closest loop
         closest_distance, _, closest_route_name, polyline_index = Stops.get_closest_point(
             (loc.latitude, loc.longitude)
@@ -264,6 +269,7 @@ async def webhook(request: Request, db: AsyncSession = Depends(get_db)):
                     gateway_serial=vehicle_data.get("gateway", {}).get("serial"),
                 )
                 db.add(vehicle)
+                await db.flush()  # Ensure vehicle.id is available
 
             # Insert geofence event (using PostgreSQL upsert)
             insert_stmt = postgresql.insert(GeofenceEvent).values(

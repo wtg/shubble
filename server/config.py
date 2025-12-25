@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
 
     # CORS settings
-    FRONTEND_URL: str = "http://localhost:5173"
+    FRONTEND_URL: str = "http://localhost:3000"
     TEST_FRONTEND_URL: str = "http://localhost:5174"
 
     # Database settings
