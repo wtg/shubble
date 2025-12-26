@@ -310,12 +310,11 @@ async def run_worker():
                 # Get current vehicles in geofence before updating (cached)
                 current_vehicle_ids = await get_vehicles_in_geofence(session_factory)
 
-                # Update locations
-                await update_locations(session_factory)
-
-                # Update driver assignments for vehicles in geofence
-                if current_vehicle_ids:
-                    await update_driver_assignments(session_factory, current_vehicle_ids)
+                # Update locations and driver assignments in parallel
+                await asyncio.gather(
+                    update_locations(session_factory),
+                    update_driver_assignments(session_factory, current_vehicle_ids),
+                )
 
             except Exception as e:
                 logger.exception(f"Error in worker loop: {e}")
