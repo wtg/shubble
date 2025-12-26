@@ -12,7 +12,7 @@ type VehicleLocationData = {
     longitude: number;
     name: string;
     polyline_index: number | null;
-    route_name : string;
+    route_name: string;
     speed_mph: number;
     timestamp: string; // ISO 8601 format
     vehicle_name: string;

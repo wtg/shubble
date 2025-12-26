@@ -5,7 +5,7 @@ from hashlib import sha256
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Request, Depends, HTTPException
+from fastapi import APIRouter, Request, Depends, HTTPException, Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi_cache import FastAPICache
 from fastapi_cache.decorator import cache
@@ -29,7 +29,7 @@ router = APIRouter()
 
 @router.get("/api/locations")
 @cache(expire=60, namespace="locations")
-async def get_locations(db: AsyncSession = Depends(get_db)):
+async def get_locations(response: Response, db: AsyncSession = Depends(get_db)):
     """
     Returns the latest location for each vehicle currently inside the geofence.
     The vehicle is considered inside the geofence if its latest geofence event
@@ -82,9 +82,13 @@ async def get_locations(db: AsyncSession = Depends(get_db)):
             current_assignments[assignment.vehicle_id] = assignment
 
     # Format response
-    response = {}
+    response_data = {}
+    oldest_timestamp = None
     for loc in results:
         vehicle = loc.vehicle
+        # Track oldest data point for latency calculation
+        if oldest_timestamp is None or loc.timestamp < oldest_timestamp:
+            oldest_timestamp = loc.timestamp
         # Get closest loop
         closest_distance, _, closest_route_name, polyline_index = Stops.get_closest_point(
             (loc.latitude, loc.longitude)
@@ -103,7 +107,7 @@ async def get_locations(db: AsyncSession = Depends(get_db)):
                 "name": assignment.driver.name,
             }
 
-        response[loc.vehicle_id] = {
+        response_data[loc.vehicle_id] = {
             "name": loc.name,
             "latitude": loc.latitude,
             "longitude": loc.longitude,
@@ -124,7 +128,15 @@ async def get_locations(db: AsyncSession = Depends(get_db)):
             "driver": driver_info,
         }
 
-    return response
+    # Add timing metadata as HTTP headers to help frontend synchronize with Samsara API
+    now = datetime.now(timezone.utc)
+    data_age = (now - oldest_timestamp).total_seconds() if oldest_timestamp else None
+
+    response.headers['X-Server-Time'] = now.isoformat()
+    response.headers['X-Oldest-Data-Time'] = oldest_timestamp.isoformat() if oldest_timestamp else ''
+    response.headers['X-Data-Age-Seconds'] = str(data_age) if data_age is not None else ''
+
+    return response_data
 
 
 @router.post("/api/webhook")
