@@ -105,9 +105,9 @@ docker compose down -v
 ### Prerequisites
 
 **All environments:**
-- Node.js 20+
-- Python 3.11+
-- PostgreSQL 16+
+- Node.js 24+
+- Python 3.13+
+- PostgreSQL 17+
 - Redis 7+
 
 ### Backend Setup
