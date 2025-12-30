@@ -144,7 +144,7 @@ docker compose down -v
 
 6. **Start the worker (in a separate terminal):**
    ```bash
-   python -m server.worker
+   python -m backend.worker
    ```
 
 ### Frontend Setup
@@ -223,7 +223,7 @@ docker compose up postgres redis
 uvicorn shubble:app --host 0.0.0.0 --port 8000 --reload
 
 # Terminal 3: Run worker on host
-python -m server.worker
+python -m backend.worker
 
 # Terminal 4 (optional): Run frontend in Docker
 docker compose --profile frontend up

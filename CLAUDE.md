@@ -18,15 +18,20 @@ Shubble is a real-time shuttle tracking application for Rensselaer Polytechnic I
 
 ```
 shuttletracker-new/
-├── backend/flask/          # FastAPI backend application
-│   ├── __init__.py        # App factory, CORS, Redis setup
-│   ├── config.py          # Pydantic settings (DB, Redis, Samsara API)
-│   ├── database.py        # Async SQLAlchemy engine/session
-│   ├── models.py          # ORM models (5 tables)
-│   ├── routes.py          # API endpoints
-│   ├── worker.py          # Background GPS polling worker
-│   ├── utils.py           # Database query helpers
-│   └── time_utils.py      # Timezone utilities
+├── backend/
+│   ├── flask/             # FastAPI backend application
+│   │   ├── __init__.py   # App factory, CORS, Redis setup
+│   │   ├── config.py     # Pydantic settings (DB, Redis, Samsara API)
+│   │   ├── database.py   # Async SQLAlchemy engine/session
+│   │   ├── models.py     # ORM models (5 tables)
+│   │   ├── routes.py     # API endpoints
+│   │   ├── utils.py      # Database query helpers
+│   │   └── time_utils.py # Timezone utilities
+│   │
+│   └── worker/            # Background worker package
+│       ├── __init__.py   # Package exports
+│       ├── __main__.py   # Module entry point
+│       └── worker.py     # Background GPS polling worker
 │
 ├── frontend/src/          # React frontend
 │   ├── main.tsx           # Entry point
@@ -151,12 +156,12 @@ shuttletracker-new/
 └──────────────────────────────────────────────────┘
                       ▲
                       │
-┌─────────────────────┴───────────────────────────┐
-│  Background Worker (separate container)          │
-│  - worker.py polls Samsara API every N seconds  │
-│  - Fetches GPS for vehicles in geofence         │
-│  - Inserts to vehicle_locations table           │
-└─────────────────────┬───────────────────────────┘
+┌─────────────────────┴────────────────────────────┐
+│  Background Worker (separate container)           │
+│  - backend/worker polls Samsara API every N secs │
+│  - Fetches GPS for vehicles in geofence          │
+│  - Inserts to vehicle_locations table            │
+└─────────────────────┬────────────────────────────┘
                       │
                       ▼
 ┌──────────────────────────────────────────────────┐
@@ -189,7 +194,7 @@ shuttletracker-new/
 - Cache decorator for frequently accessed data
 - Webhook signature verification
 
-**`worker.py`** - Background task
+**`backend/worker/worker.py`** - Background task
 - Async location polling from Samsara
 - Pagination handling
 - Duplicate location filtering
@@ -338,7 +343,7 @@ alembic upgrade head
 | `backend/flask/__init__.py` | App factory, middleware, Redis |
 | `backend/flask/routes.py` | API endpoints |
 | `backend/flask/models.py` | Database schema |
-| `backend/flask/worker.py` | GPS polling worker |
+| `backend/worker/worker.py` | GPS polling worker |
 | `frontend/src/App.tsx` | Frontend router/layout |
 | `frontend/src/locations/LiveLocation.tsx` | Live tracking page |
 | `data/routes.json` | Route polylines/stops/colors |

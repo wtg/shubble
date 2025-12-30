@@ -14,7 +14,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --root-user-action=ignore -r requirements.txt
 
 # Copy application code
-COPY server/ ./server/
+COPY backend/ ./backend/
 COPY data/ ./data/
 COPY alembic/ ./alembic/
 COPY alembic.ini .

@@ -102,7 +102,7 @@ To build the frontend for the backend to use, run:
 npm run build
 ```
 
-This will create a static build of the frontend in the `/client/dist` directory, which the backend can serve. **You must build the frontend before you run the backend**.
+This will create a static build of the frontend in the `/frontend/dist` directory, which the backend can serve. **You must build the frontend before you run the backend**.
 
 # Running the backend
 
@@ -116,7 +116,7 @@ To run the backend, you need to run the _server_ and the _worker_. They must be 
 flask run --port 8000
 ```
 
-This will start the Flask development server on port 8000. The backend will serve the built frontend files from the `/client/dist` directory.
+This will start the Flask development server on port 8000. The backend will serve the built frontend files from the `/frontend/dist` directory.
 
 #### Option 2. Run the backend using `gunicorn`, which is what Shubble's production server runs:
 
@@ -127,10 +127,10 @@ gunicorn shubble:app
 #### To run the worker, `cd` to the project root and run:
 
 ```bash
-python -m server.worker
+python -m backend.worker
 ```
 
-This will start the worker process that handles background tasks, such as updating vehicle locations. It's important that you run it using `python -m server.worker` (as a python package) so that it can find its local imports.
+This will start the worker process that handles background tasks, such as updating vehicle locations. It's important that you run it using `python -m backend.worker` (as a python package) so that it can find its local imports.
 
 # Testing the backend
 

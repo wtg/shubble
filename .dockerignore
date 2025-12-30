@@ -27,9 +27,9 @@ yarn-debug.log*
 yarn-error.log*
 .npm
 .yarn
-client/node_modules/
-client/dist/
-client/.vite/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
 test-client/node_modules/
 test-client/dist/
 

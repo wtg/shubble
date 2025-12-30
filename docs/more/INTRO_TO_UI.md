@@ -102,16 +102,18 @@ To learn how to use Figma click [HERE](https://www.youtube.com/watch?v=jQ1sfKIl5
 
 
 ## Overview of the UI Layout
-The UI for this project is built using a React + TypeScript front-end located in the `client/` directory. Inside `client/src/`, the layout is divided into logical folders such as `components/` for reusable UI elements, `pages/` for full page views, `styles/` for global and modular CSS, and `data/` or `types/` for shared utilities and type definitions. The main application entry point (`main.tsx`) mounts the UI, while `App.tsx` defines the top-level structure and routing.
+The UI for this project is built using a React + TypeScript front-end located in the `frontend/` directory. Inside `frontend/src/`, the layout is divided into logical folders such as `components/` for reusable UI elements, `locations/`, `schedule/`, `dashboard/`, and `about/` for page views, `styles/` for global and modular CSS, and `data/` or `types/` for shared utilities and type definitions. The main application entry point (`main.tsx`) mounts the UI, while `App.tsx` defines the top-level structure and routing.
 
-From a developer perspective, this layout makes it easy to locate the code responsible for visual components, page-level logic, and shared UI resources. The separation into components and pages also encourages modularity — most UI changes happen inside `client/src/components` or `client/src/pages`, keeping the rest of the system clean and maintainable.
+From a developer perspective, this layout makes it easy to locate the code responsible for visual components, page-level logic, and shared UI resources. The separation into components and pages also encourages modularity — most UI changes happen inside `frontend/src/components` or the page-specific directories, keeping the rest of the system clean and maintainable.
 
 #### Where to Start Editing the UI
 
 If you are new to the UI codebase, a good place to start is:
 
-- `client/src/pages/` — Contains page-level components that represent full views.
-- `client/src/components/` — Contains reusable UI components shared across pages.
+- `frontend/src/locations/` — Live location tracking page components
+- `frontend/src/schedule/` — Schedule display page components
+- `frontend/src/dashboard/` — Data dashboard page components
+- `frontend/src/components/` — Contains reusable UI components shared across pages.
 
 For small changes or experiments, modifying an existing component in `components/` is usually the safest place to begin. For larger features or layout changes, start with the relevant page in `pages/`.
 
@@ -124,7 +126,7 @@ For small changes or experiments, modifying an existing component in `components
   All UI components are written as React functional components rather than class-based components. This approach aligns with modern React best practices and allows the use of hooks for state management and side effects.
 
 - **Centralized Type Definitions**  
-  Major reusable types—especially those related to domain concepts such as Stops or Schedules—are defined in dedicated type files under `client/src/ts/types`. Centralizing these definitions ensures consistency across the UI and reduces duplication.
+  Major reusable types—especially those related to domain concepts such as Stops or Schedules—are defined in dedicated type files under `frontend/src/types`. Centralizing these definitions ensures consistency across the UI and reduces duplication.
 
 - **Component Reusability and Modularity**  
   UI logic is broken down into small, reusable components whenever possible. Components are designed to do one thing well and be composed together, rather than embedding large amounts of logic in a single file.

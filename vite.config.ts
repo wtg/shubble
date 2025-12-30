@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
-  root: 'client',
+  root: 'frontend',
   server: {
     port: 3000
   },
@@ -40,7 +40,7 @@ export default defineConfig({
     })
   ],
   build: {
-    outDir: '../client/dist',
+    outDir: 'dist',
     emptyOutDir: true
   },
   define: {
