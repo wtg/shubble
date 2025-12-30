@@ -9,11 +9,11 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 
 # Load application config to get DATABASE_URL
-from server.config import settings
-from server.database import Base
+from backend.config import settings
+from backend.database import Base
 
 # Import all models to ensure they're registered with Base
-from server.models import (
+from backend.models import (
     Vehicle,
     GeofenceEvent,
     VehicleLocation,

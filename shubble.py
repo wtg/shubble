@@ -1,5 +1,5 @@
 """ASGI application entry point for FastAPI."""
-from server import app
+from backend import app
 
 # Export for uvicorn: uvicorn shubble:app
 __all__ = ["app"]

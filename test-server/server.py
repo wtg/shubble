@@ -13,10 +13,10 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, and_, select
 
-from server.config import settings
-from server.database import create_async_db_engine, create_session_factory
-from server.models import Vehicle, GeofenceEvent, VehicleLocation
-from server.time_utils import get_campus_start_of_day
+from backend.config import settings
+from backend.database import create_async_db_engine, create_session_factory
+from backend.models import Vehicle, GeofenceEvent, VehicleLocation
+from backend.time_utils import get_campus_start_of_day
 from .shuttle import Shuttle, ShuttleState
 from data.stops import Stops
 
