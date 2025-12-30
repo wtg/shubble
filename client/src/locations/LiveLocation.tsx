@@ -3,11 +3,11 @@ import {
   useEffect,
 } from 'react';
 
-import MapKitMap from '../components/MapKitMap';
-import Schedule from '../components/Schedule';
-import "../styles/LiveLocation.css";
+import MapKitMap from './components/MapKitMap';
+import Schedule from '../schedule/Schedule';
+import "./styles/LiveLocation.css";
 import routeData from '../data/routes.json';
-import type { ShuttleRouteData } from '../ts/types/route';
+import type { ShuttleRouteData } from '../types/route';
 import aggregatedSchedule from '../data/aggregated_schedule.json';
 
 export default function LiveLocation() {

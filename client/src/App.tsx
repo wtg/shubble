@@ -4,17 +4,17 @@ import {
   Route,
 } from 'react-router';
 import './App.css';
-import LiveLocation from './pages/LiveLocation';
-import Schedule from './components/Schedule';
-import About from './pages/About';
-import Data from './pages/Data';
-import MapKitMap from './components/MapKitMap';
+import LiveLocation from './locations/LiveLocation';
+import Schedule from './schedule/Schedule';
+import About from './about/About';
+import Data from './dashboard/Dashboard';
+import MapKitMap from './locations/components/MapKitMap';
 import rawRouteData from './data/routes.json';
 import { useState, useEffect } from "react";
-import type { ShuttleRouteData } from './ts/types/route';
+import type { ShuttleRouteData } from './types/route';
 import Navigation from './components/Navigation';
 import ErrorBoundary from './components/ErrorBoundary';
-import config from "./ts/config";
+import config from "./utils/config";
 
 function App() {
   const [selectedRoute, setSelectedRoute] = useState<string | null>(null);

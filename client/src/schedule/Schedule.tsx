@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import '../styles/Schedule.css';
+import './styles/Schedule.css';
 import rawRouteData from '../data/routes.json';
 import rawAggregatedSchedule from '../data/aggregated_schedule.json';
-import type { AggregatedDaySchedule, AggregatedScheduleType} from '../ts/types/schedule';
-import type { ShuttleRouteData, ShuttleStopData } from '../ts/types/route';
-import {buildAllStops, findClosestStop, type Stop, type ClosestStop, } from '../ts/types/ClosestStop';
+import type { AggregatedDaySchedule, AggregatedScheduleType} from '../types/schedule';
+import type { ShuttleRouteData, ShuttleStopData } from '../types/route';
+import {buildAllStops, findClosestStop, type Stop, type ClosestStop, } from '../types/ClosestStop';
 
 
 
@@ -37,7 +37,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
     const stopsToday = buildAllStops(routeData, aggregatedSchedule, selectedDay);
     setAllStops(stopsToday);
   }, [selectedDay]);
-  
+
   // Define safe values to avoid repeated null checks
   const safeSelectedRoute = selectedRoute || routeNames[0];
 
@@ -88,7 +88,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
     return date;
   }
 
-// Use user location and get closest stop to them 
+// Use user location and get closest stop to them
   useEffect(() => {
     if (!('geolocation' in navigator)) return;
 
@@ -154,7 +154,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
       </div>
       <div>
         <label htmlFor='loop-dropdown'>Loop:</label>
-        
+
         <select id='loop-dropdown' className="schedule-dropdown-style" value={safeSelectedRoute} onChange={(e) => setSelectedRoute(e.target.value)}>
           {
             routeNames.map((route, index) =>
@@ -195,7 +195,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
                 })
               );
             })()}
-            
+
           </tbody>
         </table>
       </div>

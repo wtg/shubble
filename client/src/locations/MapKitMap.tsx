@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState, useMemo } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import '../styles/MapKitMap.css';
+import './Locations.css';
 import ShuttleIcon from "./ShuttleIcon";
-import config from "../ts/config";
+import config from "../components/config";
 
-import type { ShuttleRouteData, ShuttleStopData } from "../ts/types/route";
-import type { VehicleInformationMap } from "../ts/types/vehicleLocation";
-import DataAgeIndicator from "./DataAgeIndicator";
+import type { ShuttleRouteData, ShuttleStopData } from "../types/route";
+import type { VehicleInformationMap } from "../types/vehicleLocation";
 
 import {
   type Coordinate,
@@ -15,18 +14,7 @@ import {
   calculateDistanceAlongPolyline,
   calculateBearing,
   getAngleDifference
-} from "../ts/mapUtils";
-
-// Helper function to remove consecutive duplicate points from a route
-function removeDuplicateConsecutivePoints(route: [number, number][]): [number, number][] {
-  if (route.length <= 1) return route;
-
-  return route.filter((point, index) => {
-    if (index === 0) return true;
-    const prevPoint = route[index - 1];
-    return point[0] !== prevPoint[0] || point[1] !== prevPoint[1];
-  });
-}
+} from "../components/mapUtils";
 
 async function generateRoutePolylines(updatedRouteData: ShuttleRouteData) {
   // Use MapKit Directions API to generate polylines for each route segment
@@ -93,13 +81,6 @@ async function generateRoutePolylines(updatedRouteData: ShuttleRouteData) {
     }
   }
 
-  // Remove consecutive duplicate points from all routes
-  for (const routeInfo of Object.values(updatedRouteData)) {
-    if (routeInfo.ROUTES) {
-      routeInfo.ROUTES = routeInfo.ROUTES.map(removeDuplicateConsecutivePoints);
-    }
-  }
-
   // Trigger download
   function downloadJSON(data: ShuttleRouteData, filename = 'routeData.json') {
     const jsonStr = JSON.stringify(data, null, 2);
@@ -137,7 +118,6 @@ export default function MapKitMap({ routeData, displayVehicles = true, generateR
   const token = import.meta.env.VITE_MAPKIT_KEY;
   const [map, setMap] = useState<(mapkit.Map | null)>(null);
   const [vehicles, setVehicles] = useState<VehicleInformationMap | null>(null);
-  const [dataAge, setDataAge] = useState<number | null>(null);
 
   const vehicleOverlays = useRef<Record<string, mapkit.ShuttleAnnotation>>({});
   const vehicleAnimationStates = useRef<Record<string, {
@@ -178,54 +158,33 @@ export default function MapKitMap({ routeData, displayVehicles = true, generateR
     mapkitScript();
   }, []);
 
-  // Fetch location data on component mount and set up polling synced with server
-  useEffect(() => {
-    if (!displayVehicles) return;
+    // Fetch location data on component mount and set up polling
+    useEffect(() => {
+      if (!displayVehicles) return;
 
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    let isMounted = true;
-
-    const pollLocation = async () => {
-      try {
-        const response = await fetch(`${config.apiBaseUrl}/api/locations`);
-        if (!response.ok) {
-          throw new Error('Network response was not ok');
-        }
-        const data = await response.json();
-        setVehicles(data);
-
-        // Read data age from response header
-        const dataAgeHeader = response.headers.get('X-Data-Age-Seconds');
-        setDataAge(dataAgeHeader ? parseFloat(dataAgeHeader) : null);
-
-        // Calculate optimal delay for next fetch to sync with server's 5-second update cycle
-        // If data is N seconds old, next update should arrive in (5 - (N % 5)) seconds
-        // Add a small buffer (200ms) to ensure the server has updated
-        const currentDataAge = dataAgeHeader ? parseFloat(dataAgeHeader) : 0;
-        const nextUpdateIn = Math.max(1000, (5 - (currentDataAge % 5)) * 1000 + 200);
-
-        if (isMounted) {
-          timeoutId = setTimeout(pollLocation, nextUpdateIn);
-        }
-      } catch (error) {
-        console.error('Error fetching location:', error);
-        // On error, retry after 5 seconds
-        if (isMounted) {
-          timeoutId = setTimeout(pollLocation, 5000);
+      const pollLocation = async () => {
+        try {
+          const response = await fetch(`${config.apiBaseUrl}/api/locations`);
+          if (!response.ok) {
+            throw new Error('Network response was not ok');
+          }
+          const data = await response.json();
+          setVehicles(data);
+        } catch (error) {
+          console.error('Error fetching location:', error);
         }
       }
-    }
 
-    pollLocation();
+      pollLocation();
 
-    return () => {
-      isMounted = false;
-      if (timeoutId) {
-        clearTimeout(timeoutId);
+      // refresh location every 5 seconds
+      const refreshLocation = setInterval(pollLocation, 5000);
+
+      return () => {
+        clearInterval(refreshLocation);
       }
-    }
 
-  }, [displayVehicles]);
+    }, []);
 
   // create the map
   useEffect(() => {
@@ -515,7 +474,7 @@ export default function MapKitMap({ routeData, displayVehicles = true, generateR
         existingAnnotation.subtitle = `${vehicle.speed_mph.toFixed(1)} mph`;
 
         // Handle route status updates
-        // If shuttle does not have a route null 
+        // If shuttle does not have a route null
         if (vehicle.route_name === null) {
           // shuttle off-route (exiting)
           if (existingAnnotation.lockedRoute) {
@@ -554,7 +513,7 @@ export default function MapKitMap({ routeData, displayVehicles = true, generateR
     const now = Date.now();
     Object.keys(vehicles).forEach((key) => {
       const vehicle = vehicles[key];
-      // If we don't have a route for this vehicle, we can't animate along a path nicely. 
+      // If we don't have a route for this vehicle, we can't animate along a path nicely.
       // We'll just rely on the API updates or maybe simple linear extrapolation later?
       // For now, let's only set up animation if we have a valid route.
       if (!vehicle.route_name || !flattenedRoutes[vehicle.route_name]) return;
@@ -772,7 +731,6 @@ export default function MapKitMap({ routeData, displayVehicles = true, generateR
       className={isFullscreen ? 'map-fullscreen' : 'map'}
       ref={mapRef}
     >
-      {displayVehicles && <DataAgeIndicator dataAge={dataAge} />}
     </div>
   );
 };

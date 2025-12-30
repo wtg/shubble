@@ -2,11 +2,11 @@ import {
   useState,
   useEffect,
 } from 'react';
-import "../styles/Data.css"
-import DataBoard from '../components/DataBoard';
-import ShuttleRow from '../components/ShuttleRow';
-import type { VehicleInformationMap } from '../ts/types/vehicleLocation';
-import config from '../ts/config';
+import "./styles/Dashboard.css"
+import DataBoard from './components/DataBoard';
+import ShuttleRow from './components/ShuttleRow';
+import type { VehicleInformationMap } from '../types/vehicleLocation';
+import config from '../utils/config';
 
 export default function Data() {
 

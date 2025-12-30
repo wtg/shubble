@@ -1,4 +1,4 @@
-import '../styles/About.css';
+import './styles/About.css';
 import {
   useState,
   useEffect,
@@ -30,7 +30,7 @@ export default function About() {
           <h1>Track RPI shuttles in real time and view schedules seamlessly with Shubble<br /><br /></h1>
           <p>
             Shubble is an open source project under the Rensselaer Center for Open Source (RCOS).<br />
-            Have an idea to improve it? Contributions are welcome!<br /> 
+            Have an idea to improve it? Contributions are welcome!<br />
             Visit our <a href='https://github.com/wtg/shubble' target='_blank'>Github Repository</a> to learn more.<br />
             Interested in Shubble's data? Take a look at our
             <Link to='/data'>
