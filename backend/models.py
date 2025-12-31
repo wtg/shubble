@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import String, Integer, Float, Boolean, DateTime, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from .database import Base
+from backend.database import Base
 
 
 class Vehicle(Base):

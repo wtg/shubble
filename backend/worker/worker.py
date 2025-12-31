@@ -12,9 +12,9 @@ from fastapi_cache.backends.redis import RedisBackend
 from redis import asyncio as aioredis
 
 from backend.config import settings
-from backend.flask.database import create_async_db_engine, create_session_factory
-from backend.flask.models import VehicleLocation, Driver, DriverVehicleAssignment
-from backend.flask.utils import get_vehicles_in_geofence
+from backend.database import create_async_db_engine, create_session_factory
+from backend.models import VehicleLocation, Driver, DriverVehicleAssignment
+from backend.utils import get_vehicles_in_geofence
 
 # Logging config
 numeric_level = logging._nameToLevel.get(settings.LOG_LEVEL.upper(), logging.INFO)

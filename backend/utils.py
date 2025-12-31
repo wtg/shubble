@@ -2,8 +2,8 @@
 from sqlalchemy import func, and_, select
 from fastapi_cache.decorator import cache
 
-from .models import GeofenceEvent
-from .time_utils import get_campus_start_of_day
+from backend.models import GeofenceEvent
+from backend.time_utils import get_campus_start_of_day
 
 
 def get_vehicles_in_geofence_query():

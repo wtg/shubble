@@ -10,10 +10,10 @@ from alembic import context
 
 # Load application config to get DATABASE_URL
 from backend.config import settings
-from backend.flask.database import Base
+from backend.database import Base
 
 # Import all models to ensure they're registered with Base
-from backend.flask.models import (
+from backend.models import (
     Vehicle,
     GeofenceEvent,
     VehicleLocation,

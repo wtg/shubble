@@ -19,16 +19,16 @@ Shubble is a real-time shuttle tracking application for Rensselaer Polytechnic I
 ```
 shuttletracker-new/
 ├── backend/
-│   ├── __init__.py        # Package exports (app, settings)
+│   ├── __init__.py        # Package exports (app, models, utils)
 │   ├── config.py          # Pydantic settings (DB, Redis, Samsara API) - shared
+│   ├── database.py        # Async SQLAlchemy engine/session - shared
+│   ├── models.py          # ORM models (5 tables) - shared
+│   ├── utils.py           # Database query helpers - shared
+│   ├── time_utils.py      # Timezone utilities - shared
 │   │
 │   ├── flask/             # FastAPI backend application
 │   │   ├── __init__.py   # App factory, CORS, Redis setup
-│   │   ├── database.py   # Async SQLAlchemy engine/session
-│   │   ├── models.py     # ORM models (5 tables)
-│   │   ├── routes.py     # API endpoints
-│   │   ├── utils.py      # Database query helpers
-│   │   └── time_utils.py # Timezone utilities
+│   │   └── routes.py     # API endpoints
 │   │
 │   └── worker/            # Background worker package
 │       ├── __init__.py   # Package exports
@@ -186,12 +186,27 @@ shuttletracker-new/
 - Timezone: America/New_York
 - Modes: development, staging, production
 
-**`models.py`** - SQLAlchemy ORM
-- Declarative models for 5 tables
-- Async-compatible relationships
-- Indexes for performance
+**`backend/database.py`** - Database infrastructure (shared)
+- `Base`: SQLAlchemy declarative base for all models
+- `create_async_db_engine()`: Creates async PostgreSQL+asyncpg engine
+- `create_session_factory()`: Creates async session maker
+- `get_db()`: FastAPI dependency injection for database sessions
+- Uses connection pooling and pre-ping for reliability
 
-**`routes.py`** - FastAPI endpoints
+**`backend/models.py`** - SQLAlchemy ORM models (shared)
+- 5 database models: Vehicle, GeofenceEvent, VehicleLocation, Driver, DriverVehicleAssignment
+- Async-compatible relationships
+- Indexes for performance (vehicle_id, timestamp)
+
+**`backend/utils.py`** - Database query helpers (shared)
+- `get_vehicles_in_geofence_query()`: Subquery for active vehicles
+- `get_vehicles_in_geofence()`: Cached version (900s TTL)
+
+**`backend/time_utils.py`** - Timezone utilities (shared)
+- `get_campus_start_of_day()`: Campus timezone midnight to UTC conversion
+- Uses America/New_York timezone
+
+**`backend/flask/routes.py`** - FastAPI endpoints
 - CORS configured via middleware
 - Cache decorator for frequently accessed data
 - Webhook signature verification
@@ -201,10 +216,6 @@ shuttletracker-new/
 - Pagination handling
 - Duplicate location filtering
 - Environment-aware (test-server vs production)
-
-**`utils.py`** - Query helpers
-- `get_vehicles_in_geofence_query()` - Subquery for active vehicles
-- `get_vehicles_in_geofence()` - Cached version (900s TTL)
 
 ### Frontend (`frontend/src/`)
 
@@ -343,9 +354,12 @@ alembic upgrade head
 |------|---------|
 | `shubble.py` | FastAPI app entry point |
 | `backend/config.py` | Shared configuration (settings) |
+| `backend/database.py` | Shared database infrastructure |
+| `backend/models.py` | Shared ORM models (database schema) |
+| `backend/utils.py` | Shared database query utilities |
+| `backend/time_utils.py` | Shared timezone utilities |
 | `backend/flask/__init__.py` | App factory, middleware, Redis |
 | `backend/flask/routes.py` | API endpoints |
-| `backend/flask/models.py` | Database schema |
 | `backend/worker/worker.py` | GPS polling worker |
 | `frontend/src/App.tsx` | Frontend router/layout |
 | `frontend/src/locations/LiveLocation.tsx` | Live tracking page |

@@ -14,11 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import selectinload
 
-from .database import get_db
-from .models import Vehicle, GeofenceEvent, VehicleLocation, DriverVehicleAssignment
+from backend.database import get_db
+from backend.models import Vehicle, GeofenceEvent, VehicleLocation, DriverVehicleAssignment
 from backend.config import settings
-from .time_utils import get_campus_start_of_day
-from .utils import get_vehicles_in_geofence_query
+from backend.time_utils import get_campus_start_of_day
+from backend.utils import get_vehicles_in_geofence_query
 from data.stops import Stops
 # from data.schedules import Schedule
 
