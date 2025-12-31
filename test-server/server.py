@@ -18,7 +18,7 @@ from backend.database import create_async_db_engine, create_session_factory
 from backend.models import Vehicle, GeofenceEvent, VehicleLocation
 from backend.time_utils import get_campus_start_of_day
 from .shuttle import Shuttle, ShuttleState
-from data.stops import Stops
+from shared.stops import Stops
 
 # Global shuttle management
 shuttles = {}

@@ -20,7 +20,8 @@ cd shubble
 ```bash
 # Python dependencies
 pip install -r requirements.txt
-# Node.js dependencies
+# Node.js dependencies (frontend)
+cd frontend
 npm install
 ```
 
@@ -87,18 +88,20 @@ replacing port with your actual port
 
 # Running the frontend
 
-To run the frontend, `cd` to the project root and run:
+To run the frontend, `cd` to the `frontend` directory and run:
 
 ```bash
+cd frontend
 npm run dev
 ```
 
 This will start the development server and open the frontend in your default web browser. The frontend will automatically reload when you make changes to the source files.
 Note: `npm run dev` is for development only. It serves dynamic files and will not work with the backend. You should only use `npm run dev` when you are developing a purely frontend change.
 
-To build the frontend for the backend to use, run:
+To build the frontend for the backend to use, run from the `frontend` directory:
 
 ```bash
+cd frontend
 npm run build
 ```
 

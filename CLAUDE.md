@@ -35,18 +35,23 @@ shuttletracker-new/
 │       ├── __main__.py   # Module entry point
 │       └── worker.py     # Background GPS polling worker
 │
-├── frontend/src/          # React frontend
-│   ├── main.tsx           # Entry point
-│   ├── App.tsx            # Router setup, main layout
-│   ├── types/             # TypeScript interfaces
-│   ├── components/        # Shared components (Navigation, ErrorBoundary)
-│   ├── locations/         # Live map page + MapKit components
-│   ├── schedule/          # Schedule page
-│   ├── dashboard/         # Data analytics page
-│   ├── about/             # About page
-│   └── utils/             # Config, logger, map utilities
+├── frontend/              # React frontend application
+│   ├── src/              # Source code
+│   │   ├── main.tsx      # Entry point
+│   │   ├── App.tsx       # Router setup, main layout
+│   │   ├── types/        # TypeScript interfaces
+│   │   ├── components/   # Shared components (Navigation, ErrorBoundary)
+│   │   ├── locations/    # Live map page + MapKit components
+│   │   ├── schedule/     # Schedule page
+│   │   ├── dashboard/    # Data analytics page
+│   │   ├── about/        # About page
+│   │   └── utils/        # Config, logger, map utilities
+│   ├── package.json      # Frontend dependencies and scripts
+│   ├── vite.config.ts    # Vite build configuration
+│   ├── tsconfig.json     # TypeScript configuration
+│   └── eslint.config.js  # ESLint configuration
 │
-├── data/                  # Static configuration
+├── shared/                # Shared resources (routes, schedules, utilities)
 │   ├── routes.json        # Route polylines, stops, colors (39.5 KB)
 │   ├── schedule.json      # Schedule by day/route/time (26.5 KB)
 │   ├── aggregated_schedule.json  # Compiled schedule (16.7 KB)
@@ -72,8 +77,7 @@ shuttletracker-new/
 ├── test-client/           # Test frontend setup
 ├── .github/workflows/     # CI/CD pipelines
 ├── shubble.py            # FastAPI entry point
-├── docker-compose.yml    # Multi-service orchestration
-└── vite.config.ts        # Frontend build config
+└── docker-compose.yml    # Multi-service orchestration
 ```
 
 ---
@@ -246,7 +250,7 @@ shuttletracker-new/
 - Staging vs production detection
 - Analytics configuration
 
-### Data Processing (`data/`)
+### Shared Resources (`shared/`)
 
 **`stops.py`** - Route matching
 - Loads `routes.json` polylines
@@ -363,10 +367,11 @@ alembic upgrade head
 | `backend/worker/worker.py` | GPS polling worker |
 | `frontend/src/App.tsx` | Frontend router/layout |
 | `frontend/src/locations/LiveLocation.tsx` | Live tracking page |
-| `data/routes.json` | Route polylines/stops/colors |
-| `data/stops.py` | Route matching algorithm |
+| `frontend/package.json` | Frontend dependencies and scripts |
+| `frontend/vite.config.ts` | Frontend build config |
+| `shared/routes.json` | Route polylines/stops/colors |
+| `shared/stops.py` | Route matching algorithm |
 | `docker-compose.yml` | Service orchestration |
-| `vite.config.ts` | Frontend build config |
 | `alembic.ini` | Migration config |
 
 ---
@@ -377,7 +382,7 @@ alembic upgrade head
 - Simulates Samsara API for development
 - Provides realistic vehicle movement
 - No external API keys needed
-- Reads real route polylines from `data/`
+- Reads real route polylines from `shared/`
 
 **Test Client (`test-client/`):**
 - Separate Vite frontend for testing
@@ -415,14 +420,14 @@ alembic upgrade head
 
 ## Key Algorithms
 
-**Route Matching (`data/stops.py`):**
+**Route Matching (`shared/stops.py`):**
 1. Load all route polylines from `routes.json`
 2. For each polyline coordinate, calculate haversine distance to GPS point
 3. Find minimum distance across all routes
 4. Return route name if distance is unambiguous
 5. Return None if multiple routes are too close (ambiguous)
 
-**Schedule Assignment (`data/schedules.py`):**
+**Schedule Assignment (`shared/schedules.py`):**
 1. Load vehicle locations from database
 2. Load scheduled stops from `schedule.json`
 3. Use scipy's `linear_sum_assignment` to optimize vehicle-to-stop matching

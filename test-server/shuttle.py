@@ -1,7 +1,7 @@
 import time
 from enum import Enum
 import random
-from data.stops import Stops
+from shared.stops import Stops
 import uuid
 from datetime import datetime, timezone
 import requests

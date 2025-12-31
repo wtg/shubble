@@ -6,9 +6,9 @@ import {
 import MapKitMap from './components/MapKitMap';
 import Schedule from '../schedule/Schedule';
 import "./styles/LiveLocation.css";
-import routeData from '../data/routes.json';
+import routeData from '../shared/routes.json';
 import type { ShuttleRouteData } from '../types/route';
-import aggregatedSchedule from '../data/aggregated_schedule.json';
+import aggregatedSchedule from '../shared/aggregated_schedule.json';
 
 export default function LiveLocation() {
   const [filteredRouteData, setFilteredRouteData] = useState<ShuttleRouteData | null>(null);

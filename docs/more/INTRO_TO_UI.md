@@ -31,10 +31,11 @@ For developers, this makes the UI a quick and intuitive way to test, debug, and 
 ## How to Access the UI
 Verify that all [setup instructions](CONTRIBUTING.md) have been completed first.
 
-To view the UI while you're developing, you’ll start the frontend's development server. Use the following steps below: 
+To view the UI while you're developing, you'll start the frontend's development server. Use the following steps below:
 #### 1. Run the command in your terminal:
-  In the project’s root folder (the main `shubble` folder) run: 
+  From the project's root folder, navigate to the `frontend` directory and run:
   ```bash
+  cd frontend
   npm run dev
   ```
   This command launches a development server so you can run and test your frontend application locally.
@@ -102,7 +103,7 @@ To learn how to use Figma click [HERE](https://www.youtube.com/watch?v=jQ1sfKIl5
 
 
 ## Overview of the UI Layout
-The UI for this project is built using a React + TypeScript front-end located in the `frontend/` directory. Inside `frontend/src/`, the layout is divided into logical folders such as `components/` for reusable UI elements, `locations/`, `schedule/`, `dashboard/`, and `about/` for page views, `styles/` for global and modular CSS, and `data/` or `types/` for shared utilities and type definitions. The main application entry point (`main.tsx`) mounts the UI, while `App.tsx` defines the top-level structure and routing.
+The UI for this project is built using a React + TypeScript front-end located in the `frontend/` directory. Inside `frontend/src/`, the layout is divided into logical folders such as `components/` for reusable UI elements, `locations/`, `schedule/`, `dashboard/`, and `about/` for page views, `styles/` for global and modular CSS, and `shared/` or `types/` for shared data and type definitions. The main application entry point (`main.tsx`) mounts the UI, while `App.tsx` defines the top-level structure and routing.
 
 From a developer perspective, this layout makes it easy to locate the code responsible for visual components, page-level logic, and shared UI resources. The separation into components and pages also encourages modularity — most UI changes happen inside `frontend/src/components` or the page-specific directories, keeping the rest of the system clean and maintainable.
 
@@ -164,8 +165,8 @@ Following these practices helps ensure that the UI remains consistent, approacha
 
 Below are some common issues developers may encounter when accessing or running the UI, along with suggested solutions.
 
-- **UI does not load in the browser**  
-  Ensure the development server is running and that no errors are shown in the terminal. If the server failed to start, try running `npm install` to ensure all dependencies are installed.
+- **UI does not load in the browser**
+  Ensure the development server is running and that no errors are shown in the terminal. If the server failed to start, try running `npm install` from the `frontend` directory to ensure all dependencies are installed.
 
 - **Command `npm run dev` fails**  
   Check the error message printed in the terminal. Common causes include missing dependencies, an incompatible Node.js version, or syntax errors in the code. Restarting the terminal and re-running the command can sometimes resolve environment issues.

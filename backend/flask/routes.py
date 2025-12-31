@@ -19,8 +19,8 @@ from backend.models import Vehicle, GeofenceEvent, VehicleLocation, DriverVehicl
 from backend.config import settings
 from backend.time_utils import get_campus_start_of_day
 from backend.utils import get_vehicles_in_geofence_query
-from data.stops import Stops
-# from data.schedules import Schedule
+from shared.stops import Stops
+# from shared.schedules import Schedule
 
 logger = logging.getLogger(__name__)
 

@@ -9,7 +9,7 @@ import Schedule from './schedule/Schedule';
 import About from './about/About';
 import Data from './dashboard/Dashboard';
 import MapKitMap from './locations/components/MapKitMap';
-import rawRouteData from './data/routes.json';
+import rawRouteData from './shared/routes.json';
 import { useState, useEffect } from "react";
 import type { ShuttleRouteData } from './types/route';
 import Navigation from './components/Navigation';

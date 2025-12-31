@@ -1,5 +1,5 @@
 import './styles/AnnouncementBanner.css';
-import announcementsData from '../data/announcements.json';
+import announcementsData from '../shared/announcements.json';
 import type { Announcement, AnnouncementsData } from '../types/announcement';
 import type { ReactNode } from 'react';
 

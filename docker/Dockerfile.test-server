@@ -15,7 +15,7 @@ RUN pip install --no-cache-dir --root-user-action=ignore -r requirements.txt
 
 # Copy application code
 COPY backend/ ./backend/
-COPY data/ ./data/
+COPY shared/ ./shared/
 COPY test-server/ ./test-server/
 
 # Create non-root user

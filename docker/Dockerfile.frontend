@@ -3,18 +3,17 @@ FROM node:24-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
-COPY frontend/package*.json ./frontend/
+# Copy shared resources needed for build
+COPY shared/ ./shared/
+
+# Copy frontend directory with all config files
+COPY frontend/ ./frontend/
+
+# Set working directory to frontend
+WORKDIR /app/frontend
 
 # Install dependencies
 RUN npm ci
-
-# Copy source files and data
-COPY frontend/ ./frontend/
-COPY data/ ./data/
-COPY vite.config.ts ./
-COPY tsconfig*.json ./
 
 # Build the application with a placeholder that will be replaced at runtime
 # This allows the backend URL to be configured via environment variable

@@ -151,6 +151,7 @@ docker compose down -v
 
 1. **Install dependencies:**
    ```bash
+   cd frontend
    npm install
    ```
 
@@ -162,6 +163,7 @@ docker compose down -v
 
 3. **Start the development server:**
    ```bash
+   cd frontend
    npm run dev
    ```
 
@@ -210,6 +212,7 @@ The most common development setup is to run some services on host and others in 
 docker compose --profile backend up
 
 # Terminal 2: Run frontend on host
+cd frontend
 npm run dev
 ```
 
@@ -279,7 +282,8 @@ alembic upgrade head
 ### Dependency Issues
 
 ```bash
-# Clean install for Node.js
+# Clean install for Node.js (frontend)
+cd frontend
 rm -rf node_modules package-lock.json
 npm install
 
