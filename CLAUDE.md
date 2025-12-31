@@ -19,9 +19,11 @@ Shubble is a real-time shuttle tracking application for Rensselaer Polytechnic I
 ```
 shuttletracker-new/
 ├── backend/
+│   ├── __init__.py        # Package exports (app, settings)
+│   ├── config.py          # Pydantic settings (DB, Redis, Samsara API) - shared
+│   │
 │   ├── flask/             # FastAPI backend application
 │   │   ├── __init__.py   # App factory, CORS, Redis setup
-│   │   ├── config.py     # Pydantic settings (DB, Redis, Samsara API)
 │   │   ├── database.py   # Async SQLAlchemy engine/session
 │   │   ├── models.py     # ORM models (5 tables)
 │   │   ├── routes.py     # API endpoints
@@ -175,9 +177,9 @@ shuttletracker-new/
 
 ## Key Components
 
-### Backend (`backend/flask/`)
+### Backend
 
-**`config.py`** - Environment-based settings
+**`backend/config.py`** - Environment-based settings (shared by flask and worker)
 - Database URL (postgres:// → postgresql+asyncpg://)
 - Redis URL
 - Samsara API credentials (base64 decoded)
@@ -340,6 +342,7 @@ alembic upgrade head
 | File | Purpose |
 |------|---------|
 | `shubble.py` | FastAPI app entry point |
+| `backend/config.py` | Shared configuration (settings) |
 | `backend/flask/__init__.py` | App factory, middleware, Redis |
 | `backend/flask/routes.py` | API endpoints |
 | `backend/flask/models.py` | Database schema |

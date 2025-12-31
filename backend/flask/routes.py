@@ -16,7 +16,7 @@ from sqlalchemy.orm import selectinload
 
 from .database import get_db
 from .models import Vehicle, GeofenceEvent, VehicleLocation, DriverVehicleAssignment
-from .config import settings
+from backend.config import settings
 from .time_utils import get_campus_start_of_day
 from .utils import get_vehicles_in_geofence_query
 from data.stops import Stops

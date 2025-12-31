@@ -7,7 +7,7 @@ from fastapi_cache import FastAPICache
 from fastapi_cache.backends.redis import RedisBackend
 from redis import asyncio as aioredis
 
-from .config import settings
+from backend.config import settings
 from .database import create_async_db_engine, create_session_factory
 
 

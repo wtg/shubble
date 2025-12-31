@@ -1,7 +1,7 @@
 """Time utility functions for timezone handling."""
 from datetime import datetime, timezone
 
-from .config import settings
+from backend.config import settings
 
 
 def get_campus_start_of_day():
