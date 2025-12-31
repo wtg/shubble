@@ -4,7 +4,7 @@ on:
     workflow_dispatch:
     pull_request:
         paths:
-            - 'data/schedule.json'
+            - 'shared/schedule.json'
 
 jobs:
     validate-schedule:
@@ -50,4 +50,4 @@ jobs:
                       else
                         "✅ Validation Passed: No duplicate bus schedules found"
                       end
-                  ' data/schedule.json
+                  ' shared/schedule.json

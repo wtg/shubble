@@ -20,7 +20,8 @@ cd shubble
 ```bash
 # Python dependencies
 pip install -r requirements.txt
-# Node.js dependencies
+# Node.js dependencies (frontend)
+cd frontend
 npm install
 ```
 
@@ -87,22 +88,24 @@ replacing port with your actual port
 
 # Running the frontend
 
-To run the frontend, `cd` to the project root and run:
+To run the frontend, `cd` to the `frontend` directory and run:
 
 ```bash
+cd frontend
 npm run dev
 ```
 
 This will start the development server and open the frontend in your default web browser. The frontend will automatically reload when you make changes to the source files.
 Note: `npm run dev` is for development only. It serves dynamic files and will not work with the backend. You should only use `npm run dev` when you are developing a purely frontend change.
 
-To build the frontend for the backend to use, run:
+To build the frontend for the backend to use, run from the `frontend` directory:
 
 ```bash
+cd frontend
 npm run build
 ```
 
-This will create a static build of the frontend in the `/client/dist` directory, which the backend can serve. **You must build the frontend before you run the backend**.
+This will create a static build of the frontend in the `/frontend/dist` directory, which the backend can serve. **You must build the frontend before you run the backend**.
 
 # Running the backend
 
@@ -116,7 +119,7 @@ To run the backend, you need to run the _server_ and the _worker_. They must be 
 flask run --port 8000
 ```
 
-This will start the Flask development server on port 8000. The backend will serve the built frontend files from the `/client/dist` directory.
+This will start the Flask development server on port 8000. The backend will serve the built frontend files from the `/frontend/dist` directory.
 
 #### Option 2. Run the backend using `gunicorn`, which is what Shubble's production server runs:
 
@@ -127,10 +130,10 @@ gunicorn shubble:app
 #### To run the worker, `cd` to the project root and run:
 
 ```bash
-python -m server.worker
+python -m backend.worker
 ```
 
-This will start the worker process that handles background tasks, such as updating vehicle locations. It's important that you run it using `python -m server.worker` (as a python package) so that it can find its local imports.
+This will start the worker process that handles background tasks, such as updating vehicle locations. It's important that you run it using `python -m backend.worker` (as a python package) so that it can find its local imports.
 
 # Testing the backend
 
