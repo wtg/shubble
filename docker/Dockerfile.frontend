@@ -4,7 +4,7 @@ FROM node:24-alpine AS builder
 WORKDIR /app
 
 # Copy shared resources needed for build
-COPY shared/ ./shared/
+COPY shared/ ./frontend/shared/
 
 # Copy frontend directory with all config files
 COPY frontend/ ./frontend/
