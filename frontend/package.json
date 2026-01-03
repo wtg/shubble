@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node ../shared/parseSchedule.js && shx cp -r ../shared/ src/ && vite",
     "devbuild": "node ../shared/parseSchedule.js && shx cp -r ../shared/ src/ && vite build",
-    "build": "node ./shared/src/parseSchedule.js && vite build",
+    "build": "node ./src/shared/parseSchedule.js && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
