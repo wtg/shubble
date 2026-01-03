@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "node ../shared/parseSchedule.js && shx cp -r ../shared/ src/ && vite",
-    "build": "node ../shared/parseSchedule.js && shx cp -r ../shared/ src/ && vite build",
+    "devbuild": "node ../shared/parseSchedule.js && shx cp -r ../shared/ src/ && vite build",
+    "build": "node ./shared/parseSchedule.js && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
