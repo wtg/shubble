@@ -116,6 +116,7 @@ export default function MapKitMap({ routeData, displayVehicles = true, generateR
   const mapRef = useRef(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const token = import.meta.env.VITE_MAPKIT_KEY;
+  console.log('token:', token);
   const [map, setMap] = useState<(mapkit.Map | null)>(null);
   const [vehicles, setVehicles] = useState<VehicleInformationMap | null>(null);
 
