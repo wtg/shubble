@@ -20,6 +20,7 @@ COPY tsconfig*.json ./
 # This allows the backend URL to be configured via environment variable
 ENV VITE_BACKEND_URL=__VITE_BACKEND_URL__
 ENV VITE_MAPKIT_KEY=__VITE_MAPKIT_KEY__
+ENV VITE_DEPLOY_MODE=__VITE_DEPLOY_MODE__
 RUN npm run build
 
 # Production stage with nginx
@@ -42,6 +43,7 @@ set -e
 # Replace __VITE_BACKEND_URL__ placeholder with actual environment variable value
 find /usr/share/nginx/html -type f -name "*.js" -exec sed -i "s|__VITE_BACKEND_URL__|${VITE_BACKEND_URL:-http://localhost:8000}|g" {} \;
 find /usr/share/nginx/html -type f -name "*.js" -exec sed -i "s|__VITE_MAPKIT_KEY__|${VITE_MAPKIT_KEY}|g" {} \;
+find /usr/share/nginx/html -type f -name "*.js" -exec sed -i "s|__VITE_DEPLOY_MODE__|${VITE_DEPLOY_MODE:-staging}|g" {} \;
 
 # Start nginx
 exec nginx -g "daemon off;"
