@@ -41,6 +41,7 @@ set -e
 
 # Replace __VITE_BACKEND_URL__ placeholder with actual environment variable value
 find /usr/share/nginx/html -type f -name "*.js" -exec sed -i "s|__VITE_BACKEND_URL__|${VITE_BACKEND_URL:-http://localhost:8000}|g" {} \;
+find /usr/share/nginx/html -type f -name "*.js" -exec sed -i "s|__VITE_MAPKIT_KEY__|${VITE_MAPKIT_KEY}|g" {} \;
 
 # Start nginx
 exec nginx -g "daemon off;"
