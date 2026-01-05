@@ -15,7 +15,7 @@ COPY client/ ./client/
 COPY data/ ./data/
 COPY vite.config.ts ./
 COPY tsconfig*.json ./
-COPY docker/.env ./client/
+COPY .env ./client/
 
 RUN npm run build
 
