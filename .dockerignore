@@ -34,7 +34,6 @@ test-client/node_modules/
 test-client/dist/
 
 # Environment
-.env
 .env.local
 .env.*.local
 .flaskenv
