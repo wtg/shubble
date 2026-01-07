@@ -121,21 +121,17 @@ def add_closest_points(
             return pd.Series(result)
 
         # Get closest point information
-        distance, closest_point, route_name, polyline_index = Stops.get_closest_point((lat, lon))
+        distance, closest_point, route_name, polyline_index = Stops.get_closest_point((lat, lon), ambiguous=True)
 
         # Build result dictionary with requested values
-        result = {}
-        for key, output_col in output_columns.items():
-            if key == 'distance':
-                result[output_col] = distance
-            elif key == 'closest_point_lat':
-                result[output_col] = closest_point[0] if closest_point is not None else np.nan
-            elif key == 'closest_point_lon':
-                result[output_col] = closest_point[1] if closest_point is not None else np.nan
-            elif key == 'route_name':
-                result[output_col] = route_name
-            elif key == 'polyline_index':
-                result[output_col] = polyline_index
+        value_map = {
+            'distance': distance,
+            'closest_point_lat': closest_point[0] if closest_point is not None else np.nan,
+            'closest_point_lon': closest_point[1] if closest_point is not None else np.nan,
+            'route_name': route_name,
+            'polyline_index': polyline_index
+        }
+        result = {output_col: value_map[key] for key, output_col in output_columns.items()}
 
         return pd.Series(result)
 
@@ -151,7 +147,7 @@ def distance_delta(
     lat_column: str,
     lon_column: str,
     output_column: str
-) -> None:
+) -> pd.DataFrame:
     """
     Compute the distance traveled between consecutive GPS points.
 
@@ -167,20 +163,8 @@ def distance_delta(
         lon_column: Name of the longitude column
         output_column: Name of the new column to create (default: 'distance_delta')
 
-    Raises:
-        KeyError: If lat_column or lon_column doesn't exist in the dataframe
-
-    Example:
-        >>> df = pd.DataFrame({
-        ...     'latitude': [42.730, 42.731, 42.732],
-        ...     'longitude': [-73.676, -73.677, -73.678]
-        ... })
-        >>> distance_delta(df, 'latitude', 'longitude', 'distance_km')
-        >>> print(df)
-           latitude  longitude  distance_km
-        0    42.730    -73.676          NaN
-        1    42.731    -73.677     0.123456
-        2    42.732    -73.678     0.234567
+    Returns:
+        pd.DataFrame: The modified DataFrame.
     """
     # Import here to avoid circular imports
     from shared.stops import haversine_vectorized
@@ -190,6 +174,10 @@ def distance_delta(
         raise KeyError(f"Column '{lat_column}' not found in dataframe")
     if lon_column not in df.columns:
         raise KeyError(f"Column '{lon_column}' not found in dataframe")
+
+    if len(df) == 0:
+        df[output_column] = []
+        return df
 
     # Create coordinate arrays: [lat, lon]
     coords = df[[lat_column, lon_column]].values
@@ -205,6 +193,7 @@ def distance_delta(
 
     # Add to dataframe
     df[output_column] = distances
+    return df
 
 
 def speed(
@@ -212,14 +201,12 @@ def speed(
     distance_column: str,
     time_column: str,
     output_column: str,
-    max_speed: float = 120.0
-) -> None:
+) -> pd.DataFrame:
     """
     Compute speed from distance and time deltas, with outlier filtering.
 
     Calculates speed by dividing distance by the time difference between consecutive
-    points. Speeds exceeding max_speed (km/h) are set to NaN as they are likely
-    due to GPS drift/noise.
+    points.
 
     Speed = distance / time_delta
 
@@ -230,29 +217,19 @@ def speed(
         distance_column: Name of the column containing distances (e.g., from distance_delta)
         time_column: Name of the column containing time values in seconds
         output_column: Name of the new column to create with speed values
-        max_speed: Maximum realistic speed in km/h. Values above this are set to NaN.
-                  Default is 120 km/h.
 
-    Raises:
-        KeyError: If distance_column or time_column doesn't exist in the dataframe
-
-    Example:
-        >>> df = pd.DataFrame({
-        ...     'epoch': [0, 10, 20],
-        ...     'distance_km': [np.nan, 0.1, 5.0]  # 5km in 10s is impossible
-        ... })
-        >>> speed(df, 'distance_km', 'epoch', 'speed_kmh', max_speed=120)
-        >>> print(df)
-           epoch  distance_km  speed_kmh
-        0      0          NaN        NaN
-        1     10         0.10       36.0
-        2     20         5.00        NaN
+    Returns:
+        pd.DataFrame: The modified DataFrame.
     """
     # Validation
     if distance_column not in df.columns:
         raise KeyError(f"Column '{distance_column}' not found in dataframe")
     if time_column not in df.columns:
         raise KeyError(f"Column '{time_column}' not found in dataframe")
+
+    if len(df) == 0:
+        df[output_column] = []
+        return df
 
     # Get time values and compute deltas
     time_values = df[time_column].values
@@ -270,39 +247,44 @@ def speed(
 
     # Set speed to NaN where time_delta is zero or negative
     speeds = np.where((time_deltas <= 0) | np.isnan(time_deltas), np.nan, speeds)
-    
-    # Filter outliers
-    if max_speed is not None:
-        speeds = np.where(speeds > max_speed, np.nan, speeds)
 
     # Add to dataframe
     df[output_column] = speeds
+    return df
 
 
 def segment_by_consecutive(
     df: pd.DataFrame,
     max_timedelta: float,
-    segment_column: str
+    segment_column: str,
+    distance_column: str = None,
+    max_distance_to_route: float = None
 ) -> pd.DataFrame:
     """
-    Add segment_id column to dataframe based on vehicle_id and time gaps.
+    Add segment_id column to dataframe based on vehicle_id, time gaps, and route distance.
 
     Assigns a segment_id to each row where consecutive data points from the same
     vehicle with time gaps less than the threshold share the same segment_id.
 
     A new segment starts when:
     - The vehicle_id changes, OR
-    - The time gap between consecutive points exceeds max_timedelta
+    - The time gap between consecutive points exceeds max_timedelta, OR
+    - The distance to route exceeds max_distance_to_route (if specified)
 
     Args:
         df: DataFrame with 'vehicle_id' and 'epoch_seconds' columns
         max_timedelta: Maximum time gap (in seconds) to consider points consecutive
+        segment_column: Name of the column to create for segment IDs
+        distance_column: Optional column name containing distance to route (in km)
+        max_distance_to_route: Optional maximum distance from route (in km).
+                               If specified, creates new segment when exceeded.
 
     Returns:
-        DataFrame with added 'segment_id' column (sorted by vehicle_id, epoch_seconds)
+        DataFrame with added segment_column (sorted by vehicle_id, epoch_seconds)
 
     Raises:
-        KeyError: If 'vehicle_id' or 'epoch_seconds' columns are missing
+        KeyError: If 'vehicle_id', 'epoch_seconds', or distance_column are missing
+        ValueError: If max_distance_to_route specified without distance_column
 
     Example:
         >>> df = pd.DataFrame({
@@ -310,7 +292,7 @@ def segment_by_consecutive(
         ...     'epoch_seconds': [0, 5, 100, 0, 5],
         ...     'value': ['a', 'b', 'c', 'd', 'e']
         ... })
-        >>> result = segment_by_consecutive(df, max_timedelta=30)
+        >>> result = segment_by_consecutive(df, max_timedelta=30, segment_column='segment_id')
         >>> result[['vehicle_id', 'epoch_seconds', 'segment_id']]
            vehicle_id  epoch_seconds  segment_id
         0           1              0           1
@@ -324,6 +306,12 @@ def segment_by_consecutive(
         raise KeyError("Column 'vehicle_id' not found in dataframe")
     if 'epoch_seconds' not in df.columns:
         raise KeyError("Column 'epoch_seconds' not found in dataframe")
+
+    if max_distance_to_route is not None and distance_column is None:
+        raise ValueError("distance_column must be specified when max_distance_to_route is provided")
+
+    if distance_column is not None and distance_column not in df.columns:
+        raise KeyError(f"Column '{distance_column}' not found in dataframe")
 
     # Work with a copy to avoid modifying original
     df_work = df.sort_values(['vehicle_id', 'epoch_seconds']).reset_index(drop=True).copy()
@@ -342,6 +330,26 @@ def segment_by_consecutive(
         df_work['_time_delta'].isna()
     )
 
+    # Add distance-based segmentation if specified
+    if max_distance_to_route is not None and distance_column is not None:
+        # Mark points that are too far from route
+        df_work['_off_route'] = (df_work[distance_column] > max_distance_to_route)
+        df_work['_prev_off_route'] = (
+            df_work.groupby('vehicle_id')['_off_route']
+                    .shift(1, fill_value=False)
+        )
+
+        # Create boundary at:
+        # 1. Any off-route point
+        # 2. First on-route point after being off-route
+        df_work['_distance_boundary'] = (
+            df_work['_off_route'] |  # Any off-route point
+            (~df_work['_off_route'] & df_work['_prev_off_route'])  # First on-route after off-route
+        )
+
+        df_work['_new_segment'] = df_work['_new_segment'] | df_work['_distance_boundary']
+        df_work = df_work.drop(columns=['_off_route', '_prev_off_route', '_distance_boundary'])
+
     # Create segment IDs by cumulative sum of boundaries
     df_work[segment_column] = df_work['_new_segment'].cumsum()
 
@@ -349,6 +357,61 @@ def segment_by_consecutive(
     df_work = df_work.drop(columns=['_time_delta', '_vehicle_change', '_new_segment'])
 
     return df_work
+
+
+def filter_segments_by_length(
+    df: pd.DataFrame,
+    segment_column: str,
+    min_length: int
+) -> pd.DataFrame:
+    """
+    Filter out segments that have fewer than min_length points.
+
+    Args:
+        df: DataFrame with segment data
+        segment_column: Name of the column containing segment IDs
+        min_length: Minimum number of points required to keep a segment
+
+    Returns:
+        DataFrame with short segments removed
+
+    Raises:
+        KeyError: If segment_column doesn't exist in the dataframe
+        ValueError: If min_length is less than 1
+
+    Example:
+        >>> df = pd.DataFrame({
+        ...     'segment_id': [1, 1, 1, 2, 2, 3, 3, 3, 3],
+        ...     'value': [10, 20, 30, 40, 50, 60, 70, 80, 90]
+        ... })
+        >>> result = filter_segments_by_length(df, 'segment_id', min_length=3)
+        >>> # Segment 2 is removed (only 2 points)
+        >>> result[['segment_id', 'value']]
+           segment_id  value
+        0           1     10
+        1           1     20
+        2           1     30
+        5           3     60
+        6           3     70
+        7           3     80
+        8           3     90
+    """
+    # Validation
+    if segment_column not in df.columns:
+        raise KeyError(f"Column '{segment_column}' not found in dataframe")
+    if min_length < 1:
+        raise ValueError(f"min_length must be at least 1, got {min_length}")
+
+    # Count points in each segment
+    segment_counts = df.groupby(segment_column).size()
+
+    # Find segments that meet the minimum length requirement
+    valid_segments = segment_counts[segment_counts >= min_length].index
+
+    # Filter dataframe to keep only valid segments
+    filtered_df = df[df[segment_column].isin(valid_segments)].copy()
+
+    return filtered_df
 
 
 if __name__ == "__main__":
