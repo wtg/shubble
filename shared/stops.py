@@ -29,57 +29,132 @@ class Stops:
         for polyline in route.get('ROUTES', []):
             polylines[route_name].append(np.array(polyline))
 
+    # Pre-calculate segments for vectorized operations
+    _route_name_indices = sorted(list(active_routes))
+    _all_segments = []
+
+    # Build segments in sorted order of route_idx (implied by _route_name_indices order)
+    for r_idx, route_name in enumerate(_route_name_indices):
+        route_polys = polylines[route_name]
+
+        for p_idx, poly in enumerate(route_polys):
+            if len(poly) < 2:
+                # Handle single point as a degenerate segment
+                if len(poly) == 1:
+                    row = [poly[0][0], poly[0][1], poly[0][0], poly[0][1], r_idx, p_idx]
+                    _all_segments.append(np.array([row]))
+                continue
+
+            starts = poly[:-1]
+            ends = poly[1:]
+            n_segs = len(starts)
+
+            # Create array for this polyline's segments
+            # columns: lat1, lon1, lat2, lon2, route_idx, poly_idx
+            seg_arr = np.column_stack([
+                starts,
+                ends,
+                np.full(n_segs, r_idx),
+                np.full(n_segs, p_idx)
+            ])
+            _all_segments.append(seg_arr)
+
+    if _all_segments:
+        polylines_np = np.vstack(_all_segments)
+    else:
+        polylines_np = np.empty((0, 6))
+
     @classmethod
-    def get_closest_point(cls, origin_point):
+    def get_closest_point(cls, origin_point, threshold=0.020, ambiguous=False):
         """
         Find the closest point on any polyline to the given origin point.
         :param origin_point: A tuple or list with (latitude, longitude) coordinates.
         :return: A tuple with the closest point (latitude, longitude), distance to that point,
                 route name, and polyline index.
         """
+        if cls.polylines_np.shape[0] == 0:
+            return None, None, None, None
+
         point = np.array(origin_point)
 
+        # Extract segment start/end points
+        p1 = cls.polylines_np[:, 0:2]
+        p2 = cls.polylines_np[:, 2:4]
+
+        # Vector from p1 to p2
+        diffs = p2 - p1
+
+        # Squared length of segments (in degree space)
+        lengths_sq = np.sum(diffs**2, axis=1)
+
+        # Avoid division by zero
+        nonzero_mask = lengths_sq > 1e-12
+
+        # Project point onto lines (parameter t)
+        # t = dot(point - p1, diffs) / lengths_sq
+        t = np.sum((point - p1) * diffs, axis=1)
+
+        # Initialize t with 0 for zero-length segments (closest point is p1)
+        # Apply division only for nonzero segments
+        t = np.divide(t, lengths_sq, out=np.zeros_like(t), where=nonzero_mask)
+
+        # Clamp t to segment [0, 1]
+        t = np.clip(t, 0, 1)
+
+        # Calculate closest points on the segments
+        closest_points = p1 + t[:, np.newaxis] * diffs
+
+        # Calculate Haversine distances to all closest points
+        dists = haversine_vectorized(point, closest_points)
+
+        # We need to find the best point *per polyline* to match original logic
+        # Data is sorted by route_idx then poly_idx.
+        # Find boundaries where (route_idx, poly_idx) changes.
+        # columns 4 and 5 are route_idx, poly_idx
+
+        # Helper to identify groups
+        # We can just iterate through the segments since we need to aggregate.
+        # But looping 10k segments is slow in python.
+        # Faster: identify unique group boundaries.
+
+        group_ids = cls.polylines_np[:, 4] * 10000 + cls.polylines_np[:, 5]
+        # Find indices where group_ids change
+        # Prepend valid index 0
+        changes = np.concatenate(([True], group_ids[1:] != group_ids[:-1]))
+        boundary_indices = np.nonzero(changes)[0]
+        # Append end index for easier slicing
+        boundary_indices = np.concatenate((boundary_indices, [len(dists)]))
+
         closest_data = []
-        for route_name, polylines in cls.polylines.items():
-            for index, polyline in enumerate(polylines):
-                if len(polyline) < 2:
-                    # not enough points to form a segment, just check distance to the point itself
-                    closest_data.append((np.linalg.norm(point - np.array(polyline[0])), np.array(polyline[0]), route_name, 0))
-                    continue
 
-                # Build segments
-                lines = np.array([polyline[:-1], polyline[1:]])
-                diffs = lines[1, :] - lines[0, :]
-                lengths = np.linalg.norm(diffs, axis=1)
+        # Loop over each polyline group
+        for i in range(len(boundary_indices) - 1):
+            start = boundary_indices[i]
+            end = boundary_indices[i+1]
 
-                # Handle zero-length segments (duplicate points)
-                nonzero_mask = lengths > 0
-                if np.any(~nonzero_mask):
-                    # check distance directly to these points
-                    zero_points = lines[0, ~nonzero_mask]
-                    zero_distances = haversine_vectorized(point[np.newaxis, :], zero_points)
-                    min_idx = np.argmin(zero_distances)
-                    closest_data.append((zero_distances[min_idx], zero_points[min_idx], route_name, min_idx))
+            # Slice for this polyline
+            sub_dists = dists[start:end]
 
-                if not np.any(nonzero_mask):
-                    # all segments are zero-length, already handled
-                    continue
+            # Find min index in this slice
+            min_local_idx = np.argmin(sub_dists)
+            min_dist = sub_dists[min_local_idx]
+            global_idx = start + min_local_idx
 
-                diffs_normalized = diffs[nonzero_mask] / lengths[nonzero_mask, np.newaxis]
-                projections = np.sum((point - lines[0, nonzero_mask]) * diffs_normalized, axis=1)
-                projections = np.clip(projections, 0, lengths[nonzero_mask])
-                closest_points = lines[0, nonzero_mask] + projections[:, np.newaxis] * diffs_normalized
-                distances = haversine_vectorized(point[np.newaxis, :], closest_points)
+            # Retrieve metadata
+            r_idx = int(cls.polylines_np[global_idx, 4])
+            p_idx = int(cls.polylines_np[global_idx, 5])
+            route_name = cls._route_name_indices[r_idx]
 
-                min_index = np.argmin(distances)
-                closest_data.append((distances[min_index], closest_points[min_index], route_name, index))
+            closest_point = closest_points[global_idx]
+
+            closest_data.append((min_dist, closest_point, route_name, p_idx))
 
         # Find the overall closest point
         if closest_data:
             closest_routes = sorted(closest_data, key=lambda x: x[0])
             # Check if closest route is significantly closer than others
-            if len(closest_routes) > 1 and haversine(closest_routes[0][1], closest_routes[1][1]) < 0.020:
-                # If not significantly closer, return None to indicate ambiguity
+            if not ambiguous and len(closest_routes) > 1 and haversine(closest_routes[0][1], closest_routes[1][1]) < threshold:
+                # If not significantly closer (ambiguous), return None
                 return None, None, None, None
             return closest_routes[0]
         return None, None, None, None
