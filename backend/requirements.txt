@@ -13,3 +13,4 @@ numpy
 pandas>=2.0.0
 scipy
 requests
+greenlet
