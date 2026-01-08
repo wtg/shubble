@@ -140,6 +140,7 @@ def add_closest_points(
     # Apply the function to each row and assign results
     if output_columns:  # Only process if there are columns to add
         result_df = df.progress_apply(process_row, axis=1)
+        print('Done! Adding columns to dataframe.')
         for output_col in output_columns.values():
             df[output_col] = result_df[output_col]
 
@@ -840,8 +841,8 @@ def add_eta(
 
         return group
 
-    # Apply to each vehicle group
-    df_work = df_work.groupby('vehicle_id', group_keys=False).apply(
+    # Apply to each vehicle, segment group
+    df_work = df_work.groupby(['vehicle_id', 'segment_id'], group_keys=False).apply(
         calculate_eta_for_vehicle
     )
 

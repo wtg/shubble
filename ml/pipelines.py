@@ -9,6 +9,58 @@ from pathlib import Path
 from typing import Tuple, Optional
 
 # ============================================================================
+# PIPELINE HIERARCHY
+# ============================================================================
+
+# Define the pipeline execution hierarchy
+# If a stage is triggered, all subsequent stages are also triggered
+PIPELINE_HIERARCHY = [
+    'load',
+    'preprocess',
+    'segment',
+    'stops',
+    'split',
+    'train',
+    'fit'
+]
+
+
+def apply_pipeline_hierarchy(kwargs: dict) -> dict:
+    """
+    Apply pipeline hierarchy to kwargs.
+
+    If a pipeline stage flag is set to True, all subsequent stages in the
+    hierarchy are also set to True.
+
+    Args:
+        kwargs: Dictionary of keyword arguments
+
+    Returns:
+        Modified kwargs with hierarchy applied
+
+    Example:
+        >>> apply_pipeline_hierarchy({'segment': True})
+        {'segment': True, 'stops': True, 'split': True, 'train': True, 'fit': True}
+    """
+    kwargs = kwargs.copy()
+
+    # Find the earliest stage that is set to True
+    trigger_index = None
+    for i, stage in enumerate(PIPELINE_HIERARCHY):
+        if kwargs.get(stage, False):
+            if trigger_index is None:
+                trigger_index = i
+            break
+
+    # If a stage was triggered, set all subsequent stages to True
+    if trigger_index is not None:
+        for stage in PIPELINE_HIERARCHY[trigger_index:]:
+            kwargs[stage] = True
+
+    return kwargs
+
+
+# ============================================================================
 # CACHE CONFIGURATION
 # ============================================================================
 
@@ -42,28 +94,43 @@ LSTM_TEST_CSV = LSTM_CACHE_DIR / "lstm_test.csv"
 LSTM_MODEL_PATH = LSTM_CACHE_DIR / "lstm_model.pth"
 
 
-def get_cache_paths(mode: str) -> dict[str, Path]:
+def get_cache_path(base_name: str, cache_dir: Path = SHARED_CACHE_DIR, extension: str = 'csv', **params) -> Path:
     """
-    Get cache file paths for a specific pipeline mode.
+    Get cache file path with parameters encoded in the filename.
 
     Args:
-        mode: Pipeline mode ('arima' or 'lstm')
+        base_name: Base filename (e.g., 'locations_segmented', 'stops_preprocessed')
+        cache_dir: Directory to store cache file (default: SHARED_CACHE_DIR)
+        extension: File extension without dot (default: 'csv')
+        **params: Parameters to include in filename (will be sorted alphabetically)
 
     Returns:
-        Dictionary with keys: 'train', 'test'
+        Path to cache file with parameters
+
+    Example:
+        >>> get_cache_path('locations_segmented', max_timedelta=15, max_distance=0.005)
+        Path('ml/cache/shared/locations_segmented_max_distance0.005_max_timedelta15.csv')
+        >>> get_cache_path('arima_best_params', ARIMA_CACHE_DIR, 'pkl', p=3, d=0, q=2)
+        Path('ml/cache/arima/arima_best_params_d0_p3_q2.pkl')
     """
-    if mode == 'arima':
-        return {'train': ARIMA_TRAIN_CSV, 'test': ARIMA_TEST_CSV}
-    elif mode == 'lstm':
-        return {'train': LSTM_TRAIN_CSV, 'test': LSTM_TEST_CSV}
-    else:
-        # Fallback for other modes
-        cache_dir = CACHE_DIR / mode
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        return {
-            'train': cache_dir / f"{mode}_train.csv",
-            'test': cache_dir / f"{mode}_test.csv"
-        }
+    if not params:
+        return cache_dir / f"{base_name}.{extension}"
+
+    # Build param string from sorted params (for consistency)
+    # Format numbers to avoid excessive decimal places
+    param_parts = []
+    for k, v in sorted(params.items()):
+        if isinstance(v, float):
+            # Format floats to remove trailing zeros
+            v_str = f"{v:g}"
+        else:
+            v_str = str(v)
+        # Sanitize the value string for filename safety
+        v_str = v_str.replace('_', '').replace('.', 'p')
+        param_parts.append(f"{k}{v_str}")
+
+    param_str = "_".join(param_parts)
+    return cache_dir / f"{base_name}_{param_str}.{extension}"
 
 
 # ============================================================================
@@ -100,17 +167,17 @@ def load_pipeline(**kwargs) -> pd.DataFrame:
     Load raw vehicle location data.
 
     Args:
-        force_reload: If True, fetch from database even if cached file exists
+        reload: If True, fetch from database even if cached file exists
 
     Returns:
         DataFrame with raw vehicle location data
     """
     from ml.data.load import load_vehicle_locations
 
-    force_reload = kwargs.get('force_reload', False)
+    reload = kwargs.get('reload', False)
 
     # Try to load from cache
-    if not force_reload:
+    if not reload:
         cached_df = _load_cached_csv(RAW_CSV, "vehicle locations")
         if cached_df is not None:
             return cached_df
@@ -132,19 +199,18 @@ def preprocess_pipeline(**kwargs) -> pd.DataFrame:
     3. Add closest route information
 
     Args:
-        force_repreprocess: If True, recompute preprocessing even if cached
-        force_reload: Passed to load_pipeline
+        preprocess: If True, recompute preprocessing even if cached
+        reload: Passed to load_pipeline
 
     Returns:
         Preprocessed DataFrame
     """
-    from ml.data.preprocess import to_epoch_seconds, add_closest_points, clean_closest_route
+    from ml.data.preprocess import to_epoch_seconds, add_closest_points
 
-    force_repreprocess = kwargs.get('force_repreprocess', False)
-    window_size = kwargs.get('window_size', 5)
+    preprocess = kwargs.get('preprocess', False)
 
     # Try to load from cache
-    if not force_repreprocess:
+    if not preprocess:
         cached_df = _load_cached_csv(PREPROCESSED_CSV, "preprocessed data")
         if cached_df is not None:
             return cached_df
@@ -161,18 +227,15 @@ def preprocess_pipeline(**kwargs) -> pd.DataFrame:
     to_epoch_seconds(df, 'timestamp', 'epoch_seconds')
 
     # Add route information
-    print("Step 2/3: Adding closest route information...")
+    print("Step 2/2: Adding closest route information...")
     add_closest_points(df, 'latitude', 'longitude', {
         'distance': 'dist_to_route',
         'route_name': 'route',
         'closest_point_lat': 'closest_lat',
         'closest_point_lon': 'closest_lon',
-        'polyline_index': 'polyline_idx'
+        'polyline_index': 'polyline_idx',
+        'segment_index': 'segment_idx'
     })
-
-    # Clean NaN route values using surrounding context
-    print("Step 3/3: Cleaning NaN route values...")
-    df = clean_closest_route(df, route_column='route', polyline_idx_column='polyline_idx', window_size=window_size)
 
     _save_csv(df, PREPROCESSED_CSV, "preprocessed data")
     return df
@@ -211,34 +274,44 @@ def speed_pipeline(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
     return df
 
 
-def segment_pipeline(
-    max_timedelta: float = 15,
-    max_distance: float = 0.005,
-    min_segment_length: int = 3,
-    **kwargs
-) -> pd.DataFrame:
+def segment_pipeline(**kwargs) -> pd.DataFrame:
     """
-    Segment pipeline: Preprocess -> Segment -> Speed -> Filter.
+    Segment pipeline: Preprocess -> Segment -> Clean Routes -> Speed -> Filter.
 
-    Args:
-        max_timedelta: Maximum time gap (seconds) for consecutive points
-        max_distance: Maximum distance from route (km) to split segments
-        min_segment_length: Minimum points required to keep a segment
-        force_resegment: Force re-run of segmentation
-        force_repreprocess: Force re-run of preprocessing
-        force_reload: Passed to load_pipeline
+    Args (via kwargs):
+        max_timedelta: Maximum time gap (seconds) for consecutive points (default: 15)
+        max_distance: Maximum distance from route (km) to split segments (default: 0.005)
+        min_segment_length: Minimum points required to keep a segment (default: 3)
+        window_size: Window size for cleaning NaN route values (default: 5)
+        force_segment: Force re-run of segmentation (default: False)
+        preprocess: Force re-run of preprocessing (default: False)
+        reload: Passed to load_pipeline (default: False)
 
     Returns:
         Segmented DataFrame with speeds
     """
-    from ml.data.preprocess import segment_by_consecutive, filter_segments_by_length
+    from ml.data.preprocess import segment_by_consecutive, filter_segments_by_length, clean_closest_route
 
-    force_resegment = kwargs.get('force_resegment', False)
-    force_repreprocess = kwargs.get('force_repreprocess', False)
+    # Extract parameters with defaults
+    max_timedelta = kwargs.get('max_timedelta', 15)
+    max_distance = kwargs.get('max_distance', 0.005)
+    min_segment_length = kwargs.get('min_segment_length', 3)
+    window_size = kwargs.get('window_size', 5)
+    force_segment = kwargs.get('force_segment', False)
+    preprocess = kwargs.get('preprocess', False)
+
+    # Get parameterized cache path
+    cache_path = get_cache_path(
+        'locations_segmented',
+        max_timedelta=max_timedelta,
+        max_distance=max_distance,
+        min_segment_length=min_segment_length,
+        window_size=window_size
+    )
 
     # Try to load from cache
-    if not (force_resegment or force_repreprocess):
-        cached_df = _load_cached_csv(SEGMENTED_CSV, "segmented data")
+    if not (force_segment or preprocess):
+        cached_df = _load_cached_csv(cache_path, "segmented data")
         if cached_df is not None:
             return cached_df
 
@@ -248,10 +321,10 @@ def segment_pipeline(
 
     # Step 1: Preprocess
     df = preprocess_pipeline(**kwargs)
-    print(f"Step 1/4: Preprocessed {len(df)} location points")
+    print(f"Step 1/5: Preprocessed {len(df)} location points")
 
     # Step 2: Segment
-    print(f"Step 2/4: Segmenting (max gap: {max_timedelta}s, max distance: {max_distance} km)...")
+    print(f"Step 2/5: Segmenting (max gap: {max_timedelta}s, max distance: {max_distance} km)...")
     df = segment_by_consecutive(
         df,
         max_timedelta=max_timedelta,
@@ -261,18 +334,23 @@ def segment_pipeline(
     )
     print(f"  ✓ Created {df['segment_id'].nunique()} segments")
 
-    # Step 3: Add speed
-    print("Step 3/4: Adding speed calculations...")
+    # Step 3: Clean NaN route values using segment-aware windowing
+    print(f"Step 3/5: Cleaning NaN route values (window size: {window_size})...")
+    df = clean_closest_route(df, route_column='route', polyline_idx_column='polyline_idx',
+                            segment_column='segment_id', window_size=window_size)
+
+    # Step 4: Add speed
+    print("Step 4/5: Adding speed calculations...")
     df = speed_pipeline(df, **kwargs)
 
-    # Step 4: Filter short segments
-    print(f"Step 4/4: Filtering segments < {min_segment_length} points...")
+    # Step 5: Filter short segments
+    print(f"Step 5/5: Filtering segments < {min_segment_length} points...")
     initial_segments = df['segment_id'].nunique()
     df = filter_segments_by_length(df, 'segment_id', min_segment_length)
     final_segments = df['segment_id'].nunique()
     print(f"  ✓ Kept {final_segments}/{initial_segments} segments")
 
-    _save_csv(df, SEGMENTED_CSV, "segmented data")
+    _save_csv(df, cache_path, "segmented data")
     return df
 
 
@@ -288,9 +366,9 @@ def stops_pipeline(**kwargs) -> pd.DataFrame:
     5. Calculating polyline distances (distance from start, distance to end)
 
     Args:
-        force_restops: Force re-computation of stops preprocessing
-        force_resegment: Force re-run of segmentation
-        force_repreprocess: Force re-run of preprocessing
+        force_stops: Force re-computation of stops preprocessing
+        force_segment: Force re-run of segmentation
+        preprocess: Force re-run of preprocessing
 
     Returns:
         DataFrame with added columns: 'stop_name', 'stop_route', 'eta_seconds',
@@ -300,13 +378,28 @@ def stops_pipeline(**kwargs) -> pd.DataFrame:
         add_stops, filter_rows_after_stop, add_eta, add_polyline_distances
     )
 
-    force_restops = kwargs.get('force_restops', False)
-    force_resegment = kwargs.get('force_resegment', False)
-    force_repreprocess = kwargs.get('force_repreprocess', False)
+    force_stops = kwargs.get('force_stops', False)
+    force_segment = kwargs.get('force_segment', False)
+    preprocess = kwargs.get('preprocess', False)
+
+    # Extract segmentation parameters (with defaults matching segment_pipeline call below)
+    max_timedelta = kwargs.get('max_timedelta', 30)
+    max_distance = kwargs.get('max_distance', 0.005)
+    min_segment_length = kwargs.get('min_segment_length', 3)
+    window_size = kwargs.get('window_size', 5)
+
+    # Get parameterized cache path
+    cache_path = get_cache_path(
+        'stops_preprocessed',
+        max_timedelta=max_timedelta,
+        max_distance=max_distance,
+        min_segment_length=min_segment_length,
+        window_size=window_size
+    )
 
     # Try to load from cache
-    if not (force_restops or force_resegment or force_repreprocess):
-        cached_df = _load_cached_csv(STOPS_PREPROCESSED_CSV, "stops preprocessed data")
+    if not (force_stops or force_segment or preprocess):
+        cached_df = _load_cached_csv(cache_path, "stops preprocessed data")
         if cached_df is not None:
             return cached_df
 
@@ -314,8 +407,17 @@ def stops_pipeline(**kwargs) -> pd.DataFrame:
     print("STOPS PIPELINE")
     print("="*70)
 
+    # Build complete kwargs with extracted parameters (ensures consistency with cache path)
+    segment_kwargs = {
+        **kwargs,
+        'max_timedelta': max_timedelta,
+        'max_distance': max_distance,
+        'min_segment_length': min_segment_length,
+        'window_size': window_size
+    }
+
     # Step 1: Get segmented data
-    df = segment_pipeline(**kwargs)
+    df = segment_pipeline(**segment_kwargs)
 
     # Step 2: Add stops
     print("Step 1/4: Adding stop information...")
@@ -358,7 +460,7 @@ def stops_pipeline(**kwargs) -> pd.DataFrame:
     )
     print(f"  ✓ Calculated polyline distances for {len(df)} points")
 
-    _save_csv(df, STOPS_PREPROCESSED_CSV, "stops preprocessed data")
+    _save_csv(df, cache_path, "stops preprocessed data")
     return df
 
 
@@ -379,9 +481,9 @@ def split_pipeline(
         test_ratio: Fraction of data for test set
         random_seed: Random seed for reproducible splits
         mode: Pipeline mode - 'arima' (speed data) or 'lstm' (ETA data)
-        force_resplit: Force re-run of splitting
-        force_resegment: Force re-run of segmentation
-        force_repreprocess: Force re-run of preprocessing
+        force_split: Force re-run of splitting
+        force_segment: Force re-run of segmentation
+        preprocess: Force re-run of preprocessing
 
     Returns:
         Tuple of (train_df, test_df)
@@ -393,18 +495,28 @@ def split_pipeline(
         raise ValueError(f"mode must be 'arima' or 'lstm', got '{mode}'")
 
     use_eta_data = (mode == 'lstm')
-    force_resplit = kwargs.get('force_resplit', False)
-    force_resegment = kwargs.get('force_resegment', False)
-    force_repreprocess = kwargs.get('force_repreprocess', False)
+    force_split = kwargs.get('force_split', False)
+    force_segment = kwargs.get('force_segment', False)
+    preprocess = kwargs.get('preprocess', False)
 
-    # Get cache paths
-    cache_paths = get_cache_paths(mode)
-    train_csv, test_csv = cache_paths['train'], cache_paths['test']
+    # Get parameterized cache paths
+    cache_dir = ARIMA_CACHE_DIR if mode == 'arima' else LSTM_CACHE_DIR
+    train_csv = get_cache_path(
+        f'{mode}_train',
+        cache_dir=cache_dir,
+        test_ratio=test_ratio,
+        random_seed=random_seed
+    )
+    test_csv = get_cache_path(
+        f'{mode}_test',
+        cache_dir=cache_dir,
+        test_ratio=test_ratio,
+        random_seed=random_seed
+    )
 
     # Try to load from cache
-    if not (force_resplit or force_resegment or force_repreprocess):
+    if not (force_split or force_segment or preprocess):
         if train_csv.exists() and test_csv.exists():
-            cache_dir = ARIMA_CACHE_DIR if mode == 'arima' else LSTM_CACHE_DIR
             print(f"Loading cached train/test split from {cache_dir}")
             train_df = _load_cached_csv(train_csv, "train data")
             test_df = _load_cached_csv(test_csv, "test data")
@@ -439,7 +551,6 @@ def split_pipeline(
     )
 
     # Save split data
-    cache_dir = ARIMA_CACHE_DIR if mode == 'arima' else LSTM_CACHE_DIR
     print(f"Saving split data to {cache_dir}")
     _save_csv(train_df, train_csv, f"{mode} train data")
     _save_csv(test_df, test_csv, f"{mode} test data")
@@ -460,7 +571,7 @@ def split_by_polyline_pipeline(df: pd.DataFrame = None, **kwargs) -> dict[tuple[
 
     Args:
         df: Optional DataFrame to split. If None, loads from preprocess_pipeline
-        **kwargs: Passed to preprocess_pipeline if df is None (e.g., force_repreprocess)
+        **kwargs: Passed to preprocess_pipeline if df is None (e.g., preprocess)
 
     Returns:
         Dictionary mapping (route_name, polyline_index) tuples to DataFrames
@@ -513,12 +624,12 @@ def lstm_pipeline(
     hidden_size: int = 50,
     num_layers: int = 2,
     dropout: float = 0.1,
-    epochs: int = 10,
+    epochs: int = 20,
     batch_size: int = 64,
     test_ratio: float = 0.2,
     random_seed: int = 42,
     verbose: bool = True,
-    force_retrain: bool = True,
+    force_train: bool = True,
     limit_polylines: int = None,
     **kwargs
 ) -> dict[tuple[str, int], tuple]:
@@ -547,7 +658,7 @@ def lstm_pipeline(
         test_ratio: Train/test split ratio
         random_seed: Random seed
         verbose: Whether to print progress
-        force_retrain: If True, retrain models even if cached
+        force_train: If True, retrain models even if cached
         limit_polylines: Optional limit on number of polylines to process
         **kwargs: Additional arguments passed to stops_pipeline and split_by_polyline_pipeline
 
@@ -646,7 +757,7 @@ def lstm_pipeline(
             continue
 
         # 3. Train or load model
-        if force_retrain or not model_path.exists():
+        if force_train or not model_path.exists():
             print("\n3. TRAINING MODEL")
             print(f"  Architecture: {num_layers} layers, {hidden_size} hidden units, seq_len={sequence_length}")
 
@@ -736,7 +847,7 @@ def arima_pipeline(
     value_column: str = 'speed_kmh',
     limit_segments: int = None,
     tune_hyperparams: bool = False,
-    force_refit: bool = True,
+    force_fit: bool = True,
     **kwargs
 ):
     """
@@ -749,7 +860,7 @@ def arima_pipeline(
         value_column: Column to model
         limit_segments: Optional limit on number of segments
         tune_hyperparams: If True, run hyperparameter search
-        force_refit: If True, retrain model even if cached
+        force_fit: If True, retrain model even if cached
 
     Returns:
         dict: Results dictionary containing evaluation metrics
@@ -762,6 +873,22 @@ def arima_pipeline(
     print("="*70)
     print("ARIMA PIPELINE")
     print("="*70)
+
+    # Get parameterized cache paths
+    best_params_path = get_cache_path(
+        'arima_best_params',
+        cache_dir=ARIMA_CACHE_DIR,
+        extension='pkl',
+        p=p, d=d, q=q,
+        value_column=value_column
+    )
+    model_params_path = get_cache_path(
+        'arima_model_params',
+        cache_dir=ARIMA_CACHE_DIR,
+        extension='pkl',
+        p=p, d=d, q=q,
+        value_column=value_column
+    )
 
     # Load and split data
     train_df, test_df = split_pipeline(mode='arima', **kwargs)
@@ -797,8 +924,8 @@ def arima_pipeline(
             d = tuning_result['best_d']
             q = tuning_result['best_q']
 
-            print(f"\nSaving best parameters to {ARIMA_BEST_PARAMS_PATH}...")
-            with open(ARIMA_BEST_PARAMS_PATH, 'wb') as f:
+            print(f"\nSaving best parameters to {best_params_path}...")
+            with open(best_params_path, 'wb') as f:
                 pickle.dump({
                     'p': p, 'd': d, 'q': q,
                     'best_mse': tuning_result['best_mse'],
@@ -811,8 +938,8 @@ def arima_pipeline(
             print("Falling back to default parameters")
     else:
         # Show cached parameters if available
-        if ARIMA_BEST_PARAMS_PATH.exists():
-            with open(ARIMA_BEST_PARAMS_PATH, 'rb') as f:
+        if best_params_path.exists():
+            with open(best_params_path, 'rb') as f:
                 cached_params = pickle.load(f)
                 print(f"\nCached best parameters: ARIMA({cached_params['p']},{cached_params['d']},{cached_params['q']})")
                 print(f"Using command-line parameters: ARIMA({p},{d},{q})")
@@ -820,7 +947,7 @@ def arima_pipeline(
     # Train model (or load cached)
     pretrained_params = None
 
-    if force_refit or not ARIMA_MODEL_PARAMS_PATH.exists():
+    if force_fit or not model_params_path.exists():
         print("\n" + "="*70)
         print("MODEL TRAINING")
         print("="*70)
@@ -839,7 +966,7 @@ def arima_pipeline(
                 model = fit_arima(train_values, p=p, d=d, q=q)
                 pretrained_params = model.results.params
 
-                with open(ARIMA_MODEL_PARAMS_PATH, 'wb') as f:
+                with open(model_params_path, 'wb') as f:
                     pickle.dump({
                         'p': p, 'd': d, 'q': q,
                         'params': pretrained_params,
@@ -855,7 +982,7 @@ def arima_pipeline(
         print("="*70)
 
         try:
-            with open(ARIMA_MODEL_PARAMS_PATH, 'rb') as f:
+            with open(model_params_path, 'rb') as f:
                 cached_model = pickle.load(f)
 
             if cached_model['p'] == p and cached_model['d'] == d and cached_model['q'] == q:
@@ -881,7 +1008,6 @@ def arima_pipeline(
     num_failed = 0
 
     for i, segment_id in enumerate(test_segments, 1):
-        print(f"\n  Segment {i}/{len(test_segments)} (ID: {segment_id})...", end=" ")
         test_segment = test_df[test_df['segment_id'] == segment_id].copy()
 
         try:
@@ -911,7 +1037,6 @@ def arima_pipeline(
             print(f"RMSE: {result['rmse']:.4f}, MAE: {result['mae']:.4f}, Success: {result['success_rate']:.1%}")
 
         except Exception as e:
-            print(f"Failed: {e}")
             num_failed += 1
             continue
 
@@ -962,43 +1087,46 @@ if __name__ == "__main__":
 
     # Load Pipeline
     load_parser = subparsers.add_parser("load", help="Load raw vehicle location data")
-    load_parser.add_argument("--force-reload", action="store_true", help="Force fetching data from DB")
+    load_parser.add_argument("--reload", action="store_true", help="Force fetching data from DB")
 
     # Preprocess Pipeline
     preprocess_parser = subparsers.add_parser("preprocess", help="Run preprocessing only")
-    preprocess_parser.add_argument("--force-repreprocess", action="store_true")
-    preprocess_parser.add_argument("--force-reload", action="store_true")
+    preprocess_parser.add_argument("--preprocess", action="store_true")
+    preprocess_parser.add_argument("--reload", action="store_true")
 
     # Stops Pipeline
     stops_parser = subparsers.add_parser("stops", help="Run stops pipeline (stops, ETAs, polyline distances)")
-    stops_parser.add_argument("--force-restops", action="store_true")
-    stops_parser.add_argument("--force-resegment", action="store_true")
-    stops_parser.add_argument("--force-repreprocess", action="store_true")
+    stops_parser.add_argument("--force-stops", action="store_true")
+    stops_parser.add_argument("--force-segment", action="store_true")
+    stops_parser.add_argument("--preprocess", action="store_true")
+    stops_parser.add_argument("--window-size", type=int, default=5, help="Window size for cleaning NaN routes")
 
     # LSTM Pipeline
     lstm_parser = subparsers.add_parser("lstm", help="Run LSTM pipeline (per-polyline training)")
-    lstm_parser.add_argument("--epochs", type=int, default=10)
+    lstm_parser.add_argument("--epochs", type=int, default=20)
     lstm_parser.add_argument("--batch-size", type=int, default=64)
     lstm_parser.add_argument("--hidden-size", type=int, default=50)
     lstm_parser.add_argument("--num-layers", type=int, default=2)
     lstm_parser.add_argument("--seq-len", type=int, default=10, dest="sequence_length")
-    lstm_parser.add_argument("--force-retrain", action="store_true")
-    lstm_parser.add_argument("--force-restops", action="store_true")
-    lstm_parser.add_argument("--force-resegment", action="store_true")
-    lstm_parser.add_argument("--force-repreprocess", action="store_true")
-    lstm_parser.add_argument("--force-reload", action="store_true")
+    lstm_parser.add_argument("--force-train", action="store_true")
+    lstm_parser.add_argument("--force-stops", action="store_true")
+    lstm_parser.add_argument("--force-segment", action="store_true")
+    lstm_parser.add_argument("--preprocess", action="store_true")
+    lstm_parser.add_argument("--reload", action="store_true")
     lstm_parser.add_argument("--limit-polylines", type=int, default=None)
+    lstm_parser.add_argument("--window-size", type=int, default=5, help="Window size for cleaning NaN routes")
 
     # ARIMA Pipeline
     arima_parser = subparsers.add_parser("arima", help="Run ARIMA pipeline")
-    arima_parser.add_argument("--force-resplit", action="store_true")
-    arima_parser.add_argument("--force-resegment", action="store_true")
-    arima_parser.add_argument("--force-repreprocess", action="store_true")
-    arima_parser.add_argument("--force-reload", action="store_true")
-    arima_parser.add_argument("--force-refit", action="store_true")
+    arima_parser.add_argument("--force-split", action="store_true")
+    arima_parser.add_argument("--force-segment", action="store_true")
+    arima_parser.add_argument("--preprocess", action="store_true")
+    arima_parser.add_argument("--reload", action="store_true")
+    arima_parser.add_argument("--force-fit", action="store_true")
     arima_parser.add_argument("--max-timedelta", type=float, default=15)
     arima_parser.add_argument("--max-distance", type=float, default=0.01)
     arima_parser.add_argument("--min-segment-length", type=int, default=3)
+    arima_parser.add_argument("--window-size", type=int, default=5, help="Window size for cleaning NaN routes")
     arima_parser.add_argument("--test-ratio", type=float, default=0.2)
     arima_parser.add_argument("--random-seed", type=int, default=42)
     arima_parser.add_argument("--tune-hyperparams", action="store_true")

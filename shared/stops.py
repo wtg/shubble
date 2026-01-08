@@ -329,6 +329,13 @@ class Stops:
         if route_name is None or polyline_idx is None or segment_idx is None:
             return None, None, None
 
+        # try to convert polyline_idx and segment_idx to int
+        try:
+            polyline_idx = int(polyline_idx)
+            segment_idx = int(segment_idx)
+        except (ValueError, TypeError):
+            return None, None, None
+
         # Get the polyline
         key = (route_name, polyline_idx)
         if key not in cls._polyline_cumulative_distances:
