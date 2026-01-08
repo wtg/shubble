@@ -3,6 +3,75 @@ import numpy as np
 import math
 from pathlib import Path
 
+
+def haversine(coord1, coord2):
+    """
+    Calculate the great-circle distance between two points on the Earth
+    using the Haversine formula.
+
+    Parameters:
+        coord1: (lat1, lon1) in decimal degrees
+        coord2: (lat2, lon2) in decimal degrees
+
+    Returns:
+        Distance in kilometers.
+    """
+    # Earth radius in kilometers
+    R = 6371.0
+
+    lat1, lon1 = coord1
+    lat2, lon2 = coord2
+
+    # Convert degrees to radians
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+
+    # Haversine formula
+    a = math.sin(dphi / 2)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    return R * c
+
+
+def haversine_vectorized(coords1, coords2):
+    """
+    Vectorized haversine distance between two sets of coordinates.
+
+    Parameters
+    ----------
+    coords1 : array_like, shape (N, 2)
+        Array of (lat, lon) pairs in decimal degrees.
+    coords2 : array_like, shape (N, 2)
+        Array of (lat, lon) pairs in decimal degrees.
+
+    Returns
+    -------
+    distances : ndarray, shape (N,)
+        Great-circle distances in kilometers.
+    """
+    # Accept either single (lat,lon) pairs or arrays of pairs. Normalize to 2-D arrays.
+    coords1 = np.atleast_2d(np.asarray(coords1, dtype=float))
+    coords2 = np.atleast_2d(np.asarray(coords2, dtype=float))
+
+    # Earth radius in kilometers
+    R = 6371.0
+
+    lat1 = np.radians(coords1[:, 0])
+    lon1 = np.radians(coords1[:, 1])
+    lat2 = np.radians(coords2[:, 0])
+    lon2 = np.radians(coords2[:, 1])
+
+    dphi = lat2 - lat1
+    dlambda = lon2 - lon1
+
+    a = np.sin(dphi / 2.0)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlambda / 2.0)**2
+    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
+
+    return R * c
+
+
 class Stops:
     # Get the directory where this script is located
     _script_dir = Path(__file__).parent
@@ -64,16 +133,60 @@ class Stops:
     else:
         polylines_np = np.empty((0, 6))
 
+    # Pre-calculate all stops for vectorized operations
+    _all_stops = []
+    _stop_route_names = []
+    _stop_names = []
+
+    for route_name, route in routes_data.items():
+        for stop in route.get('STOPS', []):
+            stop_coords = route[stop]['COORDINATES']
+            _all_stops.append(stop_coords)
+            _stop_route_names.append(route_name)
+            _stop_names.append(stop)
+
+    if _all_stops:
+        stops_np = np.array(_all_stops)  # Shape: (N, 2) where columns are [lat, lon]
+    else:
+        stops_np = np.empty((0, 2))
+
+    # Pre-calculate cumulative distances for each polyline
+    # Maps (route_name, polyline_idx) -> array of cumulative distances at each point
+    _polyline_cumulative_distances = {}
+    _polyline_total_lengths = {}
+
+    for route_name in active_routes:
+        route_polys = polylines[route_name]
+        for p_idx, poly in enumerate(route_polys):
+            if len(poly) < 2:
+                # Single point polyline
+                _polyline_cumulative_distances[(route_name, p_idx)] = np.array([0.0])
+                _polyline_total_lengths[(route_name, p_idx)] = 0.0
+                continue
+
+            # Calculate segment distances using vectorized haversine
+            # poly[:-1] are segment starts, poly[1:] are segment ends
+            segment_distances = haversine_vectorized(poly[:-1], poly[1:])
+
+            # Calculate cumulative distances
+            cumulative_dists = np.concatenate(([0.0], np.cumsum(segment_distances)))
+
+            _polyline_cumulative_distances[(route_name, p_idx)] = cumulative_dists
+            _polyline_total_lengths[(route_name, p_idx)] = cumulative_dists[-1]
+
     @classmethod
-    def get_closest_point(cls, origin_point, threshold=0.020, ambiguous=False):
+    def get_closest_point(cls, origin_point, threshold=0.020):
         """
         Find the closest point on any polyline to the given origin point.
         :param origin_point: A tuple or list with (latitude, longitude) coordinates.
-        :return: A tuple with the closest point (latitude, longitude), distance to that point,
-                route name, and polyline index.
+        :param threshold: Distance threshold in km (not currently used in logic).
+        :return: A tuple with (distance, closest_point_coords, route_name, polyline_idx, segment_idx).
+                 The segment_idx indicates which segment of the polyline (0-indexed) contains
+                 the closest point, i.e., the point is on the line segment between
+                 polyline[segment_idx] and polyline[segment_idx+1].
         """
         if cls.polylines_np.shape[0] == 0:
-            return None, None, None, None
+            return None, None, None, None, None
 
         point = np.array(origin_point)
 
@@ -147,18 +260,20 @@ class Stops:
 
             closest_point = closest_points[global_idx]
 
-            closest_data.append((min_dist, closest_point, route_name, p_idx))
+            # min_local_idx is the segment index within this polyline
+            segment_idx = min_local_idx
+
+            closest_data.append((min_dist, closest_point, route_name, p_idx, segment_idx))
 
         # Find the overall closest point
         if closest_data:
             closest_routes = sorted(closest_data, key=lambda x: x[0])
             # Check if closest route is significantly closer than others
-            if not ambiguous and len(closest_routes) > 1 and haversine(closest_routes[0][1], closest_routes[1][1]) < threshold:
+            if len(closest_routes) > 1 and closest_routes[1][0] - closest_routes[0][0] < threshold:
                 # If not significantly closer (ambiguous), return None
-                return None, None, None, None
+                return None, None, None, None, None
             return closest_routes[0]
-        return None, None, None, None
-
+        return None, None, None, None, None
     @classmethod
     def is_at_stop(cls, origin_point, threshold=0.020):
         """
@@ -168,77 +283,80 @@ class Stops:
         :return: A tuple with (the route name if close enough, otherwise None,
                 the stop name if close enough, otherwise None).
         """
-        for route_name, route in cls.routes_data.items():
-            for stop in route.get('STOPS', []):
-                stop_point = np.array(route[stop]['COORDINATES'])
+        if cls.stops_np.shape[0] == 0:
+            return None, None
 
-                distance = haversine(tuple(origin_point), tuple(stop_point))
-                if distance < threshold:
-                    return route_name, stop
+        point = np.array(origin_point)
+
+        # Calculate distances to all stops at once using vectorized haversine
+        distances = haversine_vectorized(point, cls.stops_np)
+
+        # Find the minimum distance
+        min_idx = np.argmin(distances)
+        min_distance = distances[min_idx]
+
+        # Check if the closest stop is within threshold
+        if min_distance < threshold:
+            return cls._stop_route_names[min_idx], cls._stop_names[min_idx]
+
         return None, None
 
-def haversine(coord1, coord2):
-    """
-    Calculate the great-circle distance between two points on the Earth
-    using the Haversine formula.
+    @classmethod
+    def get_polyline_distances(cls, origin_point, closest_point_result=None):
+        """
+        Calculate distance into polyline and distance from end of polyline.
 
-    Parameters:
-        coord1: (lat1, lon1) in decimal degrees
-        coord2: (lat2, lon2) in decimal degrees
+        :param origin_point: A tuple or list with (latitude, longitude) coordinates.
+        :param closest_point_result: Optional tuple from get_closest_point().
+                                      If None, get_closest_point() will be called.
+        :return: A tuple with (distance_from_start, distance_to_end, total_length).
+                 All distances in kilometers. Returns (None, None, None) if point
+                 cannot be matched to a polyline.
 
-    Returns:
-        Distance in kilometers.
-    """
-    # Earth radius in kilometers
-    R = 6371.0
+        Example:
+            >>> point = (42.7284, -73.6788)
+            >>> dist_from_start, dist_to_end, total = Stops.get_polyline_distances(point)
+            >>> print(f"Point is {dist_from_start:.3f} km into the route")
+            >>> print(f"Point has {dist_to_end:.3f} km remaining")
+        """
+        # Get closest point info if not provided
+        if closest_point_result is None:
+            closest_point_result = cls.get_closest_point(origin_point)
 
-    lat1, lon1 = coord1
-    lat2, lon2 = coord2
+        distance, closest_coords, route_name, polyline_idx, segment_idx = closest_point_result
 
-    # Convert degrees to radians
-    phi1 = math.radians(lat1)
-    phi2 = math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlambda = math.radians(lon2 - lon1)
+        # Check if we got a valid result
+        if route_name is None or polyline_idx is None or segment_idx is None:
+            return None, None, None
 
-    # Haversine formula
-    a = math.sin(dphi / 2)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2)**2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+        # Get the polyline
+        key = (route_name, polyline_idx)
+        if key not in cls._polyline_cumulative_distances:
+            return None, None, None
 
-    return R * c
+        cumulative_dists = cls._polyline_cumulative_distances[key]
+        total_length = cls._polyline_total_lengths[key]
+        poly = cls.polylines[route_name][polyline_idx]
 
-def haversine_vectorized(coords1, coords2):
-    """
-    Vectorized haversine distance between two sets of coordinates.
+        # Handle edge case: single point polyline
+        if len(poly) < 2:
+            return 0.0, 0.0, 0.0
 
-    Parameters
-    ----------
-    coords1 : array_like, shape (N, 2)
-        Array of (lat, lon) pairs in decimal degrees.
-    coords2 : array_like, shape (N, 2)
-        Array of (lat, lon) pairs in decimal degrees.
+        # Get cumulative distance at the start of the segment
+        dist_at_segment_start = cumulative_dists[segment_idx]
 
-    Returns
-    -------
-    distances : ndarray, shape (N,)
-        Great-circle distances in kilometers.
-    """
-    # Accept either single (lat,lon) pairs or arrays of pairs. Normalize to 2-D arrays.
-    coords1 = np.atleast_2d(np.asarray(coords1, dtype=float))
-    coords2 = np.atleast_2d(np.asarray(coords2, dtype=float))
+        # Calculate distance from segment start to closest point
+        segment_start = poly[segment_idx]
+        segment_end = poly[segment_idx + 1]
 
-    # Earth radius in kilometers
-    R = 6371.0
+        # Calculate the partial distance along the segment
+        # We need to project the closest_coords onto the segment to find how far along it is
+        partial_dist = haversine(segment_start, closest_coords)
 
-    lat1 = np.radians(coords1[:, 0])
-    lon1 = np.radians(coords1[:, 1])
-    lat2 = np.radians(coords2[:, 0])
-    lon2 = np.radians(coords2[:, 1])
+        # Total distance from start of polyline
+        distance_from_start = dist_at_segment_start + partial_dist
 
-    dphi = lat2 - lat1
-    dlambda = lon2 - lon1
+        # Distance to end of polyline
+        distance_to_end = total_length - distance_from_start
 
-    a = np.sin(dphi / 2.0)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlambda / 2.0)**2
-    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
-
-    return R * c
+        return distance_from_start, distance_to_end, total_length

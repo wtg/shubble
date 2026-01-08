@@ -1,0 +1,75 @@
+    # 5. Train LSTM (or load cached model)
+    if force_retrain or not LSTM_MODEL_PATH.exists():
+        print("\n" + "="*70)
+        print("MODEL TRAINING")
+        print("="*70)
+        print("Training LSTM Model...")
+        print(f"  Inputs: {input_columns}")
+        print(f"  Outputs: {output_columns}")
+        print(f"  Architecture: {num_layers} layers, {hidden_size} hidden units, seq_len={sequence_length}")
+
+        model = train_lstm(
+            train_df,
+            input_columns=input_columns,
+            output_columns=output_columns,
+            sequence_length=sequence_length,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            dropout=dropout,
+            epochs=epochs,
+            batch_size=batch_size,
+            segment_column='segment_id',
+            verbose=verbose
+        )
+
+        # Save model to cache
+        print(f"\nSaving model to {LSTM_MODEL_PATH}...")
+        model.save(LSTM_MODEL_PATH)
+        print("  ✓ Model trained and saved")
+    else:
+        # Load cached model
+        print("\n" + "="*70)
+        print("LOADING CACHED MODEL")
+        print("="*70)
+        print(f"Loading model from {LSTM_MODEL_PATH}...")
+
+        # Need to determine input/output sizes
+        input_size = len(input_columns)
+        output_size = len(output_columns)
+
+        model = LSTMModel(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            output_size=output_size,
+            dropout=dropout
+        )
+        model.load(LSTM_MODEL_PATH)
+        print(f"  ✓ Loaded LSTM model")
+        print(f"  ✓ Architecture: {num_layers} layers, {hidden_size} hidden units")
+
+    # 4. Evaluate LSTM on test set
+    print("\n" + "="*70)
+    print("MODEL EVALUATION")
+    print("="*70)
+    print("Evaluating LSTM on test set...")
+
+    results = evaluate_lstm(
+        model,
+        test_df,
+        input_columns=input_columns,
+        output_columns=output_columns,
+        sequence_length=sequence_length,
+        segment_column='segment_id'
+    )
+
+    print(f"\n{'='*70}")
+    print("EVALUATION RESULTS")
+    print(f"{ '='*70}")
+    print(f"  Test predictions: {results['num_predictions']}")
+    print(f"  Test MSE: {results['mse']:.4f}")
+    print(f"  Test RMSE: {results['rmse']:.4f}")
+    print(f"  Test MAE: {results['mae']:.4f}")
+
+    print("\nLSTM Pipeline Complete!")
+    return model, results

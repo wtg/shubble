@@ -90,7 +90,7 @@ async def get_locations(response: Response, db: AsyncSession = Depends(get_db)):
         if oldest_timestamp is None or loc.timestamp < oldest_timestamp:
             oldest_timestamp = loc.timestamp
         # Get closest loop
-        closest_distance, _, closest_route_name, polyline_index = Stops.get_closest_point(
+        closest_distance, _, closest_route_name, polyline_index, _ = Stops.get_closest_point(
             (loc.latitude, loc.longitude)
         )
         if closest_distance is None:

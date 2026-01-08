@@ -2,6 +2,7 @@
 import numpy as np
 import pandas as pd
 import random
+import warnings
 from tqdm import tqdm
 from typing import Tuple, Optional
 from pathlib import Path
@@ -57,6 +58,73 @@ def filter_segmented(
     filtered_df = df[df[segment_column].isin(valid_segments)].copy()
 
     return filtered_df
+
+
+def fit_arima(
+    data: np.ndarray,
+    p: int,
+    d: int,
+    q: int,
+    start_params: Optional[np.ndarray] = None
+):
+    """
+    Fit an ARIMA model to time series data.
+
+    Simple utility function to train ARIMA on a single time series array.
+    Suppresses convergence warnings for cleaner output.
+
+    Args:
+        data: 1D numpy array or array-like of time series values
+        p: AR order (number of lag observations)
+        d: Differencing order (number of times to difference)
+        q: MA order (size of moving average window)
+        start_params: Optional array of starting parameter values for warm-starting
+                     the optimization. Should be the params from a previous fit.
+
+    Returns:
+        Trained ARIMAModel instance with fitted results
+
+    Raises:
+        RuntimeError: If ARIMA fitting fails
+        ValueError: If data is empty or too short
+
+    Example:
+        >>> segment_values = segment_df['speed_kmh'].dropna().values
+        >>> model = fit_arima(segment_values, p=3, d=0, q=2)
+        >>> prediction = model.predict(n_periods=1)
+        >>> # Warm-start a new fit with previous coefficients
+        >>> model2 = fit_arima(new_data, p=3, d=0, q=2, start_params=model.results.params)
+    """
+    from ml.models.arima import ARIMAModel
+    from statsmodels.tools.sm_exceptions import ConvergenceWarning
+
+    # Validation
+    if len(data) == 0:
+        raise ValueError("Data array cannot be empty")
+
+    min_length = max(p + d, q + d, 1)
+    if len(data) < min_length:
+        raise ValueError(
+            f"Data too short: {len(data)} points (need at least {min_length} for ARIMA({p},{d},{q}))"
+        )
+
+    # Create and fit model
+    model = ARIMAModel(p=p, d=d, q=q)
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', category=ConvergenceWarning)
+        warnings.filterwarnings('ignore', category=UserWarning)
+
+        try:
+            # Pass start_params to fit if provided
+            if start_params is not None:
+                model.fit(data, start_params=start_params)
+            else:
+                model.fit(data)
+        except Exception as e:
+            raise RuntimeError(f"Failed to fit ARIMA({p},{d},{q}): {str(e)}")
+
+    return model
 
 
 def segmented_train_test_split(
@@ -148,6 +216,94 @@ def segmented_train_test_split(
 
     return train_df, test_df
 
+
+def train_lstm(
+    df: pd.DataFrame,
+    input_columns: list[str],
+    output_columns: list[str],
+    sequence_length: int = 10,
+    hidden_size: int = 50,
+    num_layers: int = 1,
+    dropout: float = 0.0,
+    learning_rate: float = 0.001,
+    batch_size: int = 32,
+    epochs: int = 100,
+    device: str = "cpu",
+    segment_column: Optional[str] = None,
+    verbose: bool = True
+):
+    """
+    Train an LSTM model on the provided DataFrame.
+
+    Args:
+        df: DataFrame containing the data
+        input_columns: List of column names to use as input features
+        output_columns: List of column names to predict
+        sequence_length: Length of input sequences
+        hidden_size: Number of features in the hidden state
+        num_layers: Number of recurrent layers
+        dropout: Dropout probability
+        learning_rate: Learning rate
+        batch_size: Batch size
+        epochs: Number of epochs
+        device: Device to train on ('cpu' or 'cuda')
+        segment_column: Optional column to use for segmenting data. 
+                        If provided, sequences won't cross segment boundaries.
+        verbose: Whether to print training progress.
+
+    Returns:
+        Trained LSTMModel instance
+    """
+    from ml.models.lstm import LSTMModel
+
+    # Prepare data
+    X_list = []
+    y_list = []
+    
+    # Define helper to process a single continuous block of data
+    def process_block(block_df):
+        data_in = block_df[input_columns].values
+        data_out = block_df[output_columns].values
+        
+        if len(block_df) <= sequence_length:
+            return
+
+        for i in range(len(block_df) - sequence_length):
+            X_list.append(data_in[i : i + sequence_length])
+            y_list.append(data_out[i + sequence_length])
+
+    if segment_column and segment_column in df.columns:
+        for _, group in df.groupby(segment_column):
+            process_block(group)
+    else:
+        process_block(df)
+        
+    if not X_list:
+        raise ValueError("Not enough data to create sequences with length " + str(sequence_length))
+
+    X = np.array(X_list)
+    y = np.array(y_list)
+
+    # Initialize model
+    input_size = len(input_columns)
+    output_size = len(output_columns)
+    
+    model = LSTMModel(
+        input_size=input_size,
+        hidden_size=hidden_size,
+        num_layers=num_layers,
+        output_size=output_size,
+        dropout=dropout,
+        learning_rate=learning_rate,
+        batch_size=batch_size,
+        epochs=epochs,
+        device=device
+    )
+
+    # Fit model
+    model.fit(X, y, verbose=verbose)
+
+    return model
 
 if __name__ == "__main__":
     from ml.pipelines import preprocess_pipeline
