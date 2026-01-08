@@ -32,15 +32,20 @@ def apply_pipeline_hierarchy(kwargs: dict) -> dict:
     If a pipeline stage flag is set to True, all subsequent stages in the
     hierarchy are also set to True.
 
+    Pipeline hierarchy order: load -> preprocess -> segment -> stops -> split -> train -> fit
+
     Args:
         kwargs: Dictionary of keyword arguments
 
     Returns:
         Modified kwargs with hierarchy applied
 
-    Example:
+    Examples:
         >>> apply_pipeline_hierarchy({'segment': True})
         {'segment': True, 'stops': True, 'split': True, 'train': True, 'fit': True}
+
+        >>> apply_pipeline_hierarchy({'load': True})
+        {'load': True, 'preprocess': True, 'segment': True, 'stops': True, 'split': True, 'train': True, 'fit': True}
     """
     kwargs = kwargs.copy()
 
@@ -61,101 +66,16 @@ def apply_pipeline_hierarchy(kwargs: dict) -> dict:
 
 
 # ============================================================================
-# CACHE CONFIGURATION
+# CACHE CONFIGURATION & HELPERS
 # ============================================================================
 
-CACHE_DIR = Path(__file__).parent / "cache"
-CACHE_DIR.mkdir(parents=True, exist_ok=True)
-
-# Cache subdirectories
-SHARED_CACHE_DIR = CACHE_DIR / "shared"
-ARIMA_CACHE_DIR = CACHE_DIR / "arima"
-LSTM_CACHE_DIR = CACHE_DIR / "lstm"
-
-# Create subdirectories
-for cache_dir in [SHARED_CACHE_DIR, ARIMA_CACHE_DIR, LSTM_CACHE_DIR]:
-    cache_dir.mkdir(parents=True, exist_ok=True)
-
-# Shared pipeline caches (used by all pipelines)
-RAW_CSV = SHARED_CACHE_DIR / "locations_raw.csv"
-PREPROCESSED_CSV = SHARED_CACHE_DIR / "locations_preprocessed.csv"
-SEGMENTED_CSV = SHARED_CACHE_DIR / "locations_segmented.csv"
-STOPS_PREPROCESSED_CSV = SHARED_CACHE_DIR / "stops_preprocessed.csv"
-
-# ARIMA-specific caches
-ARIMA_TRAIN_CSV = ARIMA_CACHE_DIR / "arima_train.csv"
-ARIMA_TEST_CSV = ARIMA_CACHE_DIR / "arima_test.csv"
-ARIMA_BEST_PARAMS_PATH = ARIMA_CACHE_DIR / "arima_best_params.pkl"
-ARIMA_MODEL_PARAMS_PATH = ARIMA_CACHE_DIR / "arima_model_params.pkl"
-
-# LSTM-specific caches
-LSTM_TRAIN_CSV = LSTM_CACHE_DIR / "lstm_train.csv"
-LSTM_TEST_CSV = LSTM_CACHE_DIR / "lstm_test.csv"
-LSTM_MODEL_PATH = LSTM_CACHE_DIR / "lstm_model.pth"
-
-
-def get_cache_path(base_name: str, cache_dir: Path = SHARED_CACHE_DIR, extension: str = 'csv', **params) -> Path:
-    """
-    Get cache file path with parameters encoded in the filename.
-
-    Args:
-        base_name: Base filename (e.g., 'locations_segmented', 'stops_preprocessed')
-        cache_dir: Directory to store cache file (default: SHARED_CACHE_DIR)
-        extension: File extension without dot (default: 'csv')
-        **params: Parameters to include in filename (will be sorted alphabetically)
-
-    Returns:
-        Path to cache file with parameters
-
-    Example:
-        >>> get_cache_path('locations_segmented', max_timedelta=15, max_distance=0.005)
-        Path('ml/cache/shared/locations_segmented_max_distance0.005_max_timedelta15.csv')
-        >>> get_cache_path('arima_best_params', ARIMA_CACHE_DIR, 'pkl', p=3, d=0, q=2)
-        Path('ml/cache/arima/arima_best_params_d0_p3_q2.pkl')
-    """
-    if not params:
-        return cache_dir / f"{base_name}.{extension}"
-
-    # Build param string from sorted params (for consistency)
-    # Format numbers to avoid excessive decimal places
-    param_parts = []
-    for k, v in sorted(params.items()):
-        if isinstance(v, float):
-            # Format floats to remove trailing zeros
-            v_str = f"{v:g}"
-        else:
-            v_str = str(v)
-        # Sanitize the value string for filename safety
-        v_str = v_str.replace('_', '').replace('.', 'p')
-        param_parts.append(f"{k}{v_str}")
-
-    param_str = "_".join(param_parts)
-    return cache_dir / f"{base_name}_{param_str}.{extension}"
-
-
-# ============================================================================
-# HELPER FUNCTIONS
-# ============================================================================
-
-def _load_cached_csv(path: Path, description: str) -> Optional[pd.DataFrame]:
-    """Load a cached CSV file with timestamp parsing."""
-    if not path.exists():
-        return None
-
-    print(f"Loading {description} from {path}")
-    df = pd.read_csv(path)
-    if 'timestamp' in df.columns:
-        df['timestamp'] = pd.to_datetime(df['timestamp'], format='mixed')
-    print(f"Loaded {len(df)} records from cache")
-    return df
-
-
-def _save_csv(df: pd.DataFrame, path: Path, description: str):
-    """Save a DataFrame to CSV."""
-    print(f"Saving {description} to {path}")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(path, index=False)
-    print(f"Saved {len(df)} records")
+from ml.cache import (
+    get_cache_path, load_cached_csv, save_csv,
+    SHARED_CACHE_DIR, ARIMA_CACHE_DIR, LSTM_CACHE_DIR,
+    RAW_CSV, PREPROCESSED_CSV, SEGMENTED_CSV, STOPS_PREPROCESSED_CSV,
+    ARIMA_TRAIN_CSV, ARIMA_TEST_CSV, ARIMA_BEST_PARAMS_PATH, ARIMA_MODEL_PARAMS_PATH,
+    LSTM_TRAIN_CSV, LSTM_TEST_CSV, LSTM_MODEL_PATH
+)
 
 
 # ============================================================================
@@ -167,25 +87,29 @@ def load_pipeline(**kwargs) -> pd.DataFrame:
     Load raw vehicle location data.
 
     Args:
-        reload: If True, fetch from database even if cached file exists
+        load: Re-load from database
+
+    Note:
+        Pipeline hierarchy is applied externally via apply_pipeline_hierarchy().
+        This function only checks its own 'load' flag.
 
     Returns:
         DataFrame with raw vehicle location data
     """
     from ml.data.load import load_vehicle_locations
 
-    reload = kwargs.get('reload', False)
+    load = kwargs.get('load', False)
 
     # Try to load from cache
-    if not reload:
-        cached_df = _load_cached_csv(RAW_CSV, "vehicle locations")
+    if not load:
+        cached_df = load_cached_csv(RAW_CSV, "vehicle locations")
         if cached_df is not None:
             return cached_df
 
     # Fetch from database
     print("Fetching vehicle locations from database...")
     df = load_vehicle_locations()
-    _save_csv(df, RAW_CSV, "fetched data")
+    save_csv(df, RAW_CSV, "fetched data")
     return df
 
 
@@ -199,8 +123,12 @@ def preprocess_pipeline(**kwargs) -> pd.DataFrame:
     3. Add closest route information
 
     Args:
-        preprocess: If True, recompute preprocessing even if cached
-        reload: Passed to load_pipeline
+        preprocess: Re-compute preprocessing
+        load: Re-load from database
+
+    Note:
+        Pipeline hierarchy is applied externally via apply_pipeline_hierarchy().
+        This function only checks its own 'preprocess' flag.
 
     Returns:
         Preprocessed DataFrame
@@ -211,7 +139,7 @@ def preprocess_pipeline(**kwargs) -> pd.DataFrame:
 
     # Try to load from cache
     if not preprocess:
-        cached_df = _load_cached_csv(PREPROCESSED_CSV, "preprocessed data")
+        cached_df = load_cached_csv(PREPROCESSED_CSV, "preprocessed data")
         if cached_df is not None:
             return cached_df
 
@@ -237,7 +165,7 @@ def preprocess_pipeline(**kwargs) -> pd.DataFrame:
         'segment_index': 'segment_idx'
     })
 
-    _save_csv(df, PREPROCESSED_CSV, "preprocessed data")
+    save_csv(df, PREPROCESSED_CSV, "preprocessed data")
     return df
 
 
@@ -283,9 +211,13 @@ def segment_pipeline(**kwargs) -> pd.DataFrame:
         max_distance: Maximum distance from route (km) to split segments (default: 0.005)
         min_segment_length: Minimum points required to keep a segment (default: 3)
         window_size: Window size for cleaning NaN route values (default: 5)
-        force_segment: Force re-run of segmentation (default: False)
-        preprocess: Force re-run of preprocessing (default: False)
-        reload: Passed to load_pipeline (default: False)
+        segment: Re-run segmentation (default: False)
+        preprocess: Re-run preprocessing (default: False)
+        load: Re-load from database (default: False)
+
+    Note:
+        Pipeline hierarchy is applied externally via apply_pipeline_hierarchy().
+        This function only checks its own 'segment' flag.
 
     Returns:
         Segmented DataFrame with speeds
@@ -297,7 +229,7 @@ def segment_pipeline(**kwargs) -> pd.DataFrame:
     max_distance = kwargs.get('max_distance', 0.005)
     min_segment_length = kwargs.get('min_segment_length', 3)
     window_size = kwargs.get('window_size', 5)
-    force_segment = kwargs.get('force_segment', False)
+    segment = kwargs.get('segment', False)
     preprocess = kwargs.get('preprocess', False)
 
     # Get parameterized cache path
@@ -310,8 +242,8 @@ def segment_pipeline(**kwargs) -> pd.DataFrame:
     )
 
     # Try to load from cache
-    if not (force_segment or preprocess):
-        cached_df = _load_cached_csv(cache_path, "segmented data")
+    if not segment:
+        cached_df = load_cached_csv(cache_path, "segmented data")
         if cached_df is not None:
             return cached_df
 
@@ -350,7 +282,7 @@ def segment_pipeline(**kwargs) -> pd.DataFrame:
     final_segments = df['segment_id'].nunique()
     print(f"  ✓ Kept {final_segments}/{initial_segments} segments")
 
-    _save_csv(df, cache_path, "segmented data")
+    save_csv(df, cache_path, "segmented data")
     return df
 
 
@@ -366,9 +298,14 @@ def stops_pipeline(**kwargs) -> pd.DataFrame:
     5. Calculating polyline distances (distance from start, distance to end)
 
     Args:
-        force_stops: Force re-computation of stops preprocessing
-        force_segment: Force re-run of segmentation
-        preprocess: Force re-run of preprocessing
+        stops: Re-compute stops preprocessing
+        segment: Re-run segmentation
+        preprocess: Re-run preprocessing
+        load: Re-load from database
+
+    Note:
+        Pipeline hierarchy is applied externally via apply_pipeline_hierarchy().
+        This function only checks its own 'stops' flag.
 
     Returns:
         DataFrame with added columns: 'stop_name', 'stop_route', 'eta_seconds',
@@ -378,8 +315,8 @@ def stops_pipeline(**kwargs) -> pd.DataFrame:
         add_stops, filter_rows_after_stop, add_eta, add_polyline_distances
     )
 
-    force_stops = kwargs.get('force_stops', False)
-    force_segment = kwargs.get('force_segment', False)
+    stops = kwargs.get('stops', False)
+    segment = kwargs.get('segment', False)
     preprocess = kwargs.get('preprocess', False)
 
     # Extract segmentation parameters (with defaults matching segment_pipeline call below)
@@ -398,8 +335,8 @@ def stops_pipeline(**kwargs) -> pd.DataFrame:
     )
 
     # Try to load from cache
-    if not (force_stops or force_segment or preprocess):
-        cached_df = _load_cached_csv(cache_path, "stops preprocessed data")
+    if not stops:
+        cached_df = load_cached_csv(cache_path, "stops preprocessed data")
         if cached_df is not None:
             return cached_df
 
@@ -460,7 +397,7 @@ def stops_pipeline(**kwargs) -> pd.DataFrame:
     )
     print(f"  ✓ Calculated polyline distances for {len(df)} points")
 
-    _save_csv(df, cache_path, "stops preprocessed data")
+    save_csv(df, cache_path, "stops preprocessed data")
     return df
 
 
@@ -481,9 +418,15 @@ def split_pipeline(
         test_ratio: Fraction of data for test set
         random_seed: Random seed for reproducible splits
         mode: Pipeline mode - 'arima' (speed data) or 'lstm' (ETA data)
-        force_split: Force re-run of splitting
-        force_segment: Force re-run of segmentation
-        preprocess: Force re-run of preprocessing
+        split: Re-run splitting
+        stops: Re-compute stops (for lstm mode)
+        segment: Re-run segmentation
+        preprocess: Re-run preprocessing
+        load: Re-load from database
+
+    Note:
+        Pipeline hierarchy is applied externally via apply_pipeline_hierarchy().
+        This function only checks its own 'split' flag.
 
     Returns:
         Tuple of (train_df, test_df)
@@ -495,8 +438,8 @@ def split_pipeline(
         raise ValueError(f"mode must be 'arima' or 'lstm', got '{mode}'")
 
     use_eta_data = (mode == 'lstm')
-    force_split = kwargs.get('force_split', False)
-    force_segment = kwargs.get('force_segment', False)
+    split = kwargs.get('split', False)
+    segment = kwargs.get('segment', False)
     preprocess = kwargs.get('preprocess', False)
 
     # Get parameterized cache paths
@@ -515,11 +458,11 @@ def split_pipeline(
     )
 
     # Try to load from cache
-    if not (force_split or force_segment or preprocess):
+    if not split:
         if train_csv.exists() and test_csv.exists():
             print(f"Loading cached train/test split from {cache_dir}")
-            train_df = _load_cached_csv(train_csv, "train data")
-            test_df = _load_cached_csv(test_csv, "test data")
+            train_df = load_cached_csv(train_csv, "train data")
+            test_df = load_cached_csv(test_csv, "test data")
             if train_df is not None and test_df is not None:
                 return train_df, test_df
 
@@ -552,8 +495,8 @@ def split_pipeline(
 
     # Save split data
     print(f"Saving split data to {cache_dir}")
-    _save_csv(train_df, train_csv, f"{mode} train data")
-    _save_csv(test_df, test_csv, f"{mode} test data")
+    save_csv(train_df, train_csv, f"{mode} train data")
+    save_csv(test_df, test_csv, f"{mode} test data")
 
     print(f"  Train: {train_df['segment_id'].nunique()} segments, {len(train_df)} points")
     print(f"  Test:  {test_df['segment_id'].nunique()} segments, {len(test_df)} points")
@@ -629,7 +572,7 @@ def lstm_pipeline(
     test_ratio: float = 0.2,
     random_seed: int = 42,
     verbose: bool = True,
-    force_train: bool = True,
+    train: bool = True,
     limit_polylines: int = None,
     **kwargs
 ) -> dict[tuple[str, int], tuple]:
@@ -658,9 +601,16 @@ def lstm_pipeline(
         test_ratio: Train/test split ratio
         random_seed: Random seed
         verbose: Whether to print progress
-        force_train: If True, retrain models even if cached
+        train: Retrain models
         limit_polylines: Optional limit on number of polylines to process
-        **kwargs: Additional arguments passed to stops_pipeline and split_by_polyline_pipeline
+        stops: Re-compute stops preprocessing
+        segment: Re-run segmentation
+        preprocess: Re-run preprocessing
+        load: Re-load from database
+
+    Note:
+        Pipeline hierarchy is applied externally via apply_pipeline_hierarchy().
+        This function only checks its own 'train' flag for model training.
 
     Returns:
         Dictionary mapping (route, polyline_idx) to (model, results) tuples
@@ -719,7 +669,7 @@ def lstm_pipeline(
 
         # Save polyline data
         print(f"\nSaving polyline data to {polyline_dir}/")
-        _save_csv(df, polyline_data_path, "polyline data")
+        save_csv(df, polyline_data_path, "polyline data")
 
         # 1. Split into train/test
         print(f"\n1. Splitting into train/test (ratio: {test_ratio:.1%})...")
@@ -734,8 +684,8 @@ def lstm_pipeline(
         print(f"  ✓ Test:  {test_df['segment_id'].nunique()} segments, {len(test_df)} points")
 
         # Save train/test splits
-        _save_csv(train_df, train_path, "train data")
-        _save_csv(test_df, test_path, "test data")
+        save_csv(train_df, train_path, "train data")
+        save_csv(test_df, test_path, "test data")
 
         # 2. Clean data
         print("\n2. Cleaning data...")
@@ -757,7 +707,7 @@ def lstm_pipeline(
             continue
 
         # 3. Train or load model
-        if force_train or not model_path.exists():
+        if train or not model_path.exists():
             print("\n3. TRAINING MODEL")
             print(f"  Architecture: {num_layers} layers, {hidden_size} hidden units, seq_len={sequence_length}")
 
@@ -847,7 +797,7 @@ def arima_pipeline(
     value_column: str = 'speed_kmh',
     limit_segments: int = None,
     tune_hyperparams: bool = False,
-    force_fit: bool = True,
+    fit: bool = True,
     **kwargs
 ):
     """
@@ -860,7 +810,15 @@ def arima_pipeline(
         value_column: Column to model
         limit_segments: Optional limit on number of segments
         tune_hyperparams: If True, run hyperparameter search
-        force_fit: If True, retrain model even if cached
+        fit: Retrain model
+        split: Re-run splitting
+        segment: Re-run segmentation
+        preprocess: Re-run preprocessing
+        load: Re-load from database
+
+    Note:
+        Pipeline hierarchy is applied externally via apply_pipeline_hierarchy().
+        This function only checks its own 'fit' flag.
 
     Returns:
         dict: Results dictionary containing evaluation metrics
@@ -947,7 +905,7 @@ def arima_pipeline(
     # Train model (or load cached)
     pretrained_params = None
 
-    if force_fit or not model_params_path.exists():
+    if fit or not model_params_path.exists():
         print("\n" + "="*70)
         print("MODEL TRAINING")
         print("="*70)
@@ -1087,18 +1045,18 @@ if __name__ == "__main__":
 
     # Load Pipeline
     load_parser = subparsers.add_parser("load", help="Load raw vehicle location data")
-    load_parser.add_argument("--reload", action="store_true", help="Force fetching data from DB")
+    load_parser.add_argument("--load", action="store_true", help="Re-load data from database (triggers all downstream stages)")
 
     # Preprocess Pipeline
     preprocess_parser = subparsers.add_parser("preprocess", help="Run preprocessing only")
-    preprocess_parser.add_argument("--preprocess", action="store_true")
-    preprocess_parser.add_argument("--reload", action="store_true")
+    preprocess_parser.add_argument("--preprocess", action="store_true", help="Re-run preprocessing (triggers all downstream stages)")
+    preprocess_parser.add_argument("--load", action="store_true", help="Re-load data from database (triggers all stages)")
 
     # Stops Pipeline
     stops_parser = subparsers.add_parser("stops", help="Run stops pipeline (stops, ETAs, polyline distances)")
-    stops_parser.add_argument("--force-stops", action="store_true")
-    stops_parser.add_argument("--force-segment", action="store_true")
-    stops_parser.add_argument("--preprocess", action="store_true")
+    stops_parser.add_argument("--stops", action="store_true", help="Re-run stops processing (triggers all downstream stages)")
+    stops_parser.add_argument("--segment", action="store_true", help="Re-run segmentation (triggers stops + downstream stages)")
+    stops_parser.add_argument("--preprocess", action="store_true", help="Re-run preprocessing (triggers all downstream stages)")
     stops_parser.add_argument("--window-size", type=int, default=5, help="Window size for cleaning NaN routes")
 
     # LSTM Pipeline
@@ -1108,21 +1066,21 @@ if __name__ == "__main__":
     lstm_parser.add_argument("--hidden-size", type=int, default=50)
     lstm_parser.add_argument("--num-layers", type=int, default=2)
     lstm_parser.add_argument("--seq-len", type=int, default=10, dest="sequence_length")
-    lstm_parser.add_argument("--force-train", action="store_true")
-    lstm_parser.add_argument("--force-stops", action="store_true")
-    lstm_parser.add_argument("--force-segment", action="store_true")
-    lstm_parser.add_argument("--preprocess", action="store_true")
-    lstm_parser.add_argument("--reload", action="store_true")
+    lstm_parser.add_argument("--train", action="store_true", help="Re-train models")
+    lstm_parser.add_argument("--stops", action="store_true", help="Re-run stops processing (triggers train)")
+    lstm_parser.add_argument("--segment", action="store_true", help="Re-run segmentation (triggers stops + train)")
+    lstm_parser.add_argument("--preprocess", action="store_true", help="Re-run preprocessing (triggers all downstream stages)")
+    lstm_parser.add_argument("--load", action="store_true", help="Re-load data from database")
     lstm_parser.add_argument("--limit-polylines", type=int, default=None)
     lstm_parser.add_argument("--window-size", type=int, default=5, help="Window size for cleaning NaN routes")
 
     # ARIMA Pipeline
     arima_parser = subparsers.add_parser("arima", help="Run ARIMA pipeline")
-    arima_parser.add_argument("--force-split", action="store_true")
-    arima_parser.add_argument("--force-segment", action="store_true")
-    arima_parser.add_argument("--preprocess", action="store_true")
-    arima_parser.add_argument("--reload", action="store_true")
-    arima_parser.add_argument("--force-fit", action="store_true")
+    arima_parser.add_argument("--split", action="store_true", help="Re-run train/test split (triggers train + fit)")
+    arima_parser.add_argument("--segment", action="store_true", help="Re-run segmentation (triggers split + train + fit)")
+    arima_parser.add_argument("--preprocess", action="store_true", help="Re-run preprocessing (triggers all downstream stages)")
+    arima_parser.add_argument("--load", action="store_true", help="Re-load data from database")
+    arima_parser.add_argument("--fit", action="store_true", help="Re-fit model")
     arima_parser.add_argument("--max-timedelta", type=float, default=15)
     arima_parser.add_argument("--max-distance", type=float, default=0.01)
     arima_parser.add_argument("--min-segment-length", type=int, default=3)
@@ -1143,6 +1101,9 @@ if __name__ == "__main__":
         sys.exit(1)
 
     kwargs = {k: v for k, v in vars(args).items() if k != 'pipeline'}
+
+    # Apply pipeline hierarchy: if a stage is triggered, all downstream stages are also triggered
+    kwargs = apply_pipeline_hierarchy(kwargs)
 
     if args.pipeline == "load":
         df = load_pipeline(**kwargs)

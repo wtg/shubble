@@ -304,8 +304,26 @@ async def run_worker():
         logger.error(f"Failed to initialize Redis cache: {e}")
         # Continue without cache
 
-    try:
+    # Worker interval in seconds
+    interval = 5
+
+    async def ticker(interval_seconds):
+        """Async generator that yields at fixed intervals."""
+        next_tick = asyncio.get_event_loop().time()
         while True:
+            next_tick += interval_seconds
+            yield
+            now = asyncio.get_event_loop().time()
+            sleep_time = next_tick - now
+            if sleep_time > 0:
+                await asyncio.sleep(sleep_time)
+            else:
+                # Tick took longer than interval - skip ahead
+                logger.warning(f"Worker cycle exceeded {interval_seconds}s interval by {-sleep_time:.2f}s")
+                next_tick = now
+
+    try:
+        async for _ in ticker(interval):
             try:
                 # Get current vehicles in geofence before updating (cached)
                 current_vehicle_ids = await get_vehicles_in_geofence(session_factory)
@@ -319,7 +337,6 @@ async def run_worker():
             except Exception as e:
                 logger.exception(f"Error in worker loop: {e}")
 
-            await asyncio.sleep(5)
     finally:
         # Cleanup on shutdown
         logger.info("Shutting down worker...")
