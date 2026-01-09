@@ -1,9 +1,12 @@
 """
 Cache Utilities for ML Pipelines and Deployment.
 """
+import logging
 from pathlib import Path
 from typing import Optional
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 # ============================================================================
 # CACHE CONFIGURATION
@@ -83,17 +86,17 @@ def load_cached_csv(path: Path, description: str) -> Optional[pd.DataFrame]:
     if not path.exists():
         return None
 
-    print(f"Loading {description} from {path}")
+    logger.info(f"Loading {description} from {path}")
     df = pd.read_csv(path)
     if 'timestamp' in df.columns:
         df['timestamp'] = pd.to_datetime(df['timestamp'], format='mixed')
-    print(f"Loaded {len(df)} records from cache")
+    logger.info(f"Loaded {len(df)} records from cache")
     return df
 
 
 def save_csv(df: pd.DataFrame, path: Path, description: str):
     """Save a DataFrame to CSV."""
-    print(f"Saving {description} to {path}")
+    logger.info(f"Saving {description} to {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(path, index=False)
-    print(f"Saved {len(df)} records")
+    logger.info(f"Saved {len(df)} records")

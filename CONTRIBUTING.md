@@ -2,9 +2,10 @@
 
 ### Prerequisites
 
-- Python 3.8 or higher
-- Node.js 14 or higher
+- Python 3.13 or higher
+- Node.js 18 or higher
 - PostgreSQL 17 or higher
+- Redis 7 or higher (via Docker)
 
 You can install these using your system's package manager or download them from their official websites. When installing PostgreSQL, make sure to disable password authentication for localhost connections.
 
@@ -18,14 +19,17 @@ cd shubble
 ### Install dependencies
 
 ```bash
-# Python dependencies
+# Python dependencies (recommended: use a virtual environment)
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
+
 # Node.js dependencies (frontend)
 cd frontend
 npm install
 ```
 
-Note: you may want to install Python requirements in a virtual environment to avoid conflicts with other projects.
+Note: Using a virtual environment is strongly recommended to avoid conflicts with other Python projects.
 
 ### Setup Database
 
@@ -35,10 +39,11 @@ Create a new database named `shubble`:
 createdb shubble
 ```
 
-Initialize the database:
+Initialize the database using Alembic:
 
 ```bash
-flask db upgrade
+cd backend
+alembic upgrade head
 ```
 
 ### Verify Database Setup
@@ -116,15 +121,15 @@ To run the backend, you need to run the _server_ and the _worker_. They must be 
 #### Option 1. `cd` to the project root and run:
 
 ```bash
-flask run --port 8000
+uvicorn shubble:app --reload --port 8000
 ```
 
-This will start the Flask development server on port 8000. The backend will serve the built frontend files from the `/frontend/dist` directory.
+This will start the FastAPI development server on port 8000 with auto-reload enabled. The backend will serve the built frontend files from the `/frontend/dist` directory.
 
-#### Option 2. Run the backend using `gunicorn`, which is what Shubble's production server runs:
+#### Option 2. Run the backend using `uvicorn` with production settings (similar to production):
 
 ```bash
-gunicorn shubble:app
+uvicorn shubble:app --host 0.0.0.0 --port 8000 --workers 2
 ```
 
 #### To run the worker, `cd` to the project root and run:
@@ -133,7 +138,7 @@ gunicorn shubble:app
 python -m backend.worker
 ```
 
-This will start the worker process that handles background tasks, such as updating vehicle locations. It's important that you run it using `python -m backend.worker` (as a python package) so that it can find its local imports.
+This will start the async worker process that polls the Samsara API every 5 seconds to update vehicle locations and driver assignments. The worker uses a ticker pattern to maintain consistent 5-second intervals regardless of API response times.
 
 # Testing the backend
 
@@ -160,7 +165,7 @@ It expects the Shubble server to be running on `localhost://8000`, so make sure 
 
 # Database Migrations
 
-Most of the time, you will not need to worry about the database schema. However, if you do need to make changes, you can use Flask-Migrate to handle database migrations.
+Most of the time, you will not need to worry about the database schema. However, if you do need to make changes, you can use Alembic to handle database migrations.
 
 Some background: PostgreSQL is a _database management system_, a system for creating, managing, and querying databases.
 PostgreSQL (often abbreviated as Postgres) is a powerful, open-source _object-relational_ database system.
@@ -173,28 +178,30 @@ database: shubble (you create this)
     |
     schema: public (default schema, don't worry about this for now)
         |
-        tables: vehicles, geofence_events, vehicle_locations
+        tables: vehicles, geofence_events, vehicle_locations, drivers, driver_vehicle_assignments
             |
-            rows: representing shuttles (vehicles), entry/exit events (geofence_events), and instances of vehicle location data (vehicle_locations)
+            rows: representing shuttles (vehicles), entry/exit events (geofence_events),
+                 instances of vehicle location data (vehicle_locations), drivers, and driver assignments
                 |
-                columns: attributes, such as shuttle ids, event types, timestamps, etc.
+                columns: attributes, such as shuttle ids, event types, timestamps, driver names, etc.
 ```
 
-When you need to make changes to the database schema, you can use Flask-Migrate to handle database migrations. This allows you to version control your database schema and apply changes incrementally.
+When you need to make changes to the database schema, you can use Alembic to handle database migrations. This allows you to version control your database schema and apply changes incrementally.
 
-To create a new migration, modify `models.py` to reflect your change and then run:
+To create a new migration, modify `backend/models.py` to reflect your change and then run:
 
 ```bash
-flask db migrate -m "Add new attribute"
+cd backend
+alembic revision --autogenerate -m "Add new attribute"
 ```
 
 Then apply the migration using:
 
 ```bash
-flask db upgrade
+alembic upgrade head
 ```
 
-Migration files will be generated in the `migrations` directory. You should commit these files to the Git repository so that any database changes you make can be mirrored by others using `upgrade`.
+Migration files will be generated in the `backend/alembic/versions/` directory. You should commit these files to the Git repository so that any database changes you make can be mirrored by others using `upgrade`.
 
 # Staging Domains
 

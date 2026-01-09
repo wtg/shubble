@@ -15,6 +15,8 @@ from backend.config import settings
 from backend.database import create_async_db_engine, create_session_factory
 from backend.models import VehicleLocation, Driver, DriverVehicleAssignment
 from backend.utils import get_vehicles_in_geofence
+from backend.worker.data import generate_and_save_predictions
+from backend.cache_dataframe import update_today_dataframe
 
 # Logging config
 numeric_level = logging._nameToLevel.get(settings.LOG_LEVEL.upper(), logging.INFO)
@@ -60,6 +62,7 @@ async def update_locations(session_factory):
             has_next_page = True
             after_token = None
             new_records_added = 0
+            updated_vehicle_ids = []
 
             while has_next_page:
                 # Add pagination token if present
@@ -73,7 +76,7 @@ async def update_locations(session_factory):
                 # Handle non-200 responses
                 if response.status_code != 200:
                     logger.error(f"API error: {response.status_code} {response.text}")
-                    return
+                    return []
 
                 data = response.json()
 
@@ -131,6 +134,8 @@ async def update_locations(session_factory):
                         # If a row was returned, an insert occurred
                         if inserted_id:
                             new_records_added += 1
+                            if vehicle_id not in updated_vehicle_ids:
+                                updated_vehicle_ids.append(vehicle_id)
 
                     # Only commit if we actually added new records
                     if new_records_added > 0:
@@ -145,10 +150,14 @@ async def update_locations(session_factory):
                             f"No new location data for {len(current_vehicle_ids)} vehicles"
                         )
 
+            return updated_vehicle_ids
+
     except httpx.HTTPError as e:
         logger.error(f"Failed to fetch locations: {e}")
+        return []
     except Exception as e:
         logger.exception(f"Unexpected error in update_locations: {e}")
+        return []
 
 
 async def update_driver_assignments(session_factory, vehicle_ids):
@@ -329,10 +338,19 @@ async def run_worker():
                 current_vehicle_ids = await get_vehicles_in_geofence(session_factory)
 
                 # Update locations and driver assignments in parallel
-                await asyncio.gather(
+                results = await asyncio.gather(
                     update_locations(session_factory),
                     update_driver_assignments(session_factory, current_vehicle_ids),
                 )
+
+                # If locations were updated, refresh the ML data cache
+                updated_vehicles = results[0]
+                if updated_vehicles:
+                    logger.info(f"Triggering ML cache update for {len(updated_vehicles)} vehicles")
+                    await update_today_dataframe()
+
+                    # Generate predictions
+                    await generate_and_save_predictions(updated_vehicles)
 
             except Exception as e:
                 logger.exception(f"Error in worker loop: {e}")

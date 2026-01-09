@@ -1,7 +1,7 @@
 """SQLAlchemy models for async database operations."""
 from datetime import datetime, timezone
 from typing import Optional
-from sqlalchemy import String, Integer, Float, Boolean, DateTime, ForeignKey, Index, UniqueConstraint
+from sqlalchemy import String, Integer, Float, Boolean, DateTime, ForeignKey, Index, UniqueConstraint, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.database import Base
 
@@ -22,6 +22,8 @@ class Vehicle(Base):
     geofence_events: Mapped[list["GeofenceEvent"]] = relationship(back_populates="vehicle", lazy="selectin")
     locations: Mapped[list["VehicleLocation"]] = relationship(back_populates="vehicle", lazy="selectin")
     driver_assignments: Mapped[list["DriverVehicleAssignment"]] = relationship(back_populates="vehicle", lazy="selectin")
+    etas: Mapped[list["ETA"]] = relationship(back_populates="vehicle", lazy="selectin")
+    predicted_locations: Mapped[list["PredictedLocation"]] = relationship(back_populates="vehicle", lazy="selectin")
 
     def __repr__(self):
         return f"<Vehicle {self.id} - {self.name}>"
@@ -108,3 +110,41 @@ class DriverVehicleAssignment(Base):
 
     def __repr__(self):
         return f"<DriverVehicleAssignment {self.driver_id} -> {self.vehicle_id}>"
+
+
+class ETA(Base):
+    __tablename__ = "etas"
+    __table_args__ = (
+        Index("ix_etas_vehicle_timestamp", "vehicle_id", "timestamp"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    vehicle_id: Mapped[str] = mapped_column(String, ForeignKey("vehicles.id"), nullable=False)
+    etas: Mapped[dict] = mapped_column(JSON, nullable=False)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    vehicle: Mapped["Vehicle"] = relationship(back_populates="etas")
+
+    def __repr__(self):
+        return f"<ETA {self.vehicle_id} @ {self.timestamp}>"
+
+
+class PredictedLocation(Base):
+    __tablename__ = "predicted_locations"
+    __table_args__ = (
+        Index("ix_predicted_locations_vehicle_timestamp", "vehicle_id", "timestamp"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    vehicle_id: Mapped[str] = mapped_column(String, ForeignKey("vehicles.id"), nullable=False)
+    speed_kmh: Mapped[float] = mapped_column(Float, nullable=False)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    vehicle: Mapped["Vehicle"] = relationship(back_populates="predicted_locations")
+
+    def __repr__(self):
+        return f"<PredictedLocation {self.vehicle_id} @ {self.timestamp} - {self.speed_kmh} km/h>"

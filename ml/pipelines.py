@@ -3,10 +3,13 @@ ML Pipeline Utilities
 
 Complete end-to-end pipelines for preprocessing and train/test splitting.
 """
+import logging
 import numpy as np
 import pandas as pd
 from pathlib import Path
 from typing import Tuple, Optional
+
+logger = logging.getLogger(__name__)
 
 # ============================================================================
 # PIPELINE HIERARCHY
@@ -107,13 +110,13 @@ def load_pipeline(**kwargs) -> pd.DataFrame:
             return cached_df
 
     # Fetch from database
-    print("Fetching vehicle locations from database...")
+    logger.info("Fetching vehicle locations from database...")
     df = load_vehicle_locations()
     save_csv(df, RAW_CSV, "fetched data")
     return df
 
 
-def preprocess_pipeline(**kwargs) -> pd.DataFrame:
+def preprocess_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
     """
     Run the preprocessing pipeline on vehicle location data.
 
@@ -123,6 +126,7 @@ def preprocess_pipeline(**kwargs) -> pd.DataFrame:
     3. Add closest route information
 
     Args:
+        df: Optional DataFrame to process. If None, loads from load_pipeline.
         preprocess: Re-compute preprocessing
         load: Re-load from database
 
@@ -137,25 +141,26 @@ def preprocess_pipeline(**kwargs) -> pd.DataFrame:
 
     preprocess = kwargs.get('preprocess', False)
 
-    # Try to load from cache
-    if not preprocess:
+    # Try to load from cache (only if no input df provided)
+    if df is None and not preprocess:
         cached_df = load_cached_csv(PREPROCESSED_CSV, "preprocessed data")
         if cached_df is not None:
             return cached_df
 
-    print("="*70)
-    print("PREPROCESSING PIPELINE")
-    print("="*70)
+    logger.info("="*70)
+    logger.info("PREPROCESSING PIPELINE")
+    logger.info("="*70)
 
-    # Load data
-    df = load_pipeline(**kwargs)
+    # Load data if not provided
+    if df is None:
+        df = load_pipeline(**kwargs)
 
     # Add epoch seconds
-    print("Step 1/2: Converting timestamps to epoch seconds...")
+    logger.info("Step 1/2: Converting timestamps to epoch seconds...")
     to_epoch_seconds(df, 'timestamp', 'epoch_seconds')
 
     # Add route information
-    print("Step 2/2: Adding closest route information...")
+    logger.info("Step 2/2: Adding closest route information...")
     add_closest_points(df, 'latitude', 'longitude', {
         'distance': 'dist_to_route',
         'route_name': 'route',
@@ -165,7 +170,8 @@ def preprocess_pipeline(**kwargs) -> pd.DataFrame:
         'segment_index': 'segment_idx'
     })
 
-    save_csv(df, PREPROCESSED_CSV, "preprocessed data")
+    if df is None:
+        save_csv(df, PREPROCESSED_CSV, "preprocessed data")
     return df
 
 
@@ -181,7 +187,7 @@ def speed_pipeline(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
     """
     from ml.data.preprocess import distance_delta, speed
 
-    print("Calculating distance and speed...")
+    logger.info("Calculating distance and speed...")
 
     # Calculate distance and speed
     df = (df
@@ -198,15 +204,16 @@ def speed_pipeline(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
     # Clean up
     df = df.drop(columns=['_new_segment'])
 
-    print("  ✓ Calculated segment-local speeds")
+    logger.info("  ✓ Calculated segment-local speeds")
     return df
 
 
-def segment_pipeline(**kwargs) -> pd.DataFrame:
+def segment_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
     """
     Segment pipeline: Preprocess -> Segment -> Clean Routes -> Speed -> Filter.
 
     Args (via kwargs):
+        df: Optional DataFrame (preprocessed). If None, runs preprocess_pipeline.
         max_timedelta: Maximum time gap (seconds) for consecutive points (default: 15)
         max_distance: Maximum distance from route (km) to split segments (default: 0.005)
         min_segment_length: Minimum points required to keep a segment (default: 3)
@@ -242,21 +249,22 @@ def segment_pipeline(**kwargs) -> pd.DataFrame:
     )
 
     # Try to load from cache
-    if not segment:
+    if df is None and not segment:
         cached_df = load_cached_csv(cache_path, "segmented data")
         if cached_df is not None:
             return cached_df
 
-    print("="*70)
-    print("SEGMENT PIPELINE")
-    print("="*70)
+    logger.info("="*70)
+    logger.info("SEGMENT PIPELINE")
+    logger.info("="*70)
 
-    # Step 1: Preprocess
-    df = preprocess_pipeline(**kwargs)
-    print(f"Step 1/5: Preprocessed {len(df)} location points")
+    # Step 1: Preprocess (if df not provided)
+    if df is None:
+        df = preprocess_pipeline(**kwargs)
+    logger.info(f"Step 1/5: Preprocessed {len(df)} location points")
 
     # Step 2: Segment
-    print(f"Step 2/5: Segmenting (max gap: {max_timedelta}s, max distance: {max_distance} km)...")
+    logger.info(f"Step 2/5: Segmenting (max gap: {max_timedelta}s, max distance: {max_distance} km)...")
     df = segment_by_consecutive(
         df,
         max_timedelta=max_timedelta,
@@ -264,29 +272,30 @@ def segment_pipeline(**kwargs) -> pd.DataFrame:
         distance_column='dist_to_route',
         max_distance_to_route=max_distance
     )
-    print(f"  ✓ Created {df['segment_id'].nunique()} segments")
+    logger.info(f"  ✓ Created {df['segment_id'].nunique()} segments")
 
     # Step 3: Clean NaN route values using segment-aware windowing
-    print(f"Step 3/5: Cleaning NaN route values (window size: {window_size})...")
+    logger.info(f"Step 3/5: Cleaning NaN route values (window size: {window_size})...")
     df = clean_closest_route(df, route_column='route', polyline_idx_column='polyline_idx',
                             segment_column='segment_id', window_size=window_size)
 
     # Step 4: Add speed
-    print("Step 4/5: Adding speed calculations...")
+    logger.info("Step 4/5: Adding speed calculations...")
     df = speed_pipeline(df, **kwargs)
 
     # Step 5: Filter short segments
-    print(f"Step 5/5: Filtering segments < {min_segment_length} points...")
+    logger.info(f"Step 5/5: Filtering segments < {min_segment_length} points...")
     initial_segments = df['segment_id'].nunique()
     df = filter_segments_by_length(df, 'segment_id', min_segment_length)
     final_segments = df['segment_id'].nunique()
-    print(f"  ✓ Kept {final_segments}/{initial_segments} segments")
+    logger.info(f"  ✓ Kept {final_segments}/{initial_segments} segments")
 
-    save_csv(df, cache_path, "segmented data")
+    if df is None:
+        save_csv(df, cache_path, "segmented data")
     return df
 
 
-def stops_pipeline(**kwargs) -> pd.DataFrame:
+def stops_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
     """
     Stops Pipeline: Segment -> Add Stops -> Filter Rows After Stop -> Add ETAs -> Add Polyline Distances.
 
@@ -298,6 +307,7 @@ def stops_pipeline(**kwargs) -> pd.DataFrame:
     5. Calculating polyline distances (distance from start, distance to end)
 
     Args:
+        df: Optional DataFrame (segmented). If None, runs segment_pipeline.
         stops: Re-compute stops preprocessing
         segment: Re-run segmentation
         preprocess: Re-run preprocessing
@@ -335,14 +345,14 @@ def stops_pipeline(**kwargs) -> pd.DataFrame:
     )
 
     # Try to load from cache
-    if not stops:
+    if df is None and not stops:
         cached_df = load_cached_csv(cache_path, "stops preprocessed data")
         if cached_df is not None:
             return cached_df
 
-    print("="*70)
-    print("STOPS PIPELINE")
-    print("="*70)
+    logger.info("="*70)
+    logger.info("STOPS PIPELINE")
+    logger.info("="*70)
 
     # Build complete kwargs with extracted parameters (ensures consistency with cache path)
     segment_kwargs = {
@@ -354,33 +364,34 @@ def stops_pipeline(**kwargs) -> pd.DataFrame:
     }
 
     # Step 1: Get segmented data
-    df = segment_pipeline(**segment_kwargs)
+    if df is None:
+        df = segment_pipeline(**segment_kwargs)
 
     # Step 2: Add stops
-    print("Step 1/4: Adding stop information...")
+    logger.info("Step 1/4: Adding stop information...")
     add_stops(df, 'latitude', 'longitude', {
         'route_name': 'stop_route',
         'stop_name': 'stop_name'
     })
 
     # Step 3: Filter rows after last stop (also removes segments without stops)
-    print("Step 2/4: Filtering rows after last stop...")
+    logger.info("Step 2/4: Filtering rows after last stop...")
     initial_points = len(df)
     initial_segments = df['segment_id'].nunique()
     df = filter_rows_after_stop(df, 'segment_id', 'stop_name')
     removed_points = initial_points - len(df)
     final_segments = df['segment_id'].nunique()
     removed_segments = initial_segments - final_segments
-    print(f"  ✓ Removed {removed_points} points ({removed_points/initial_points*100:.1f}%)")
-    print(f"  ✓ Removed {removed_segments} segments without stops")
+    logger.info(f"  ✓ Removed {removed_points} points ({removed_points/initial_points*100:.1f}%)")
+    logger.info(f"  ✓ Removed {removed_segments} segments without stops")
 
     # Step 4: Add ETAs
-    print("Step 3/4: Calculating ETAs...")
+    logger.info("Step 3/4: Calculating ETAs...")
     df = add_eta(df, 'stop_name', 'epoch_seconds', 'eta_seconds')
-    print(f"  ✓ Calculated ETAs for {len(df)} points")
+    logger.info(f"  ✓ Calculated ETAs for {len(df)} points")
 
     # Step 5: Add polyline distances
-    print("Step 4/4: Calculating polyline distances...")
+    logger.info("Step 4/4: Calculating polyline distances...")
     add_polyline_distances(
         df, 'latitude', 'longitude',
         {
@@ -395,9 +406,10 @@ def stops_pipeline(**kwargs) -> pd.DataFrame:
         polyline_index_column='polyline_idx',
         segment_index_column='segment_idx'
     )
-    print(f"  ✓ Calculated polyline distances for {len(df)} points")
+    logger.info(f"  ✓ Calculated polyline distances for {len(df)} points")
 
-    save_csv(df, cache_path, "stops preprocessed data")
+    if df is None:
+        save_csv(df, cache_path, "stops preprocessed data")
     return df
 
 
@@ -460,31 +472,31 @@ def split_pipeline(
     # Try to load from cache
     if not split:
         if train_csv.exists() and test_csv.exists():
-            print(f"Loading cached train/test split from {cache_dir}")
+            logger.info(f"Loading cached train/test split from {cache_dir}")
             train_df = load_cached_csv(train_csv, "train data")
             test_df = load_cached_csv(test_csv, "test data")
             if train_df is not None and test_df is not None:
                 return train_df, test_df
 
-    print("="*70)
-    print(f"SPLIT PIPELINE ({mode.upper()} MODE)")
-    print("="*70)
+    logger.info("="*70)
+    logger.info(f"SPLIT PIPELINE ({mode.upper()} MODE)")
+    logger.info("="*70)
 
     # Load data based on mode
     if use_eta_data:
-        print("Loading stops preprocessed data...")
+        logger.info("Loading stops preprocessed data...")
         df = stops_pipeline(**kwargs)
     else:
-        print("Loading segmented data...")
+        logger.info("Loading segmented data...")
         df = segment_pipeline(**kwargs)
 
-    print(f"  ✓ Loaded {len(df)} points, {df['segment_id'].nunique()} segments")
+    logger.info(f"  ✓ Loaded {len(df)} points, {df['segment_id'].nunique()} segments")
 
     if len(df) == 0:
         raise ValueError("No valid segments found")
 
     # Split into train/test
-    print(f"Splitting into train/test (ratio: {test_ratio:.1%}, seed: {random_seed})...")
+    logger.info(f"Splitting into train/test (ratio: {test_ratio:.1%}, seed: {random_seed})...")
     train_df, test_df = segmented_train_test_split(
         df,
         test_ratio=test_ratio,
@@ -494,12 +506,12 @@ def split_pipeline(
     )
 
     # Save split data
-    print(f"Saving split data to {cache_dir}")
+    logger.info(f"Saving split data to {cache_dir}")
     save_csv(train_df, train_csv, f"{mode} train data")
     save_csv(test_df, test_csv, f"{mode} test data")
 
-    print(f"  Train: {train_df['segment_id'].nunique()} segments, {len(train_df)} points")
-    print(f"  Test:  {test_df['segment_id'].nunique()} segments, {len(test_df)} points")
+    logger.info(f"  Train: {train_df['segment_id'].nunique()} segments, {len(train_df)} points")
+    logger.info(f"  Test:  {test_df['segment_id'].nunique()} segments, {len(test_df)} points")
     return train_df, test_df
 
 
@@ -522,13 +534,13 @@ def split_by_polyline_pipeline(df: pd.DataFrame = None, **kwargs) -> dict[tuple[
     Example:
         >>> polyline_dfs = split_by_polyline_pipeline()
         >>> for (route, idx), df in polyline_dfs.items():
-        ...     print(f"{route} segment {idx}: {len(df)} points")
+        ...     logger.info(f"{route} segment {idx}: {len(df)} points")
     """
     from ml.data.preprocess import split_by_route_polyline_index
 
-    print("="*70)
-    print("SPLIT BY POLYLINE PIPELINE")
-    print("="*70)
+    logger.info("="*70)
+    logger.info("SPLIT BY POLYLINE PIPELINE")
+    logger.info("="*70)
 
     # Load preprocessed data if not provided
     if df is None:
@@ -542,16 +554,16 @@ def split_by_polyline_pipeline(df: pd.DataFrame = None, **kwargs) -> dict[tuple[
         )
 
     # Split by polyline
-    print(f"Splitting {len(df)} points by route and polyline index...")
+    logger.info(f"Splitting {len(df)} points by route and polyline index...")
     polyline_dfs = split_by_route_polyline_index(
         df,
         route_column='route',
         polyline_index_column='polyline_idx'
     )
 
-    print(f"  ✓ Split into {len(polyline_dfs)} unique polylines:")
+    logger.info(f"  ✓ Split into {len(polyline_dfs)} unique polylines:")
     for (route, idx), polyline_df in sorted(polyline_dfs.items()):
-        print(f"    - {route} segment {idx}: {len(polyline_df)} points")
+        logger.info(f"    - {route} segment {idx}: {len(polyline_df)} points")
 
     return polyline_dfs
 
@@ -619,9 +631,9 @@ def lstm_pipeline(
     from ml.evaluation.evaluate import evaluate_lstm
     from ml.models.lstm import LSTMModel
 
-    print("="*70)
-    print("LSTM PIPELINE (PER-POLYLINE TRAINING)")
-    print("="*70)
+    logger.info("="*70)
+    logger.info("LSTM PIPELINE (PER-POLYLINE TRAINING)")
+    logger.info("="*70)
 
     # Step 1: Get stops preprocessed data (segmented, stops added, ETAs calculated, polyline distances, filtered)
     stops_df = stops_pipeline(**kwargs)
@@ -631,10 +643,10 @@ def lstm_pipeline(
 
     # Limit polylines if requested
     if limit_polylines:
-        print(f"\nLimiting to {limit_polylines} polylines...")
+        logger.info(f"\nLimiting to {limit_polylines} polylines...")
         polyline_keys = sorted(polyline_dfs.keys())[:limit_polylines]
         polyline_dfs = {k: polyline_dfs[k] for k in polyline_keys}
-        print(f"  ✓ Processing {len(polyline_dfs)} polylines")
+        logger.info(f"  ✓ Processing {len(polyline_dfs)} polylines")
 
     # Store results for each polyline
     polyline_models = {}
@@ -643,17 +655,17 @@ def lstm_pipeline(
     for polyline_key, df in sorted(polyline_dfs.items()):
         route_name, polyline_idx = polyline_key
 
-        print("\n" + "="*70)
-        print(f"POLYLINE: {route_name} - Segment {polyline_idx}")
-        print("="*70)
-        print(f"  Data points: {len(df)}")
-        print(f"  Segments: {df['segment_id'].nunique()}")
-        print(f"  Stops detected: {df['stop_name'].notna().sum()}")
-        print(f"  ETAs calculated: {df['eta_seconds'].notna().sum()}")
+        logger.info("\n" + "="*70)
+        logger.info(f"POLYLINE: {route_name} - Segment {polyline_idx}")
+        logger.info("="*70)
+        logger.info(f"  Data points: {len(df)}")
+        logger.info(f"  Segments: {df['segment_id'].nunique()}")
+        logger.info(f"  Stops detected: {df['stop_name'].notna().sum()}")
+        logger.info(f"  ETAs calculated: {df['eta_seconds'].notna().sum()}")
 
         # Check if we have enough segments
         if df['segment_id'].nunique() < 2:
-            print(f"  ⚠ Only {df['segment_id'].nunique()} segment(s) - skipping this polyline")
+            logger.info(f"  ⚠ Only {df['segment_id'].nunique()} segment(s) - skipping this polyline")
             continue
 
         # Create polyline-specific directory
@@ -668,11 +680,11 @@ def lstm_pipeline(
         model_path = polyline_dir / "model.pth"
 
         # Save polyline data
-        print(f"\nSaving polyline data to {polyline_dir}/")
+        logger.info(f"\nSaving polyline data to {polyline_dir}/")
         save_csv(df, polyline_data_path, "polyline data")
 
         # 1. Split into train/test
-        print(f"\n1. Splitting into train/test (ratio: {test_ratio:.1%})...")
+        logger.info(f"\n1. Splitting into train/test (ratio: {test_ratio:.1%})...")
         train_df, test_df = segmented_train_test_split(
             df,
             test_ratio=test_ratio,
@@ -680,15 +692,15 @@ def lstm_pipeline(
             timestamp_column='timestamp',
             segment_column='segment_id'
         )
-        print(f"  ✓ Train: {train_df['segment_id'].nunique()} segments, {len(train_df)} points")
-        print(f"  ✓ Test:  {test_df['segment_id'].nunique()} segments, {len(test_df)} points")
+        logger.info(f"  ✓ Train: {train_df['segment_id'].nunique()} segments, {len(train_df)} points")
+        logger.info(f"  ✓ Test:  {test_df['segment_id'].nunique()} segments, {len(test_df)} points")
 
         # Save train/test splits
         save_csv(train_df, train_path, "train data")
         save_csv(test_df, test_path, "test data")
 
         # 2. Clean data
-        print("\n2. Cleaning data...")
+        logger.info("\n2. Cleaning data...")
         def clean_df(df_input, name="data"):
             if 'speed_kmh' in df_input.columns:
                 df_input['speed_kmh'] = df_input['speed_kmh'].fillna(0)
@@ -696,20 +708,20 @@ def lstm_pipeline(
             initial = len(df_input)
             df_output = df_input.dropna(subset=req_cols)
             if len(df_output) < initial:
-                print(f"  ✓ Dropped {initial - len(df_output)} rows with missing values in {name}")
+                logger.info(f"  ✓ Dropped {initial - len(df_output)} rows with missing values in {name}")
             return df_output
 
         train_df = clean_df(train_df, "train set")
         test_df = clean_df(test_df, "test set")
 
         if len(train_df) == 0 or len(test_df) == 0:
-            print(f"  ⚠ Insufficient data after cleaning - skipping this polyline")
+            logger.info(f"  ⚠ Insufficient data after cleaning - skipping this polyline")
             continue
 
         # 3. Train or load model
         if train or not model_path.exists():
-            print("\n3. TRAINING MODEL")
-            print(f"  Architecture: {num_layers} layers, {hidden_size} hidden units, seq_len={sequence_length}")
+            logger.info("\n3. TRAINING MODEL")
+            logger.info(f"  Architecture: {num_layers} layers, {hidden_size} hidden units, seq_len={sequence_length}")
 
             try:
                 model = train_lstm(
@@ -726,15 +738,15 @@ def lstm_pipeline(
                     verbose=verbose
                 )
 
-                print(f"\n  Saving model to {model_path}...")
+                logger.info(f"\n  Saving model to {model_path}...")
                 model.save(model_path)
-                print("  ✓ Model trained and saved")
+                logger.info("  ✓ Model trained and saved")
             except Exception as e:
-                print(f"  ✗ Training failed: {e}")
+                logger.info(f"  ✗ Training failed: {e}")
                 continue
         else:
-            print(f"\n3. LOADING CACHED MODEL")
-            print(f"  Loading from {model_path}...")
+            logger.info(f"\n3. LOADING CACHED MODEL")
+            logger.info(f"  Loading from {model_path}...")
 
             input_size = len(input_columns)
             output_size = len(output_columns)
@@ -746,10 +758,10 @@ def lstm_pipeline(
                 dropout=dropout
             )
             model.load(model_path)
-            print(f"  ✓ Loaded LSTM model")
+            logger.info(f"  ✓ Loaded LSTM model")
 
         # 4. Evaluate
-        print("\n4. MODEL EVALUATION")
+        logger.info("\n4. MODEL EVALUATION")
 
         try:
             results = evaluate_lstm(
@@ -761,27 +773,27 @@ def lstm_pipeline(
                 segment_column='segment_id'
             )
 
-            print(f"  Test predictions: {results['num_predictions']}")
-            print(f"  Test MSE: {results['mse']:.4f}")
-            print(f"  Test RMSE: {results['rmse']:.4f}")
-            print(f"  Test MAE: {results['mae']:.4f}")
+            logger.info(f"  Test predictions: {results['num_predictions']}")
+            logger.info(f"  Test MSE: {results['mse']:.4f}")
+            logger.info(f"  Test RMSE: {results['rmse']:.4f}")
+            logger.info(f"  Test MAE: {results['mae']:.4f}")
 
             # Store model and results
             polyline_models[polyline_key] = (model, results)
         except Exception as e:
-            print(f"  ✗ Evaluation failed: {e}")
+            logger.info(f"  ✗ Evaluation failed: {e}")
             continue
 
     # Summary
-    print("\n" + "="*70)
-    print("PIPELINE SUMMARY")
-    print("="*70)
-    print(f"Successfully trained {len(polyline_models)} models:")
+    logger.info("\n" + "="*70)
+    logger.info("PIPELINE SUMMARY")
+    logger.info("="*70)
+    logger.info(f"Successfully trained {len(polyline_models)} models:")
     for (route, idx), (model, results) in sorted(polyline_models.items()):
         safe_route = route.replace(' ', '_').replace('/', '_')
         polyline_dir = LSTM_CACHE_DIR / f"{safe_route}_{idx}"
-        print(f"  {route} seg {idx}: RMSE={results['rmse']:.4f}, MAE={results['mae']:.4f}")
-        print(f"    → {polyline_dir}/")
+        logger.info(f"  {route} seg {idx}: RMSE={results['rmse']:.4f}, MAE={results['mae']:.4f}")
+        logger.info(f"    → {polyline_dir}/")
 
     return polyline_models
 
@@ -828,9 +840,9 @@ def arima_pipeline(
     from ml.training.train import fit_arima
     import pickle
 
-    print("="*70)
-    print("ARIMA PIPELINE")
-    print("="*70)
+    logger.info("="*70)
+    logger.info("ARIMA PIPELINE")
+    logger.info("="*70)
 
     # Get parameterized cache paths
     best_params_path = get_cache_path(
@@ -853,7 +865,7 @@ def arima_pipeline(
 
     # Limit segments if requested
     if limit_segments:
-        print(f"Limiting to {limit_segments} segments...")
+        logger.info(f"Limiting to {limit_segments} segments...")
         train_segments = train_df['segment_id'].unique()[:limit_segments]
         train_df = train_df[train_df['segment_id'].isin(train_segments)].copy()
         test_segments = test_df['segment_id'].unique()[:limit_segments]
@@ -861,9 +873,9 @@ def arima_pipeline(
 
     # Hyperparameter tuning (optional)
     if tune_hyperparams:
-        print("\n" + "="*70)
-        print("HYPERPARAMETER TUNING")
-        print("="*70)
+        logger.info("\n" + "="*70)
+        logger.info("HYPERPARAMETER TUNING")
+        logger.info("="*70)
 
         try:
             tuning_result = arima_hyperparameters(
@@ -882,7 +894,7 @@ def arima_pipeline(
             d = tuning_result['best_d']
             q = tuning_result['best_q']
 
-            print(f"\nSaving best parameters to {best_params_path}...")
+            logger.info(f"\nSaving best parameters to {best_params_path}...")
             with open(best_params_path, 'wb') as f:
                 pickle.dump({
                     'p': p, 'd': d, 'q': q,
@@ -892,24 +904,24 @@ def arima_pipeline(
                 }, f)
 
         except Exception as e:
-            print(f"Hyperparameter tuning failed: {e}")
-            print("Falling back to default parameters")
+            logger.info(f"Hyperparameter tuning failed: {e}")
+            logger.info("Falling back to default parameters")
     else:
         # Show cached parameters if available
         if best_params_path.exists():
             with open(best_params_path, 'rb') as f:
                 cached_params = pickle.load(f)
-                print(f"\nCached best parameters: ARIMA({cached_params['p']},{cached_params['d']},{cached_params['q']})")
-                print(f"Using command-line parameters: ARIMA({p},{d},{q})")
+                logger.info(f"\nCached best parameters: ARIMA({cached_params['p']},{cached_params['d']},{cached_params['q']})")
+                logger.info(f"Using command-line parameters: ARIMA({p},{d},{q})")
 
     # Train model (or load cached)
     pretrained_params = None
 
     if fit or not model_params_path.exists():
-        print("\n" + "="*70)
-        print("MODEL TRAINING")
-        print("="*70)
-        print(f"Training ARIMA({p},{d},{q}) on largest training segment...")
+        logger.info("\n" + "="*70)
+        logger.info("MODEL TRAINING")
+        logger.info("="*70)
+        logger.info(f"Training ARIMA({p},{d},{q}) on largest training segment...")
 
         try:
             train_segments = train_df['segment_id'].unique()
@@ -918,7 +930,7 @@ def arima_pipeline(
                 largest_segment_id = segment_sizes.idxmax()
                 train_segment = train_df[train_df['segment_id'] == largest_segment_id].copy()
 
-                print(f"  Training segment: {largest_segment_id} ({len(train_segment)} points)")
+                logger.info(f"  Training segment: {largest_segment_id} ({len(train_segment)} points)")
 
                 train_values = train_segment[value_column].dropna().values
                 model = fit_arima(train_values, p=p, d=d, q=q)
@@ -930,14 +942,14 @@ def arima_pipeline(
                         'params': pretrained_params,
                         'value_column': value_column
                     }, f)
-                print("  ✓ Model trained and saved")
+                logger.info("  ✓ Model trained and saved")
         except Exception as e:
-            print(f"  Warning: Training failed: {e}")
+            logger.info(f"  Warning: Training failed: {e}")
             pretrained_params = None
     else:
-        print("\n" + "="*70)
-        print("LOADING CACHED MODEL")
-        print("="*70)
+        logger.info("\n" + "="*70)
+        logger.info("LOADING CACHED MODEL")
+        logger.info("="*70)
 
         try:
             with open(model_params_path, 'rb') as f:
@@ -945,20 +957,20 @@ def arima_pipeline(
 
             if cached_model['p'] == p and cached_model['d'] == d and cached_model['q'] == q:
                 pretrained_params = cached_model['params']
-                print(f"  ✓ Loaded ARIMA({p},{d},{q}) parameters")
+                logger.info(f"  ✓ Loaded ARIMA({p},{d},{q}) parameters")
             else:
-                print(f"  Warning: Cached model is ARIMA({cached_model['p']},{cached_model['d']},{cached_model['q']}) but requested ARIMA({p},{d},{q})")
-                print("  Continuing without warm-start")
+                logger.info(f"  Warning: Cached model is ARIMA({cached_model['p']},{cached_model['d']},{cached_model['q']}) but requested ARIMA({p},{d},{q})")
+                logger.info("  Continuing without warm-start")
         except Exception as e:
-            print(f"  Warning: Failed to load cached model: {e}")
+            logger.info(f"  Warning: Failed to load cached model: {e}")
 
     # Evaluate on test segments
-    print("\n" + "="*70)
-    print("MODEL EVALUATION")
-    print("="*70)
+    logger.info("\n" + "="*70)
+    logger.info("MODEL EVALUATION")
+    logger.info("="*70)
 
     test_segments = test_df['segment_id'].unique()
-    print(f"Evaluating ARIMA({p},{d},{q}) on {len(test_segments)} test segments...")
+    logger.info(f"Evaluating ARIMA({p},{d},{q}) on {len(test_segments)} test segments...")
 
     all_predictions = []
     segment_results = []
@@ -992,7 +1004,7 @@ def arima_pipeline(
             all_predictions.append(predictions_df)
             num_evaluated += 1
 
-            print(f"RMSE: {result['rmse']:.4f}, MAE: {result['mae']:.4f}, Success: {result['success_rate']:.1%}")
+            logger.info(f"RMSE: {result['rmse']:.4f}, MAE: {result['mae']:.4f}, Success: {result['success_rate']:.1%}")
 
         except Exception as e:
             num_failed += 1
@@ -1008,14 +1020,14 @@ def arima_pipeline(
         overall_rmse = np.sqrt(overall_mse) if not np.isnan(overall_mse) else np.nan
         overall_mae = successful_preds['absolute_error'].mean() if len(successful_preds) > 0 else np.nan
 
-        print(f"\n{'='*70}")
-        print("OVERALL RESULTS")
-        print(f"{'='*70}")
-        print(f"  Segments evaluated: {num_evaluated}/{len(test_segments)}")
-        print(f"  Segments failed: {num_failed}/{len(test_segments)}")
-        print(f"  Overall MSE: {overall_mse:.4f}")
-        print(f"  Overall RMSE: {overall_rmse:.4f}")
-        print(f"  Overall MAE: {overall_mae:.4f}")
+        logger.info(f"\n{'='*70}")
+        logger.info("OVERALL RESULTS")
+        logger.info(f"{'='*70}")
+        logger.info(f"  Segments evaluated: {num_evaluated}/{len(test_segments)}")
+        logger.info(f"  Segments failed: {num_failed}/{len(test_segments)}")
+        logger.info(f"  Overall MSE: {overall_mse:.4f}")
+        logger.info(f"  Overall RMSE: {overall_rmse:.4f}")
+        logger.info(f"  Overall MAE: {overall_mae:.4f}")
 
         return {
             'overall_mse': overall_mse,
@@ -1028,7 +1040,7 @@ def arima_pipeline(
             'num_failed': num_failed
         }
     else:
-        print(f"\n  No segments successfully evaluated!")
+        logger.info(f"\n  No segments successfully evaluated!")
         return None
 
 
@@ -1039,6 +1051,13 @@ def arima_pipeline(
 if __name__ == "__main__":
     import argparse
     import sys
+
+    # Configure logging for CLI execution
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
 
     parser = argparse.ArgumentParser(description="Run Shubble ML Pipelines")
     subparsers = parser.add_subparsers(dest="pipeline", help="Pipeline to run")
@@ -1107,23 +1126,23 @@ if __name__ == "__main__":
 
     if args.pipeline == "load":
         df = load_pipeline(**kwargs)
-        print(f"\nLoaded {len(df)} records")
+        logger.info(f"\nLoaded {len(df)} records")
     elif args.pipeline == "preprocess":
         df = preprocess_pipeline(**kwargs)
-        print(f"\nPreprocessed {len(df)} records")
+        logger.info(f"\nPreprocessed {len(df)} records")
     elif args.pipeline == "stops":
         df = stops_pipeline(**kwargs)
-        print(f"\nGenerated stops data (stops, ETAs, polyline distances) for {len(df)} records")
+        logger.info(f"\nGenerated stops data (stops, ETAs, polyline distances) for {len(df)} records")
     elif args.pipeline == "lstm":
         polyline_models = lstm_pipeline(**kwargs)
         if polyline_models:
             avg_rmse = sum(r['rmse'] for _, r in polyline_models.values()) / len(polyline_models)
             avg_mae = sum(r['mae'] for _, r in polyline_models.values()) / len(polyline_models)
-            print(f"\n✓ LSTM pipeline complete. Trained {len(polyline_models)} models.")
-            print(f"  Average RMSE: {avg_rmse:.4f}, Average MAE: {avg_mae:.4f}")
+            logger.info(f"\n✓ LSTM pipeline complete. Trained {len(polyline_models)} models.")
+            logger.info(f"  Average RMSE: {avg_rmse:.4f}, Average MAE: {avg_mae:.4f}")
         else:
-            print("\n✗ No models were trained successfully.")
+            logger.info("\n✗ No models were trained successfully.")
     elif args.pipeline == "arima":
         results = arima_pipeline(**kwargs)
         if results:
-            print(f"\n✓ ARIMA pipeline complete. Overall RMSE: {results['overall_rmse']:.4f}")
+            logger.info(f"\n✓ ARIMA pipeline complete. Overall RMSE: {results['overall_rmse']:.4f}")

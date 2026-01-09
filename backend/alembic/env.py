@@ -1,12 +1,18 @@
 """Alembic environment configuration for async SQLAlchemy."""
 import asyncio
+import sys
 from logging.config import fileConfig
+from pathlib import Path
 
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
+
+# Add project root to path to ensure 'backend' can be imported
+# This allows running alembic from backend/ or root directories
+sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 # Load application config to get DATABASE_URL
 from backend.config import settings

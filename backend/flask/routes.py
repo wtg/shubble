@@ -15,7 +15,7 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import selectinload
 
 from backend.database import get_db
-from backend.models import Vehicle, GeofenceEvent, VehicleLocation, DriverVehicleAssignment
+from backend.models import Vehicle, GeofenceEvent, VehicleLocation, DriverVehicleAssignment, ETA, PredictedLocation
 from backend.config import settings
 from backend.time_utils import get_campus_start_of_day
 from backend.utils import get_vehicles_in_geofence_query
@@ -25,6 +25,93 @@ from shared.stops import Stops
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+@cache(expire=60, namespace="predictions")
+async def get_latest_etas_and_predicted_locations(vehicle_ids: list[str], db: AsyncSession):
+    """
+    Get the latest ETA and predicted location for each vehicle.
+
+    Args:
+        vehicle_ids: List of vehicle IDs to get predictions for
+        db: Async database session
+
+    Returns:
+        Tuple of (etas_dict, predicted_locations_dict) where:
+        - etas_dict maps vehicle_id to latest ETA data
+        - predicted_locations_dict maps vehicle_id to latest predicted location data
+    """
+    if not vehicle_ids:
+        return {}, {}
+
+    # Subquery: latest ETA per vehicle
+    latest_etas = (
+        select(
+            ETA.vehicle_id,
+            func.max(ETA.timestamp).label("latest_time"),
+        )
+        .where(ETA.vehicle_id.in_(vehicle_ids))
+        .group_by(ETA.vehicle_id)
+        .subquery()
+    )
+
+    # Join to get full ETA data
+    etas_query = (
+        select(ETA)
+        .join(
+            latest_etas,
+            and_(
+                ETA.vehicle_id == latest_etas.c.vehicle_id,
+                ETA.timestamp == latest_etas.c.latest_time,
+            ),
+        )
+    )
+
+    etas_result = await db.execute(etas_query)
+    etas = etas_result.scalars().all()
+
+    # Subquery: latest predicted location per vehicle
+    latest_predicted = (
+        select(
+            PredictedLocation.vehicle_id,
+            func.max(PredictedLocation.timestamp).label("latest_time"),
+        )
+        .where(PredictedLocation.vehicle_id.in_(vehicle_ids))
+        .group_by(PredictedLocation.vehicle_id)
+        .subquery()
+    )
+
+    # Join to get full predicted location data
+    predicted_query = (
+        select(PredictedLocation)
+        .join(
+            latest_predicted,
+            and_(
+                PredictedLocation.vehicle_id == latest_predicted.c.vehicle_id,
+                PredictedLocation.timestamp == latest_predicted.c.latest_time,
+            ),
+        )
+    )
+
+    predicted_result = await db.execute(predicted_query)
+    predicted_locations = predicted_result.scalars().all()
+
+    # Build dictionaries
+    etas_dict = {}
+    for eta in etas:
+        etas_dict[eta.vehicle_id] = {
+            "etas": eta.etas,
+            "timestamp": eta.timestamp.isoformat(),
+        }
+
+    predicted_dict = {}
+    for pred in predicted_locations:
+        predicted_dict[pred.vehicle_id] = {
+            "speed_kmh": pred.speed_kmh,
+            "timestamp": pred.timestamp.isoformat(),
+        }
+
+    return etas_dict, predicted_dict
 
 
 @router.get("/api/locations")
@@ -81,6 +168,9 @@ async def get_locations(response: Response, db: AsyncSession = Depends(get_db)):
         for assignment in assignments:
             current_assignments[assignment.vehicle_id] = assignment
 
+    # Get latest ETAs and predicted locations
+    etas_dict, predicted_dict = await get_latest_etas_and_predicted_locations(vehicle_ids, db)
+
     # Format response
     response_data = {}
     oldest_timestamp = None
@@ -107,6 +197,10 @@ async def get_locations(response: Response, db: AsyncSession = Depends(get_db)):
                 "name": assignment.driver.name,
             }
 
+        # Get ETA and predicted location for this vehicle
+        eta_data = etas_dict.get(loc.vehicle_id)
+        predicted_data = predicted_dict.get(loc.vehicle_id)
+
         response_data[loc.vehicle_id] = {
             "name": loc.name,
             "latitude": loc.latitude,
@@ -126,6 +220,8 @@ async def get_locations(response: Response, db: AsyncSession = Depends(get_db)):
             "gateway_model": vehicle.gateway_model,
             "gateway_serial": vehicle.gateway_serial,
             "driver": driver_info,
+            "eta": eta_data,
+            "predicted_location": predicted_data,
         }
 
     # Add timing metadata as HTTP headers to help frontend synchronize with Samsara API

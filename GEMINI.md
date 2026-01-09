@@ -36,15 +36,27 @@ Shubble is a real-time shuttle tracking application for Rensselaer Polytechnic I
 - `ml/`: Machine learning models and pipelines for shuttle arrival prediction.
 
 ## Machine Learning
-- **Pipeline**: Run `PYTHONPATH=. python3 ml/pipelines.py` to preprocess data and generate train/test splits.
-- **Models**: ARIMA models are located in `ml/models/arima.py`.
-- **Data**: Preprocessed data is cached in `ml/data/preprocessed_vehicle_locations.csv`. Training splits are in `ml/training/train.csv` and `test.csv`.
+- **Pipeline**: Run `PYTHONPATH=. python3 ml/pipelines.py` to preprocess data and generate train/test splits. Supports disk-based and in-memory DataFrame processing.
+- **Cache**: Managed by `ml/cache.py`. Files are stored in `ml/cache/` (shared, arima, lstm subdirectories).
+- **Models**: 
+  - LSTM models for stop-based ETA predictions (`ml/models/lstm.py`).
+  - ARIMA models for speed and next-state forecasting (`ml/models/arima.py`).
+- **Inference**: Handled by `backend/worker/data.py`, leveraging cached daily data and pre-trained models.
 
 ## Development Guidelines
 - **Async Operations**: All database and network calls in the backend MUST use `async`/`await`.
+- **Data Caching**:
+  - Daily vehicle data is cached in Redis (`locations:{date}`) via `backend/cache_dataframe.py`.
+  - The cache stores DataFrames processed through ML pipelines (with routes, segments, and stops).
+  - Use `get_today_dataframe()` for cached access and `update_today_dataframe()` for automatic cache loading or incremental refreshes.
+- **Real-time Inference**: 
+  - The worker triggers `generate_and_save_predictions()` after fetching new GPS points. 
+  - Results are saved to `etas` (JSON) and `predicted_locations` tables.
 - **Shared Resources**: Route polylines and schedules are in `shared/*.json`. The frontend `dev` and `build` scripts copy these to `frontend/src/`.
-- **Database**: Use SQLAlchemy models in `backend/models.py`. Ensure indices are added for performance on `vehicle_id` and `timestamp`.
-- **Caching**: Use the `@cache` decorator in `routes.py` for endpoints like `/api/locations` (60s TTL).
+- **Database**: Use SQLAlchemy models in `backend/models.py`. 
+  - `VehicleLocation`: Raw GPS history.
+  - `ETA`: Predicted arrival times.
+  - `PredictedLocation`: ARIMA-based state forecasts.
 - **Timezones**: Always use `America/New_York` (Campus Time) for user-facing logic; store as UTC in the database. Use `backend/time_utils.py`.
 - **Route Matching**: Use `shared/stops.py` for haversine-based route matching from GPS points.
 

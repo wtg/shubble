@@ -1,8 +1,12 @@
 """LSTM model deployment utilities."""
+import logging
 from pathlib import Path
 from typing import Optional
 
 from ml.cache import LSTM_CACHE_DIR
+from ml.models.lstm import LSTMModel
+
+logger = logging.getLogger(__name__)
 
 # Get cache directory
 CACHE_DIR = LSTM_CACHE_DIR
@@ -14,7 +18,7 @@ def load_lstm(
     hidden_size: int = 50,
     num_layers: int = 2,
     dropout: float = 0.1
-) -> dict[tuple[str, int], 'LSTMModel']:
+) -> dict[tuple[str, int], LSTMModel]:
     """
     Load all trained LSTM models from cache.
 
@@ -108,7 +112,7 @@ def load_lstm(
             models[(route_name, polyline_idx)] = model
         except Exception as e:
             # Log error but continue loading other models
-            print(f"Warning: Failed to load model for {route_name} segment {polyline_idx}: {e}")
+            logger.warning(f"Failed to load model for {route_name} segment {polyline_idx}: {e}")
             continue
 
     if not models:
