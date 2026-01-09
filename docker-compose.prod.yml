@@ -84,7 +84,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://shubble:shubble@postgres:5432/shubble}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       API_KEY: ${API_KEY:-}
     restart: unless-stopped
     networks:

@@ -10,7 +10,7 @@ services:
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U shubble"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-shubble}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -47,7 +47,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql://shubble:shubble@postgres:5432/shubble}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       DEBUG: ${DEBUG:-true}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       API_KEY: ${API_KEY:-}
       SAMSARA_SECRET: ${SAMSARA_SECRET:-}
     depends_on:
@@ -68,7 +68,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://shubble:shubble@postgres:5432/shubble}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       API_KEY: ${API_KEY:-}
     depends_on:
       postgres:
@@ -106,7 +106,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql://shubble:shubble@postgres:5432/shubble}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       DEBUG: ${DEBUG:-true}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     depends_on:
       postgres:
         condition: service_healthy
