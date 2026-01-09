@@ -26,4 +26,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD python -c "import httpx; httpx.get('http://localhost:8000/api/locations', timeout=5.0)"
 
 # Run database migrations and start uvicorn
-CMD ["sh", "-c", "alembic upgrade head && uvicorn shubble:app --host 0.0.0.0 --port 8000 --workers 2 --log-level ${LOG_LEVEL:-info}"]
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn shubble:app --host 0.0.0.0 --port 8000 --workers 2 --log-level ${LOG_LEVEL:-info}"]
