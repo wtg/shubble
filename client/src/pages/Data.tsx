@@ -6,6 +6,7 @@ import "../styles/Data.css"
 import DataBoard from '../components/DataBoard';
 import ShuttleRow from '../components/ShuttleRow';
 import type { VehicleInformationMap } from '../ts/types/vehicleLocation';
+import config from '../ts/config';
 
 export default function Data() {
 
@@ -14,7 +15,7 @@ export default function Data() {
 
   const fetchShuttleData = async () => {
     try {
-      const response = await fetch('/api/today');
+      const response = await fetch(`${config.apiBaseUrl}/api/today`);
       if (!response.ok) {
         throw new Error('Network response was not ok');
       }

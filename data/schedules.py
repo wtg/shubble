@@ -110,7 +110,7 @@ class Schedule:
         # Determine day from first timestamp
         required_cols = {"vehicle_id", "timestamp", "route_name"}
 
-        if at_stops.empty or not required_cols.issubset(at_stops.columns):
+        if not at_stops or not required_cols.issubset(at_stops.columns):
             logger.warning("at_stops is missing required data returning empty match.")
             return {}
 
@@ -139,15 +139,15 @@ class Schedule:
         # Precompute minute-aligned timestamps
         at_stops['minute'] = at_stops['timestamp'].dt.floor('min')
 
-       
+
         # Group logs
         shuttle_groups = {k: v for k, v in at_stops.groupby('vehicle_id')}
 
-        
+
 
         # Build cost matrix
         for i, shuttle in enumerate(shuttles):
-            
+
             logs = shuttle_groups.get(shuttle)
             if logs is None or logs.empty:
                 W[i] = 1  #No data for shuttle
@@ -176,6 +176,6 @@ class Schedule:
         cache.set("schedule_entries", result, timeout=3600)
 
         return result
-    
+
 if __name__ == "__main__":
     result = Schedule.match_shuttles_to_schedules()
