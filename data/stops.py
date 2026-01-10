@@ -26,11 +26,11 @@ class Stops:
             polylines[route_name].append(np.array(polyline))
 
     @classmethod
-    def get_closest_point(cls, origin_point):
+    def get_closest_point(cls, origin_point, threshold=0.020):
         """
         Find the closest point on any polyline to the given origin point.
         :param origin_point: A tuple or list with (latitude, longitude) coordinates.
-        :return: A tuple with the closest point (latitude, longitude), distance to that point,
+        :return: A tuple with the distance to the closest point, closest point (latitude, longitude),
                 route name, and polyline index.
         """
         point = np.array(origin_point)
@@ -74,10 +74,14 @@ class Stops:
         if closest_data:
             closest_routes = sorted(closest_data, key=lambda x: x[0])
             # Check if closest route is significantly closer than others
-            if len(closest_routes) > 1 and haversine(closest_routes[0][1], closest_routes[1][1]) < 0.020:
+            if len(closest_routes) > 1 and haversine(closest_routes[0][1], closest_routes[1][1]) < threshold:
                 # If not significantly closer, return None to indicate ambiguity
                 return None, None, None, None
-            return closest_routes[0]
+
+            # normalizing return types (float vs Numpy float64 resolution)
+            _best_distance, _best_point, _best_route, _best_polyline_index = closest_routes[0]
+            _coord = (float(_best_point[0]), float(_best_point[1]))
+            return float(_best_distance), _coord, _best_route, int(_best_polyline_index)
         return None, None, None, None
 
     @classmethod
@@ -90,12 +94,10 @@ class Stops:
                 the stop name if close enough, otherwise None).
         """
         for route_name, route in cls.routes_data.items():
-            for stop in route.get('STOPS', []):
-                stop_point = np.array(route[stop]['COORDINATES'])
-
-                distance = haversine(tuple(origin_point), tuple(stop_point))
-                if distance < threshold:
-                    return route_name, stop
+            for stop_name in route.get('STOPS', []):
+                stop_point = route[stop_name]['COORDINATES']
+                if haversine(origin_point, stop_point) < threshold:
+                    return route_name, stop_name
         return None, None
 
 def haversine(coord1, coord2):
@@ -144,9 +146,8 @@ def haversine_vectorized(coords1, coords2):
     distances : ndarray, shape (N,)
         Great-circle distances in kilometers.
     """
-    # Accept either single (lat,lon) pairs or arrays of pairs. Normalize to 2-D arrays.
-    coords1 = np.atleast_2d(np.asarray(coords1, dtype=float))
-    coords2 = np.atleast_2d(np.asarray(coords2, dtype=float))
+    coords1 = np.asarray(coords1, dtype=float)
+    coords2 = np.asarray(coords2, dtype=float)
 
     # Earth radius in kilometers
     R = 6371.0

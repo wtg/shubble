@@ -1,15 +1,17 @@
 from flask import Blueprint, request, jsonify, send_from_directory, current_app
+from numpy import datetime_as_string
 from . import db, cache
 from .models import Vehicle, GeofenceEvent, VehicleLocation, Driver, DriverVehicleAssignment
 from pathlib import Path
 from sqlalchemy import func, and_
 from sqlalchemy.dialects import postgresql
 from datetime import datetime, date, timezone
-from data.stops import Stops
+from data.stops import Stops, haversine
 from data.schedules import Schedule
 from hashlib import sha256
 import hmac
 import logging
+
 from .time_utils import get_campus_start_of_day
 
 logger = logging.getLogger(__name__)
@@ -236,10 +238,6 @@ def webhook():
             )
 
         db.session.commit()
-        
-        # Invalidate Cache
-        cache.delete('vehicles_in_geofence') 
-        
         return jsonify({'status': 'success'}), 200
 
     except Exception as e:
@@ -248,6 +246,7 @@ def webhook():
         logger.exception(f'Error processing webhook data: {e}')
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+# see DATA_TODAY.md for more information
 @bp.route('/api/today', methods=['GET'])
 def data_today():
     now = datetime.now(timezone.utc)
@@ -259,39 +258,105 @@ def data_today():
         )
     ).order_by(VehicleLocation.timestamp.asc()).all()
 
-    events_today = db.session.query(GeofenceEvent).filter(
-        and_(
-            GeofenceEvent.event_time >= start_of_day,
-            GeofenceEvent.event_time <= now
-        )
-    ).order_by(GeofenceEvent.event_time.asc()).all()
-
-    locations_today_dict = {}
+    locations_today_dict = {}    # returned by the function in JSON format
+    threshold_noise_km = 0.035   # constant-threshold: locational noise in kilometers, determined from \shubble\test-server\server.py: mock_feed()
+    threshold_atStop = 0.05      # constant-threshold: at a stop in kilometers, originally = 0.02 
+    seconds_stopped = 300        # constant: seconds stopped at a stop
+    shuttle_prev = {}            # helper: {"vehicle_id" -> [datetime.time_of_day, float.prev_latitude, float.prev_longitude]}
+    shuttle_state = {}           # helper: {"vehicle_id" -> "entry" | "break" | "loop"}
     for location in locations_today:
+        # RELATED DATA:  
+        # tuple with the distance to closest point, closest point (latitude, longitude), route name, and polyline index
+        _closest_point = Stops.get_closest_point((location.latitude, location.longitude)) 
+        # tuple with (route name, stop name) if close enough, else None.
+        _at_stop = Stops.is_at_stop((location.latitude, location.longitude), threshold_atStop)[1]
+        # datetime to string
+        _timestamp = location.timestamp.strftime("%H:%M:%S") 
+
+        # LOCATIONS:
+        # setup dict nesting
         vehicle_location = {
+            "at_stop": _at_stop,
+            "closest_polyline": _closest_point[3],
+            "closest_route": _closest_point[2],
+            "closest_route_location": _closest_point[1],
+            "distance": _closest_point[0],
             "latitude": location.latitude,
             "longitude": location.longitude,
-            "timestamp": location.timestamp,
-            "speed_mph": location.speed_mph,
-            "heading_degrees": location.heading_degrees,
-            "address_id": location.address_id
+            "status": ""
         }
-        if location.vehicle_id in locations_today_dict:
-            locations_today_dict[location.vehicle_id]["data"].append(vehicle_location)
-        else:
+        # initialization: adding a new vehicle to the dict
+        if location.vehicle_id not in locations_today_dict:
             locations_today_dict[location.vehicle_id] = {
-                "entry": None,
-                "exit": None,
-                "data": [vehicle_location]
+                "locations": {_timestamp: vehicle_location},
+                "loops": [],
+                "breaks": [{"locations": [_timestamp]}]
             }
-    for e, geofence_event in enumerate(events_today):
-        if geofence_event.event_type == "geofenceEntry":
-            if "entry" not in locations_today_dict[geofence_event.vehicle_id]: # first entry
-                locations_today_dict[geofence_event.vehicle_id]["entry"] = geofence_event.event_time
-        elif geofence_event.event_type == "geofenceExit":
-            if "entry" in locations_today_dict[geofence_event.vehicle_id]: # makes sure that the vehicle already entered
-                locations_today_dict[geofence_event.vehicle_id]["exit"] = geofence_event.event_time
+            # update helpers, start the first state as "entry" (treated as break in output)
+            locations_today_dict[location.vehicle_id]["locations"][_timestamp]["status"] = "entry"
+            shuttle_prev[location.vehicle_id] = [location.timestamp, location.latitude, location.longitude]
+            shuttle_state[location.vehicle_id] = "entry"
+        else:
+            locations_today_dict[location.vehicle_id]["locations"][_timestamp] = vehicle_location 
 
+        # LOOPS/BREAKS:
+        # Get previous per-vehicle state (default to "entry" if missing)
+        state = shuttle_state.get(location.vehicle_id, "entry")
+
+        is_at_union = _at_stop == "STUDENT_UNION" and (_closest_point[2] != "WEST" and _closest_point[2] != "NORTH")
+        # status = off route: assuming that the shuttle is leaving campus
+        if _closest_point[0] is not None and _closest_point[0] > 0.2:
+            locations_today_dict[location.vehicle_id]["locations"][_timestamp]["status"] = "off_route"
+        # status = idle: if the shuttle is stopped for too long
+        if location.vehicle_id not in shuttle_prev:
+            shuttle_prev[location.vehicle_id] = [location.timestamp, location.latitude, location.longitude]
+        else:
+            distance_km = haversine((location.latitude, location.longitude),(shuttle_prev[location.vehicle_id][1], shuttle_prev[location.vehicle_id][2]))
+            if distance_km < threshold_noise_km:
+                if (location.timestamp - shuttle_prev[location.vehicle_id][0]).total_seconds() > seconds_stopped:
+                    # shuttle has been effectively stopped for a long time; treat as empty/on entry
+                    locations_today_dict[location.vehicle_id]["locations"][_timestamp]["status"] = "idle"
+                    state = "entry"
+            else:
+                shuttle_prev[location.vehicle_id] = [location.timestamp, location.latitude, location.longitude]
+
+        # placeholder for this timestamp's raw status tag
+        _status = locations_today_dict[location.vehicle_id]["locations"][_timestamp]["status"]
+        is_idle = _status == "idle"
+        is_off_route = _status == "off_route"
+
+        # check: shuttle has entered the union for the first time
+        # start break
+        if (state == "entry" or is_idle or is_off_route) and is_at_union:
+            state = "break"
+        # check: shuttle is starting to loop WEST or NORTH
+        # end break & start loop
+        elif state == "break" and not is_at_union and not (is_idle or is_off_route):
+            state = "loop"
+            locations_today_dict[location.vehicle_id]["loops"].append({
+                "locations": []
+            })
+        # check: shuttle is back at the union after looping
+        # end loop & start break
+        elif state == "loop" and is_at_union:
+            # end loop
+            state = "break"
+            # start new break
+            locations_today_dict[location.vehicle_id]["breaks"].append({
+                "locations": []
+            })
+
+        # persist updated state
+        shuttle_state[location.vehicle_id] = state
+
+        # update break/loop locations
+        if state == "break" or state == "entry":
+            locations_today_dict[location.vehicle_id]["breaks"][-1]["locations"].append(_timestamp)
+            locations_today_dict[location.vehicle_id]["locations"][_timestamp]["status"] = "break"
+        elif state == "loop":
+            locations_today_dict[location.vehicle_id]["loops"][-1]["locations"].append(_timestamp)
+            locations_today_dict[location.vehicle_id]["locations"][_timestamp]["status"] = "loop"
+            
     return jsonify(locations_today_dict)
 
 @bp.route('/api/routes', methods=['GET'])
