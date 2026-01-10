@@ -1,6 +1,6 @@
-import '../styles/AnnouncementBanner.css';
+import './styles/AnnouncementBanner.css';
 import announcementsData from '../data/announcements.json';
-import type { Announcement, AnnouncementsData } from '../ts/types/announcement';
+import type { Announcement, AnnouncementsData } from '../types/announcement';
 import type { ReactNode } from 'react';
 
 type BannerType = 'info' | 'warning' | 'error';
