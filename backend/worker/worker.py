@@ -18,13 +18,15 @@ from backend.utils import get_vehicles_in_geofence
 from backend.worker.data import generate_and_save_predictions
 from backend.cache_dataframe import update_today_dataframe
 
-# Logging config
-numeric_level = logging._nameToLevel.get(settings.LOG_LEVEL.upper(), logging.INFO)
+# Logging config for Worker
+worker_log_level = settings.get_log_level("worker")
+numeric_level = logging._nameToLevel.get(worker_log_level.upper(), logging.INFO)
 logging.basicConfig(
     level=numeric_level,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+logger.info(f"Worker logging level: {worker_log_level}")
 
 
 async def update_locations(session_factory):

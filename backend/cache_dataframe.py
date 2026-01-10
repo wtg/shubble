@@ -1,15 +1,19 @@
 """Data loading utilities."""
+import logging
 import pickle
 from datetime import datetime, timezone
 import pandas as pd
 from sqlalchemy import select
 from redis import asyncio as aioredis
+from fastapi_cache import FastAPICache
 
 from backend.config import settings
 from backend.database import create_async_db_engine, create_session_factory
 from backend.models import VehicleLocation
 from backend.time_utils import get_campus_start_of_day
 from ml.pipelines import preprocess_pipeline, segment_pipeline, stops_pipeline
+
+logger = logging.getLogger(__name__)
 
 
 def get_cache_and_timestamp_key(date_str: str) -> tuple[str, str]:
@@ -28,9 +32,10 @@ def process_raw_dataframe(raw_df: pd.DataFrame) -> pd.DataFrame:
 
     # Run pipelines in sequence, injecting the dataframe to bypass disk cache loading
     # We pass flag=True to ensure any internal checks know we want to compute
-    df = preprocess_pipeline(df=raw_df, preprocess=True)
-    df = segment_pipeline(df=df, segment=True)
-    df = stops_pipeline(df=df, stops=True)
+    # We pass cache=False to disable disk caching (Redis cache is sufficient)
+    df = preprocess_pipeline(df=raw_df, preprocess=True, cache=False)
+    df = segment_pipeline(df=df, segment=True, cache=False, min_segment_length=1)
+    df = stops_pipeline(df=df, stops=True, cache=False)
 
     return df
 
@@ -102,15 +107,15 @@ async def get_today_dataframe() -> pd.DataFrame:
         # Try to load from cache
         cached_data = await redis.get(cache_key)
         if cached_data:
-            print(f"Loaded {today_str} processed data from Redis cache")
+            logger.info(f"Loaded {today_str} processed data from Redis cache")
             return pickle.loads(cached_data)
 
         # Load raw from database
-        print(f"Loading {today_str} raw data from database")
+        logger.info(f"Loading {today_str} raw data from database")
         raw_df = await load_today_dataframe()
 
         # Process data
-        print(f"Processing {len(raw_df)} records through ML pipeline...")
+        logger.info(f"Processing {len(raw_df)} records through ML pipeline...")
         processed_df = process_raw_dataframe(raw_df)
 
         # Save to cache
@@ -124,7 +129,10 @@ async def get_today_dataframe() -> pd.DataFrame:
             pipe.set(timestamp_key, datetime.now(timezone.utc).isoformat(), ex=86400)
             await pipe.execute()
 
-        print(f"Saved {today_str} processed data to Redis cache")
+        # Invalidate smart_closest_point cache since dataframe was updated
+        await FastAPICache.clear(namespace="smart_closest_point")
+
+        logger.info(f"Saved {today_str} processed data to Redis cache")
         return processed_df
 
     finally:
@@ -158,22 +166,23 @@ async def update_today_dataframe() -> pd.DataFrame:
         last_updated_bytes = await redis.get(timestamp_key)
 
         if not cached_data or not last_updated_bytes:
-            print(f"No cache found for {today_str}, loading fresh data")
+            logger.info(f"No cache found for {today_str}, loading fresh data")
             await redis.close()
             return await get_today_dataframe()
 
         # Cache exists, perform incremental update
-        print(f"Cache found for {today_str}, checking for updates")
+        logger.info(f"Cache found for {today_str}, checking for updates")
         last_updated = datetime.fromisoformat(last_updated_bytes.decode('utf-8'))
 
         # Load new raw data since last update
         new_raw_df = await load_today_dataframe(since=last_updated)
+        logger.debug(f"Loaded {len(new_raw_df)} new raw records since {last_updated}")
 
         if new_raw_df.empty:
-            print("No new data since last update, returning cached data")
+            logger.info("No new data since last update, returning cached data")
             return pickle.loads(cached_data)
 
-        print(f"Found {len(new_raw_df)} new raw records")
+        logger.info(f"Found {len(new_raw_df)} new raw records")
 
         # Load existing processed cache (already retrieved earlier)
         current_processed_df = pickle.loads(cached_data)
@@ -184,7 +193,7 @@ async def update_today_dataframe() -> pd.DataFrame:
 
         # Check if columns exist (safety check)
         if not all(col in current_processed_df.columns for col in raw_cols):
-            print("Warning: Cached dataframe missing raw columns. Triggering full reload.")
+            logger.warning("Cached dataframe missing raw columns. Triggering full reload.")
             await redis.close()
             return await get_today_dataframe()
 
@@ -196,7 +205,7 @@ async def update_today_dataframe() -> pd.DataFrame:
         combined_raw_df = combined_raw_df.sort_values('timestamp').drop_duplicates()
 
         # Run pipeline on combined raw data
-        print(f"Re-processing {len(combined_raw_df)} records...")
+        logger.info(f"Re-processing {len(combined_raw_df)} records...")
         updated_processed_df = process_raw_dataframe(combined_raw_df)
 
         # Update cache
@@ -206,7 +215,11 @@ async def update_today_dataframe() -> pd.DataFrame:
             pipe.set(timestamp_key, datetime.now(timezone.utc).isoformat(), ex=86400)
             await pipe.execute()
 
-        print(f"Updated cache to {len(updated_processed_df)} processed records")
+        # Invalidate smart_closest_point cache since dataframe was updated
+        await FastAPICache.clear(namespace="smart_closest_point")
+
+        logger.info(f"Updated cache to {len(updated_processed_df)} processed records")
+
         return updated_processed_df
 
     finally:

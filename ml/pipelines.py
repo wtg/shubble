@@ -22,6 +22,7 @@ PIPELINE_HIERARCHY = [
     'preprocess',
     'segment',
     'stops',
+    'eta',
     'split',
     'train',
     'fit'
@@ -35,7 +36,7 @@ def apply_pipeline_hierarchy(kwargs: dict) -> dict:
     If a pipeline stage flag is set to True, all subsequent stages in the
     hierarchy are also set to True.
 
-    Pipeline hierarchy order: load -> preprocess -> segment -> stops -> split -> train -> fit
+    Pipeline hierarchy order: load -> preprocess -> segment -> stops -> eta -> split -> train -> fit
 
     Args:
         kwargs: Dictionary of keyword arguments
@@ -45,10 +46,10 @@ def apply_pipeline_hierarchy(kwargs: dict) -> dict:
 
     Examples:
         >>> apply_pipeline_hierarchy({'segment': True})
-        {'segment': True, 'stops': True, 'split': True, 'train': True, 'fit': True}
+        {'segment': True, 'stops': True, 'eta': True, 'split': True, 'train': True, 'fit': True}
 
         >>> apply_pipeline_hierarchy({'load': True})
-        {'load': True, 'preprocess': True, 'segment': True, 'stops': True, 'split': True, 'train': True, 'fit': True}
+        {'load': True, 'preprocess': True, 'segment': True, 'stops': True, 'eta': True, 'split': True, 'train': True, 'fit': True}
     """
     kwargs = kwargs.copy()
 
@@ -74,10 +75,8 @@ def apply_pipeline_hierarchy(kwargs: dict) -> dict:
 
 from ml.cache import (
     get_cache_path, load_cached_csv, save_csv,
-    SHARED_CACHE_DIR, ARIMA_CACHE_DIR, LSTM_CACHE_DIR,
-    RAW_CSV, PREPROCESSED_CSV, SEGMENTED_CSV, STOPS_PREPROCESSED_CSV,
-    ARIMA_TRAIN_CSV, ARIMA_TEST_CSV, ARIMA_BEST_PARAMS_PATH, ARIMA_MODEL_PARAMS_PATH,
-    LSTM_TRAIN_CSV, LSTM_TEST_CSV, LSTM_MODEL_PATH
+    ARIMA_CACHE_DIR, LSTM_CACHE_DIR,
+    RAW_CSV, PREPROCESSED_CSV
 )
 
 
@@ -140,9 +139,10 @@ def preprocess_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
     from ml.data.preprocess import to_epoch_seconds, add_closest_points
 
     preprocess = kwargs.get('preprocess', False)
+    cache = kwargs.get('cache', True)
 
-    # Try to load from cache (only if no input df provided)
-    if df is None and not preprocess:
+    # Try to load from cache (only if no input df provided and caching is enabled)
+    if not preprocess and cache:
         cached_df = load_cached_csv(PREPROCESSED_CSV, "preprocessed data")
         if cached_df is not None:
             return cached_df
@@ -170,7 +170,8 @@ def preprocess_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
         'segment_index': 'segment_idx'
     })
 
-    if df is None:
+    # Save to cache if caching is enabled
+    if cache:
         save_csv(df, PREPROCESSED_CSV, "preprocessed data")
     return df
 
@@ -237,7 +238,7 @@ def segment_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
     min_segment_length = kwargs.get('min_segment_length', 3)
     window_size = kwargs.get('window_size', 5)
     segment = kwargs.get('segment', False)
-    preprocess = kwargs.get('preprocess', False)
+    cache = kwargs.get('cache', True)
 
     # Get parameterized cache path
     cache_path = get_cache_path(
@@ -248,8 +249,8 @@ def segment_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
         window_size=window_size
     )
 
-    # Try to load from cache
-    if df is None and not segment:
+    # Try to load from cache (only if caching is enabled)
+    if not segment and cache:
         cached_df = load_cached_csv(cache_path, "segmented data")
         if cached_df is not None:
             return cached_df
@@ -290,21 +291,20 @@ def segment_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
     final_segments = df['segment_id'].nunique()
     logger.info(f"  ✓ Kept {final_segments}/{initial_segments} segments")
 
-    if df is None:
+    # Save to cache if caching is enabled
+    if cache:
         save_csv(df, cache_path, "segmented data")
     return df
 
 
 def stops_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
     """
-    Stops Pipeline: Segment -> Add Stops -> Filter Rows After Stop -> Add ETAs -> Add Polyline Distances.
+    Stops Pipeline: Segment -> Add Stops -> Add Polyline Distances.
 
-    This pipeline prepares data for stop-based predictions by:
+    This pipeline prepares data for route matching by:
     1. Segmenting vehicle location data
     2. Adding stop information (detecting when vehicles are at stops)
-    3. Filtering rows after the last stop (also removes segments without stops)
-    4. Calculating ETAs to the next stop
-    5. Calculating polyline distances (distance from start, distance to end)
+    3. Calculating polyline distances (distance from start, distance to end)
 
     Args:
         df: Optional DataFrame (segmented). If None, runs segment_pipeline.
@@ -318,16 +318,13 @@ def stops_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
         This function only checks its own 'stops' flag.
 
     Returns:
-        DataFrame with added columns: 'stop_name', 'stop_route', 'eta_seconds',
+        DataFrame with added columns: 'stop_name', 'stop_route',
         'dist_from_start', 'dist_to_end', 'polyline_length'
     """
-    from ml.data.preprocess import (
-        add_stops, filter_rows_after_stop, add_eta, add_polyline_distances
-    )
+    from ml.data.preprocess import add_stops, add_polyline_distances
 
     stops = kwargs.get('stops', False)
-    segment = kwargs.get('segment', False)
-    preprocess = kwargs.get('preprocess', False)
+    cache = kwargs.get('cache', True)
 
     # Extract segmentation parameters (with defaults matching segment_pipeline call below)
     max_timedelta = kwargs.get('max_timedelta', 30)
@@ -337,16 +334,16 @@ def stops_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
 
     # Get parameterized cache path
     cache_path = get_cache_path(
-        'stops_preprocessed',
+        'stops_data',
         max_timedelta=max_timedelta,
         max_distance=max_distance,
         min_segment_length=min_segment_length,
         window_size=window_size
     )
 
-    # Try to load from cache
-    if df is None and not stops:
-        cached_df = load_cached_csv(cache_path, "stops preprocessed data")
+    # Try to load from cache (only if caching is enabled)
+    if not stops and cache:
+        cached_df = load_cached_csv(cache_path, "stops data")
         if cached_df is not None:
             return cached_df
 
@@ -368,30 +365,14 @@ def stops_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
         df = segment_pipeline(**segment_kwargs)
 
     # Step 2: Add stops
-    logger.info("Step 1/4: Adding stop information...")
+    logger.info("Step 1/2: Adding stop information...")
     add_stops(df, 'latitude', 'longitude', {
         'route_name': 'stop_route',
         'stop_name': 'stop_name'
     })
 
-    # Step 3: Filter rows after last stop (also removes segments without stops)
-    logger.info("Step 2/4: Filtering rows after last stop...")
-    initial_points = len(df)
-    initial_segments = df['segment_id'].nunique()
-    df = filter_rows_after_stop(df, 'segment_id', 'stop_name')
-    removed_points = initial_points - len(df)
-    final_segments = df['segment_id'].nunique()
-    removed_segments = initial_segments - final_segments
-    logger.info(f"  ✓ Removed {removed_points} points ({removed_points/initial_points*100:.1f}%)")
-    logger.info(f"  ✓ Removed {removed_segments} segments without stops")
-
-    # Step 4: Add ETAs
-    logger.info("Step 3/4: Calculating ETAs...")
-    df = add_eta(df, 'stop_name', 'epoch_seconds', 'eta_seconds')
-    logger.info(f"  ✓ Calculated ETAs for {len(df)} points")
-
-    # Step 5: Add polyline distances
-    logger.info("Step 4/4: Calculating polyline distances...")
+    # Step 3: Add polyline distances
+    logger.info("Step 2/2: Calculating polyline distances...")
     add_polyline_distances(
         df, 'latitude', 'longitude',
         {
@@ -408,8 +389,89 @@ def stops_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
     )
     logger.info(f"  ✓ Calculated polyline distances for {len(df)} points")
 
+    # Save to cache if caching is enabled
+    if cache:
+        save_csv(df, cache_path, "stops data")
+    return df
+
+
+def eta_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
+    """
+    ETA Pipeline: Stops -> Filter Rows After Stop -> Add ETAs.
+
+    This pipeline prepares data for ETA predictions by:
+    1. Loading stops data (if not provided)
+    2. Filtering rows after the last stop (also removes segments without stops)
+    3. Calculating ETAs to the next stop
+
+    Args:
+        df: Optional DataFrame (with stops). If None, runs stops_pipeline.
+        eta: Re-compute ETA preprocessing
+        stops: Re-compute stops preprocessing
+        segment: Re-run segmentation
+        preprocess: Re-run preprocessing
+        load: Re-load from database
+
+    Note:
+        Pipeline hierarchy is applied externally via apply_pipeline_hierarchy().
+        This function only checks its own 'eta' flag.
+
+    Returns:
+        DataFrame with added column: 'eta_seconds'
+    """
+    from ml.data.preprocess import filter_rows_after_stop, add_eta
+
+    eta = kwargs.get('eta', False)
+    cache = kwargs.get('cache', True)
+
+    # Extract segmentation parameters (with defaults)
+    max_timedelta = kwargs.get('max_timedelta', 30)
+    max_distance = kwargs.get('max_distance', 0.005)
+    min_segment_length = kwargs.get('min_segment_length', 3)
+    window_size = kwargs.get('window_size', 5)
+
+    # Get parameterized cache path
+    cache_path = get_cache_path(
+        'eta_data',
+        max_timedelta=max_timedelta,
+        max_distance=max_distance,
+        min_segment_length=min_segment_length,
+        window_size=window_size
+    )
+
+    # Try to load from cache (only if caching is enabled)
+    if not eta and cache:
+        cached_df = load_cached_csv(cache_path, "ETA data")
+        if cached_df is not None:
+            return cached_df
+
+    logger.info("="*70)
+    logger.info("ETA PIPELINE")
+    logger.info("="*70)
+
+    # Step 1: Get stops data
     if df is None:
-        save_csv(df, cache_path, "stops preprocessed data")
+        df = stops_pipeline(**kwargs)
+
+    # Step 2: Filter rows after last stop (also removes segments without stops)
+    logger.info("Step 1/2: Filtering rows after last stop...")
+    initial_points = len(df)
+    initial_segments = df['segment_id'].nunique()
+    df = filter_rows_after_stop(df, 'segment_id', 'stop_name')
+    removed_points = initial_points - len(df)
+    final_segments = df['segment_id'].nunique()
+    removed_segments = initial_segments - final_segments
+    logger.info(f"  ✓ Removed {removed_points} points ({removed_points/initial_points*100:.1f}%)")
+    logger.info(f"  ✓ Removed {removed_segments} segments without stops")
+
+    # Step 3: Add ETAs
+    logger.info("Step 2/2: Calculating ETAs...")
+    df = add_eta(df, 'stop_name', 'epoch_seconds', 'eta_seconds')
+    logger.info(f"  ✓ Calculated ETAs for {len(df)} points")
+
+    # Save to cache if caching is enabled
+    if cache:
+        save_csv(df, cache_path, "ETA data")
     return df
 
 
@@ -484,8 +546,9 @@ def split_pipeline(
 
     # Load data based on mode
     if use_eta_data:
-        logger.info("Loading stops preprocessed data...")
+        logger.info("Loading stops and ETA data...")
         df = stops_pipeline(**kwargs)
+        df = eta_pipeline(df=df, **kwargs)
     else:
         logger.info("Loading segmented data...")
         df = segment_pipeline(**kwargs)
@@ -635,11 +698,14 @@ def lstm_pipeline(
     logger.info("LSTM PIPELINE (PER-POLYLINE TRAINING)")
     logger.info("="*70)
 
-    # Step 1: Get stops preprocessed data (segmented, stops added, ETAs calculated, polyline distances, filtered)
+    # Step 1: Get stops data (segmented, stops added, polyline distances)
     stops_df = stops_pipeline(**kwargs)
 
-    # Step 2: Split by polyline
-    polyline_dfs = split_by_polyline_pipeline(df=stops_df)
+    # Step 2: Add ETAs (filter rows after stop, calculate ETAs)
+    eta_df = eta_pipeline(df=stops_df, **kwargs)
+
+    # Step 3: Split by polyline
+    polyline_dfs = split_by_polyline_pipeline(df=eta_df)
 
     # Limit polylines if requested
     if limit_polylines:
@@ -1132,6 +1198,7 @@ if __name__ == "__main__":
         logger.info(f"\nPreprocessed {len(df)} records")
     elif args.pipeline == "stops":
         df = stops_pipeline(**kwargs)
+        df = eta_pipeline(df=df, **kwargs)
         logger.info(f"\nGenerated stops data (stops, ETAs, polyline distances) for {len(df)} records")
     elif args.pipeline == "lstm":
         polyline_models = lstm_pipeline(**kwargs)

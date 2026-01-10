@@ -175,11 +175,13 @@ class Stops:
             _polyline_total_lengths[(route_name, p_idx)] = cumulative_dists[-1]
 
     @classmethod
-    def get_closest_point(cls, origin_point, threshold=0.020):
+    def get_closest_point(cls, origin_point, threshold=0.020, target_polyline=None):
         """
         Find the closest point on any polyline to the given origin point.
         :param origin_point: A tuple or list with (latitude, longitude) coordinates.
         :param threshold: Distance threshold in km (not currently used in logic).
+        :param target_polyline: Optional tuple (route_name, polyline_idx) to filter to a specific polyline.
+                                If provided, only considers points on that polyline.
         :return: A tuple with (distance, closest_point_coords, route_name, polyline_idx, segment_idx).
                  The segment_idx indicates which segment of the polyline (0-indexed) contains
                  the closest point, i.e., the point is on the line segment between
@@ -190,9 +192,27 @@ class Stops:
 
         point = np.array(origin_point)
 
+        # Filter to target polyline if specified
+        segments_to_search = cls.polylines_np
+        if target_polyline is not None:
+            target_route_name, target_polyline_idx = target_polyline
+
+            # Find the route index for the target route name
+            if target_route_name not in cls._route_name_indices:
+                return None, None, None, None, None
+
+            target_route_idx = cls._route_name_indices.index(target_route_name)
+
+            # Filter segments to only those matching the target route and polyline
+            mask = (cls.polylines_np[:, 4] == target_route_idx) & (cls.polylines_np[:, 5] == target_polyline_idx)
+            segments_to_search = cls.polylines_np[mask]
+
+            if segments_to_search.shape[0] == 0:
+                return None, None, None, None, None
+
         # Extract segment start/end points
-        p1 = cls.polylines_np[:, 0:2]
-        p2 = cls.polylines_np[:, 2:4]
+        p1 = segments_to_search[:, 0:2]
+        p2 = segments_to_search[:, 2:4]
 
         # Vector from p1 to p2
         diffs = p2 - p1
@@ -230,7 +250,7 @@ class Stops:
         # But looping 10k segments is slow in python.
         # Faster: identify unique group boundaries.
 
-        group_ids = cls.polylines_np[:, 4] * 10000 + cls.polylines_np[:, 5]
+        group_ids = segments_to_search[:, 4] * 10000 + segments_to_search[:, 5]
         # Find indices where group_ids change
         # Prepend valid index 0
         changes = np.concatenate(([True], group_ids[1:] != group_ids[:-1]))
@@ -254,8 +274,8 @@ class Stops:
             global_idx = start + min_local_idx
 
             # Retrieve metadata
-            r_idx = int(cls.polylines_np[global_idx, 4])
-            p_idx = int(cls.polylines_np[global_idx, 5])
+            r_idx = int(segments_to_search[global_idx, 4])
+            p_idx = int(segments_to_search[global_idx, 5])
             route_name = cls._route_name_indices[r_idx]
 
             closest_point = closest_points[global_idx]
@@ -268,10 +288,12 @@ class Stops:
         # Find the overall closest point
         if closest_data:
             closest_routes = sorted(closest_data, key=lambda x: x[0])
-            # Check if closest route is significantly closer than others
-            if len(closest_routes) > 1 and closest_routes[1][0] - closest_routes[0][0] < threshold:
-                # If not significantly closer (ambiguous), return None
-                return None, None, None, None, None
+            # If target_polyline is specified, skip ambiguity check (only one polyline to consider)
+            if target_polyline is None:
+                # Check if closest route is significantly closer than others
+                if len(closest_routes) > 1 and closest_routes[1][0] - closest_routes[0][0] < threshold:
+                    # If not significantly closer (ambiguous), return None
+                    return None, None, None, None, None
             return closest_routes[0]
         return None, None, None, None, None
     @classmethod

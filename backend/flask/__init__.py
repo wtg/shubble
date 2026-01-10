@@ -11,14 +11,16 @@ from backend.config import settings
 from backend.database import create_async_db_engine, create_session_factory
 
 
-# Configure logging
-numeric_level = logging._nameToLevel.get(settings.LOG_LEVEL.upper(), logging.INFO)
+# Configure logging for FastAPI
+fastapi_log_level = settings.get_log_level("fastapi")
+numeric_level = logging._nameToLevel.get(fastapi_log_level.upper(), logging.INFO)
 logging.basicConfig(
     level=numeric_level,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 
 logger = logging.getLogger(__name__)
+logger.info(f"FastAPI logging level: {fastapi_log_level}")
 
 
 @asynccontextmanager

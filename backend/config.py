@@ -14,7 +14,12 @@ class Settings(BaseSettings):
     # Hosting settings
     DEBUG: bool = True
     ENV: str = "development"
-    LOG_LEVEL: str = "INFO"
+
+    # Logging settings
+    LOG_LEVEL: str = "INFO"  # Global default log level
+    FASTAPI_LOG_LEVEL: Optional[str] = None  # FastAPI backend logging (falls back to LOG_LEVEL)
+    WORKER_LOG_LEVEL: Optional[str] = None  # Worker logging (falls back to LOG_LEVEL)
+    ML_LOG_LEVEL: Optional[str] = None  # ML pipeline logging (falls back to LOG_LEVEL)
 
     # CORS settings
     FRONTEND_URL: str = "http://localhost:3000"
@@ -50,6 +55,26 @@ class Settings(BaseSettings):
         if self.SAMSARA_SECRET_BASE64:
             return base64.b64decode(self.SAMSARA_SECRET_BASE64.encode("utf-8"))
         return None
+
+    def get_log_level(self, component: str = "default") -> str:
+        """
+        Get the effective log level for a specific component.
+
+        Args:
+            component: One of "fastapi", "worker", "ml", or "default"
+
+        Returns:
+            The log level string (e.g., "INFO", "DEBUG", "WARNING")
+        """
+        component_levels = {
+            "fastapi": self.FASTAPI_LOG_LEVEL,
+            "worker": self.WORKER_LOG_LEVEL,
+            "ml": self.ML_LOG_LEVEL,
+        }
+
+        # Return component-specific level if set, otherwise fall back to LOG_LEVEL
+        component_level = component_levels.get(component)
+        return component_level if component_level else self.LOG_LEVEL
 
 
 # Global settings instance

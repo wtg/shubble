@@ -2,6 +2,16 @@
 import logging
 import sys
 
+# Get ML-specific log level from settings
+try:
+    from backend.config import settings
+    ml_log_level_str = settings.get_log_level("ml")
+    ml_log_level = logging._nameToLevel.get(ml_log_level_str.upper(), logging.INFO)
+except ImportError:
+    # Fallback if settings not available (e.g., during testing)
+    ml_log_level = logging.INFO
+    ml_log_level_str = "INFO"
+
 # Configure logging for the ML package
 logger = logging.getLogger(__name__)
 
@@ -9,7 +19,7 @@ logger = logging.getLogger(__name__)
 if not logger.handlers:
     # Create handler
     handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(logging.INFO)
+    handler.setLevel(ml_log_level)
 
     # Create formatter
     formatter = logging.Formatter(
@@ -20,6 +30,7 @@ if not logger.handlers:
 
     # Add handler to logger
     logger.addHandler(handler)
-    logger.setLevel(logging.INFO)
+    logger.setLevel(ml_log_level)
+    logger.info(f"ML logging level: {ml_log_level_str}")
 
 __all__ = ['logger']

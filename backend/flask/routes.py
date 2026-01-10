@@ -18,8 +18,7 @@ from backend.database import get_db
 from backend.models import Vehicle, GeofenceEvent, VehicleLocation, DriverVehicleAssignment, ETA, PredictedLocation
 from backend.config import settings
 from backend.time_utils import get_campus_start_of_day
-from backend.utils import get_vehicles_in_geofence_query
-from shared.stops import Stops
+from backend.utils import get_vehicles_in_geofence_query, smart_closest_point
 # from shared.schedules import Schedule
 
 logger = logging.getLogger(__name__)
@@ -171,6 +170,9 @@ async def get_locations(response: Response, db: AsyncSession = Depends(get_db)):
     # Get latest ETAs and predicted locations
     etas_dict, predicted_dict = await get_latest_etas_and_predicted_locations(vehicle_ids, db)
 
+    # Get route matching data from cached dataframe
+    closest_points = await smart_closest_point(vehicle_ids)
+
     # Format response
     response_data = {}
     oldest_timestamp = None
@@ -179,10 +181,13 @@ async def get_locations(response: Response, db: AsyncSession = Depends(get_db)):
         # Track oldest data point for latency calculation
         if oldest_timestamp is None or loc.timestamp < oldest_timestamp:
             oldest_timestamp = loc.timestamp
-        # Get closest loop
-        closest_distance, _, closest_route_name, polyline_index, _ = Stops.get_closest_point(
-            (loc.latitude, loc.longitude)
+
+        # Get closest point result from smart_closest_point
+        closest_distance, _, closest_route_name, polyline_index, _ = closest_points.get(
+            loc.vehicle_id,
+            (None, None, None, None, None)
         )
+
         if closest_distance is None:
             route_name = "UNCLEAR"
         else:
