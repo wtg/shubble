@@ -77,7 +77,7 @@ services:
       - "traefik.http.routers.shubble-frontend.rule=Host(`${FRONTEND_DOMAIN:-shuttles.rpi.edu}`)"
       - "traefik.http.routers.shubble-frontend.entrypoints=websecure"
       - "traefik.http.routers.shubble-frontend.tls.certResolver=letsencrypt"
-      - "traefik.http.services.shubble-frontend.loadbalancer.server.port=80"
+      - "traefik.http.services.shubble-frontend.loadbalancer.server.port=3000"
     restart: unless-stopped
   worker:
     build:
