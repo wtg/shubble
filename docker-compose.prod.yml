@@ -86,6 +86,8 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       API_KEY: ${API_KEY:-}
+    env_file:
+      - .env
     restart: unless-stopped
     networks:
       - dokploy-network
