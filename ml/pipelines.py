@@ -128,6 +128,7 @@ def preprocess_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
         df: Optional DataFrame to process. If None, loads from load_pipeline.
         preprocess: Re-compute preprocessing
         load: Re-load from database
+        additive: If True, only compute closest points for rows with NaN values (default: False)
 
     Note:
         Pipeline hierarchy is applied externally via apply_pipeline_hierarchy().
@@ -140,6 +141,7 @@ def preprocess_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
 
     preprocess = kwargs.get('preprocess', False)
     cache = kwargs.get('cache', True)
+    additive = kwargs.get('additive', False)
 
     # Try to load from cache (only if no input df provided and caching is enabled)
     if not preprocess and cache:
@@ -168,7 +170,7 @@ def preprocess_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
         'closest_point_lon': 'closest_lon',
         'polyline_index': 'polyline_idx',
         'segment_index': 'segment_idx'
-    })
+    }, additive=additive)
 
     # Save to cache if caching is enabled
     if cache:
@@ -216,9 +218,10 @@ def segment_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
     Args (via kwargs):
         df: Optional DataFrame (preprocessed). If None, runs preprocess_pipeline.
         max_timedelta: Maximum time gap (seconds) for consecutive points (default: 15)
-        max_distance: Maximum distance from route (km) to split segments (default: 0.005)
+        max_distance: Maximum distance from route (km) to split segments (default: 0.020)
         min_segment_length: Minimum points required to keep a segment (default: 3)
         window_size: Window size for cleaning NaN route values (default: 5)
+        require_majority_valid: If True, allows filling NaN endpoints without strict majority (default: False)
         segment: Re-run segmentation (default: False)
         preprocess: Re-run preprocessing (default: False)
         load: Re-load from database (default: False)
@@ -230,13 +233,14 @@ def segment_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
     Returns:
         Segmented DataFrame with speeds
     """
-    from ml.data.preprocess import segment_by_consecutive, filter_segments_by_length, clean_closest_route
+    from ml.data.preprocess import segment_by_consecutive, filter_segments_by_length, clean_closest_route, add_closest_points_educated
 
     # Extract parameters with defaults
     max_timedelta = kwargs.get('max_timedelta', 15)
-    max_distance = kwargs.get('max_distance', 0.005)
+    max_distance = kwargs.get('max_distance', 0.020)
     min_segment_length = kwargs.get('min_segment_length', 3)
     window_size = kwargs.get('window_size', 5)
+    require_majority_valid = kwargs.get('require_majority_valid', False)
     segment = kwargs.get('segment', False)
     cache = kwargs.get('cache', True)
 
@@ -278,7 +282,24 @@ def segment_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
     # Step 3: Clean NaN route values using segment-aware windowing
     logger.info(f"Step 3/5: Cleaning NaN route values (window size: {window_size})...")
     df = clean_closest_route(df, route_column='route', polyline_idx_column='polyline_idx',
-                            segment_column='segment_id', window_size=window_size)
+                            segment_column='segment_id', window_size=window_size,
+                            require_majority_valid=require_majority_valid)
+
+    # Step 3.5: Refine geometric points for inferred routes
+    logger.info(f"Step 3.5/5: Refining geometric points for inferred routes...")
+    add_closest_points_educated(
+        df,
+        lat_column='latitude',
+        lon_column='longitude',
+        route_column='route',
+        polyline_idx_column='polyline_idx',
+        output_columns={
+            'distance': 'dist_to_route',
+            'closest_point_lat': 'closest_lat',
+            'closest_point_lon': 'closest_lon',
+            'segment_index': 'segment_idx'
+        }
+    )
 
     # Step 4: Add speed
     logger.info("Step 4/5: Adding speed calculations...")

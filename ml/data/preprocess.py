@@ -56,7 +56,8 @@ def add_closest_points(
     df: pd.DataFrame,
     lat_column: str,
     lon_column: str,
-    output_columns: dict[str, str]
+    output_columns: dict[str, str],
+    additive: bool = False
 ) -> None:
     """
     Add route information by finding the closest point on route polylines.
@@ -81,6 +82,9 @@ def add_closest_points(
                        Valid keys: 'distance', 'closest_point_lat', 'closest_point_lon',
                                   'route_name', 'polyline_index'
                        Only specified keys will be added as columns.
+        additive: If True, only process rows where output columns have NaN values.
+                 Useful for incremental updates where some rows already have closest points.
+                 (default: False)
 
     Raises:
         KeyError: If lat_column or lon_column doesn't exist in the dataframe
@@ -105,6 +109,30 @@ def add_closest_points(
         raise KeyError(f"Column '{lat_column}' not found in dataframe")
     if lon_column not in df.columns:
         raise KeyError(f"Column '{lon_column}' not found in dataframe")
+
+    if not output_columns:
+        return  # Nothing to do
+
+    # If additive mode, initialize columns if they don't exist and determine which rows need processing
+    if additive:
+        # Initialize output columns with NaN if they don't exist
+        for output_col in output_columns.values():
+            if output_col not in df.columns:
+                df[output_col] = np.nan
+
+        # Determine which rows need processing (any row with NaN in any output column)
+        route_col = output_columns['route_name']
+        rows_to_process_mask = df[route_col].isna()
+        rows_to_process = df[rows_to_process_mask].copy()
+
+        if len(rows_to_process) == 0:
+            print(f'Additive mode: All {len(df)} rows already have closest points. Skipping.')
+            return
+
+        print(f'Additive mode: Processing {len(rows_to_process)}/{len(df)} rows with missing closest points')
+    else:
+        rows_to_process = df
+        rows_to_process_mask = pd.Series([True] * len(df), index=df.index)
 
     def process_row(row):
         """Process a single row and return closest point information."""
@@ -137,12 +165,13 @@ def add_closest_points(
 
         return pd.Series(result)
 
-    # Apply the function to each row and assign results
-    if output_columns:  # Only process if there are columns to add
-        result_df = df.progress_apply(process_row, axis=1)
-        print('Done! Adding columns to dataframe.')
-        for output_col in output_columns.values():
-            df[output_col] = result_df[output_col]
+    # Apply the function to rows that need processing
+    result_df = rows_to_process.progress_apply(process_row, axis=1)
+    print('Done! Adding columns to dataframe.')
+
+    # Assign results back to the original dataframe for the processed rows
+    for output_col in output_columns.values():
+        df.loc[rows_to_process_mask, output_col] = result_df[output_col].values
 
 
 def add_stops(
@@ -857,7 +886,8 @@ def clean_closest_route(
     route_column: str = 'route',
     polyline_idx_column: str = 'polyline_idx',
     segment_column: str = 'segment_id',
-    window_size: int = 5
+    window_size: int = 5,
+    require_majority_valid: bool = False
 ) -> pd.DataFrame:
     """
     Fill NaN values in route and polyline_idx columns using majority vote from surrounding window.
@@ -878,6 +908,9 @@ def clean_closest_route(
         polyline_idx_column: Name of column containing polyline indices
         segment_column: Name of column containing segment IDs (default: 'segment_id')
         window_size: Number of rows to look before and after each NaN (default: 5)
+        require_majority_valid: If True, does NOT require strict majority (>50%) of valid neighbors.
+            This allows filling NaNs at segment endpoints (default: False).
+            If False, requires strict majority, preventing endpoint fills but being more conservative.
 
     Returns:
         DataFrame with NaN route values filled based on majority vote from surrounding window
@@ -1026,6 +1059,112 @@ def clean_closest_route(
         print(f"  ✓ Filled 0/{total_nans} NaN values (0.0%)")
 
     return df_clean
+
+
+def add_closest_points_educated(
+    df: pd.DataFrame,
+    lat_column: str,
+    lon_column: str,
+    route_column: str,
+    polyline_idx_column: str,
+    output_columns: dict[str, str]
+) -> None:
+    """
+    Add closest point details for rows that have a route/polyline but missing segment info.
+
+    This is meant to be run after clean_closest_route. It finds rows where the route
+    and polyline index are known (possibly filled by clean_closest_route) but the
+    geometric details (segment index, exact closest point) are missing.
+
+    For these rows, it calls Stops.get_closest_point with the specific target polyline,
+    forcing a match to that route segment.
+
+    Args:
+        df: Pandas DataFrame to modify
+        lat_column: Name of the latitude column
+        lon_column: Name of the longitude column
+        route_column: Name of the column containing route names
+        polyline_idx_column: Name of the column containing polyline indices
+        output_columns: Dictionary mapping return value names to output column names.
+                       Must contain 'segment_index'.
+                       Valid keys: 'distance', 'closest_point_lat', 'closest_point_lon',
+                                  'segment_index', 'route_name', 'polyline_index'
+
+    Raises:
+        KeyError: If required columns don't exist
+    """
+    from shared.stops import Stops
+
+    # Validation
+    if lat_column not in df.columns:
+        raise KeyError(f"Column '{lat_column}' not found in dataframe")
+    if lon_column not in df.columns:
+        raise KeyError(f"Column '{lon_column}' not found in dataframe")
+    if route_column not in df.columns:
+        raise KeyError(f"Column '{route_column}' not found in dataframe")
+    if polyline_idx_column not in df.columns:
+        raise KeyError(f"Column '{polyline_idx_column}' not found in dataframe")
+
+    if 'segment_index' not in output_columns:
+        raise KeyError("output_columns must contain 'segment_index' to identify missing data")
+
+    segment_col = output_columns['segment_index']
+    if segment_col not in df.columns:
+        # If the column doesn't exist yet, we can't filter by it being NaN
+        raise KeyError(f"Column '{segment_col}' not found in dataframe")
+
+    # Filter rows: Route & Polyline present, Segment Index missing
+    mask = (
+        df[route_column].notna() &
+        df[polyline_idx_column].notna() &
+        df[segment_col].isna()
+    )
+
+    rows_to_process_indices = df.index[mask]
+
+    if len(rows_to_process_indices) == 0:
+        return
+
+    print(f"Refining {len(rows_to_process_indices)} rows with educated route guesses...")
+
+    def process_row(row):
+        lat = row[lat_column]
+        lon = row[lon_column]
+        route = row[route_column]
+        poly_idx = row[polyline_idx_column]
+
+        # Stops.get_closest_point expects poly_idx as int
+        try:
+            poly_idx = int(poly_idx)
+        except (ValueError, TypeError):
+            result = {output_col: np.nan for output_col in output_columns.values()}
+            return pd.Series(result)
+
+        # Get closest point forced to the specific route/polyline
+        distance, closest_point, _, _, segment_index = Stops.get_closest_point(
+            (lat, lon),
+            target_polyline=(route, poly_idx)
+        )
+
+        value_map = {
+            'distance': distance,
+            'closest_point_lat': closest_point[0] if closest_point is not None else np.nan,
+            'closest_point_lon': closest_point[1] if closest_point is not None else np.nan,
+            'route_name': route,
+            'polyline_index': poly_idx,
+            'segment_index': segment_index
+        }
+
+        result = {output_col: value_map.get(key, np.nan) for key, output_col in output_columns.items()}
+        return pd.Series(result)
+
+    # Apply to filtered rows
+    results = df.loc[mask].progress_apply(process_row, axis=1)
+
+    # Assign back to original dataframe
+    for key, output_col in output_columns.items():
+        if output_col in results.columns:
+            df.loc[mask, output_col] = results[output_col]
 
 
 if __name__ == "__main__":

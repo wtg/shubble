@@ -317,8 +317,8 @@ async def mock_stats(vehicleIds: str = "", after: str = None):
             if shuttle_id in shuttles:
                 # Add error to location
                 lat, lon = shuttles[shuttle_id].location
-                lat += np.random.normal(0, 0.00008)
-                lon += np.random.normal(0, 0.00008)
+                lat += np.random.normal(0, 0.000000)
+                lon += np.random.normal(0, 0.000000)
                 data.append(
                     {
                         "id": shuttle_id,

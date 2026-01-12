@@ -188,10 +188,7 @@ async def get_locations(response: Response, db: AsyncSession = Depends(get_db)):
             (None, None, None, None, None)
         )
 
-        if closest_distance is None:
-            route_name = "UNCLEAR"
-        else:
-            route_name = closest_route_name if closest_distance < 0.050 else None
+        route_name = closest_route_name if closest_distance < 0.050 else None
 
         # Get current driver info
         driver_info = None
@@ -201,7 +198,8 @@ async def get_locations(response: Response, db: AsyncSession = Depends(get_db)):
                 "id": assignment.driver.id,
                 "name": assignment.driver.name,
             }
-
+        else:
+            driver_info = None
         # Get ETA and predicted location for this vehicle
         eta_data = etas_dict.get(loc.vehicle_id)
         predicted_data = predicted_dict.get(loc.vehicle_id)

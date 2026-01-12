@@ -8,7 +8,7 @@ import LiveLocation from './locations/LiveLocation';
 import Schedule from './schedule/Schedule';
 import About from './about/About';
 import Data from './dashboard/Dashboard';
-import MapKitMap from './locations/components/MapKitMap';
+import LiveLocationMapKit from './locations/components/LiveLocationMapKit';
 import rawRouteData from './shared/routes.json';
 import { useState, useEffect } from "react";
 import type { ShuttleRouteData } from './types/route';
@@ -49,12 +49,12 @@ function App() {
             <Route path='/schedule' element={<Schedule selectedRoute={selectedRoute} setSelectedRoute={setSelectedRoute} />} />
             <Route path='/about' element={<About />} />
             <Route path='/data' element={<Data />} />
-            <Route path='/generate-static-routes' element={<MapKitMap routeData={routeData} displayVehicles={true} generateRoutes={true} />} />
+            <Route path='/generate-static-routes' element={<LiveLocationMapKit routeData={routeData} displayVehicles={true} generateRoutes={true} />} />
           </Route>
 
           {/* without header and footer */}
           <Route>
-            <Route path='/map' element={<MapKitMap routeData={routeData} generateRoutes={false} selectedRoute={selectedRoute} setSelectedRoute={setSelectedRoute} isFullscreen={true} />} />
+            <Route path='/map' element={<LiveLocationMapKit routeData={routeData} generateRoutes={false} selectedRoute={selectedRoute} setSelectedRoute={setSelectedRoute} isFullscreen={true} />} />
           </Route>
         </Routes>
       </Router>
