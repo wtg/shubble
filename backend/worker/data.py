@@ -13,6 +13,9 @@ from backend.models import ETA, PredictedLocation
 from backend.database import create_async_db_engine, create_session_factory
 from backend.config import settings
 from fastapi_cache import FastAPICache
+from fastapi_cache.decorator import cache
+from ml.cache import get_polyline_dir
+from shared.stops import Stops
 import asyncio
 
 logger = logging.getLogger(__name__)
@@ -23,6 +26,34 @@ Q = 2
 
 # Cache for loaded models: (route_name, polyline_idx) -> LSTMModel
 _MODEL_CACHE: Dict[Tuple[str, int], Any] = {}
+
+@cache(expire=300, namespace="average_travel_time")
+async def load_average_travel_time(route: str, polyline_idx: int) -> Optional[float]:
+    """Load average travel time for a polyline from CSV.
+
+    Cached for 5 minutes.
+
+    Args:
+        route: Route name
+        polyline_idx: Polyline index
+
+    Returns:
+        Average travel time in seconds, or None if not found
+    """
+    polyline_dir = get_polyline_dir(route, polyline_idx)
+    csv_path = polyline_dir / "average_travel_time.csv"
+
+    if not csv_path.exists():
+        return None
+
+    try:
+        df = pd.read_csv(csv_path)
+        if len(df) == 0:
+            return None
+        return float(df.iloc[0]['avg_travel_time_seconds'])
+    except Exception as e:
+        logger.warning(f"Failed to load average travel time for {route} polyline {polyline_idx}: {e}")
+        return None
 
 async def _get_vehicle_data(vehicle_ids: List[str]) -> pd.DataFrame:
     """Helper to get and filter vehicle data."""
@@ -120,6 +151,139 @@ async def predict_eta(vehicle_ids: List[str]) -> Dict[str, datetime]:
 
     return results
 
+async def get_all_stop_times(vehicle_ids: List[str]) -> Dict[str, List[Tuple[str, datetime]]]:
+    """
+    Get all stop times for a list of vehicle IDs: historical, predicted, and future.
+
+    For each vehicle, returns:
+    1. Historical: Last time the vehicle was at each stop before its current destination
+    2. Predicted: LSTM prediction for the stop it's currently going to
+    3. Future: Average time predictions for subsequent stops
+
+    Polyline indices map to stop transitions in routes_data['STOPS']:
+    - polyline_idx 0: transition from STOPS[0] to STOPS[1]
+    - polyline_idx 1: transition from STOPS[1] to STOPS[2]
+    - etc.
+
+    Args:
+        vehicle_ids: List of vehicle IDs to predict for
+
+    Returns:
+        Dictionary mapping vehicle_id to list of (stop_key, datetime) tuples
+        for all stops on the route (past, present, and future).
+    """
+    # Get ML prediction for next stop (current transition)
+    next_stop_etas = await predict_eta(vehicle_ids)
+    if not next_stop_etas:
+        return {}
+
+    # Get full vehicle dataframe to find historical stop times and current position
+    try:
+        full_df = await get_today_dataframe()
+    except Exception as e:
+        logger.error(f"Failed to load dataframe for get_all_stop_times: {e}")
+        return {}
+
+    if full_df.empty:
+        return {}
+
+    # Ensure vehicle_id is string type
+    full_df['vehicle_id'] = full_df['vehicle_id'].astype(str)
+
+    # Load routes data from Stops class
+    routes = Stops.routes_data
+
+    results: Dict[str, List[Tuple[str, datetime]]] = {}
+
+    for vehicle_id in vehicle_ids:
+        # Get all data for this vehicle
+        vehicle_df = full_df[full_df['vehicle_id'] == str(vehicle_id)].sort_values('timestamp')
+        if vehicle_df.empty:
+            continue
+
+        last_point = vehicle_df.iloc[-1]
+        route = last_point.get('route')
+        current_polyline_idx = last_point.get('polyline_idx')
+
+        if pd.isna(route) or pd.isna(current_polyline_idx):
+            continue
+
+        current_polyline_idx = int(current_polyline_idx)
+
+        # Check if route exists in routes data
+        if route not in routes:
+            logger.warning(f"Route {route} not found in routes.json")
+            continue
+
+        route_data = routes[route]
+        if 'STOPS' not in route_data:
+            logger.warning(f"STOPS not found for route {route}")
+            continue
+
+        stops = route_data['STOPS']  # List of stop keys like ["STUDENT_UNION", "COLONIE", ...]
+
+        # Polyline index N represents transition from STOPS[N] to STOPS[N+1]
+        # So if current_polyline_idx = 0, vehicle is going from STOPS[0] to STOPS[1]
+
+        # Determine which stop we're heading to (destination of current transition)
+        next_stop_idx = current_polyline_idx + 1
+
+        if next_stop_idx >= len(stops):
+            # Vehicle is past all stops (end of route)
+            continue
+
+        # Build complete list of stop times: historical + predicted + future
+        stop_times: List[Tuple[str, datetime]] = []
+
+        # 1. Add historical stop times (stops before the one we're going to)
+        for i in range(next_stop_idx):
+            stop_key = stops[i]
+            stop_data = route_data.get(stop_key, {})
+            stop_name = stop_data.get('NAME')
+
+            if stop_name:
+                # Find last time vehicle was at this stop (where stop_name matches)
+                at_stop = vehicle_df[vehicle_df['stop_name'] == stop_name]
+                if not at_stop.empty:
+                    last_at_stop = at_stop.iloc[-1]
+                    stop_timestamp = pd.to_datetime(last_at_stop['timestamp']).to_pydatetime()
+                    if stop_timestamp.tzinfo is None:
+                        stop_timestamp = stop_timestamp.replace(tzinfo=timezone.utc)
+                    stop_times.append((stop_key, stop_timestamp))
+
+        # 2. Add ML prediction for the stop we're currently going to
+        next_stop_eta = next_stop_etas.get(vehicle_id)
+        if not next_stop_eta:
+            continue
+
+        next_stop_key = stops[next_stop_idx]
+        stop_times.append((next_stop_key, next_stop_eta))
+
+        # 3. Calculate ETAs for subsequent stops using average travel times
+        cumulative_eta = next_stop_eta
+
+        for i in range(next_stop_idx + 1, len(stops)):
+            curr_stop_key = stops[i]
+            # Polyline index for transition TO this stop (from previous stop)
+            polyline_idx_for_transition = i - 1
+
+            # Load average travel time for this transition
+            avg_time = await load_average_travel_time(route, polyline_idx_for_transition)
+
+            if avg_time is None:
+                logger.warning(f"Missing average travel time for {route} polyline {polyline_idx_for_transition}")
+                # Skip remaining stops if we don't have complete data
+                break
+
+            # Calculate ETA for this stop
+            cumulative_eta = cumulative_eta + timedelta(seconds=avg_time)
+            stop_times.append((curr_stop_key, cumulative_eta))
+
+        if stop_times:
+            results[vehicle_id] = stop_times
+
+    return results
+
 async def predict_next_state(vehicle_ids: List[str]) -> Dict[str, Dict]:
     """
     Predict next state (speed, timestamp) for vehicles using ARIMA.
@@ -192,11 +356,11 @@ async def predict_next_state(vehicle_ids: List[str]) -> Dict[str, Dict]:
 
     return results
 
-async def save_predictions(etas: Dict[str, datetime], next_states: Dict[str, Dict]):
+async def save_predictions(etas: Dict[str, List[Tuple[str, datetime]]], next_states: Dict[str, Dict]):
     """Save predictions to database.
 
     Args:
-        etas: Dictionary mapping vehicle_id to predicted arrival datetime
+        etas: Dictionary mapping vehicle_id to list of (stop_key, eta_datetime) tuples
         next_states: Dictionary mapping vehicle_id to predicted next state (speed, timestamp)
     """
     if not etas and not next_states:
@@ -207,10 +371,13 @@ async def save_predictions(etas: Dict[str, datetime], next_states: Dict[str, Dic
 
     async with session_factory() as session:
         # Save ETAs (as ISO format strings for JSON storage)
-        for vid, eta_datetime in etas.items():
+        for vid, stop_etas in etas.items():
+            # Convert list of (stop_key, datetime) tuples to dict
+            etas_dict = {stop_key: eta_datetime.isoformat() for stop_key, eta_datetime in stop_etas}
+
             new_eta = ETA(
                 vehicle_id=vid,
-                etas={"next_stop": eta_datetime.isoformat()},
+                etas=etas_dict,
                 timestamp=datetime.now(timezone.utc)
             )
             session.add(new_eta)
@@ -236,10 +403,10 @@ async def generate_and_save_predictions(vehicle_ids: List[str]):
     logger.info(f"Generating predictions for {len(vehicle_ids)} vehicles...")
 
     # Run in parallel
-    # Note: predict_eta and predict_next_state both call _get_vehicle_data which calls get_today_dataframe.
+    # Note: get_all_stop_times and predict_next_state both call get_today_dataframe.
     # get_today_dataframe is cached in Redis so overhead is low.
     results = await asyncio.gather(
-        predict_eta(vehicle_ids),
+        get_all_stop_times(vehicle_ids),
         predict_next_state(vehicle_ids)
     )
 

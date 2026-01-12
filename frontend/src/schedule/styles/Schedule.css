@@ -21,6 +21,20 @@
     padding-left: 20px;
 }
 
+.live-eta-header {
+    color: #2563eb;
+}
+
+.inline-eta {
+    color: #2563eb;
+    font-weight: 600;
+}
+
+.inline-now {
+    color: #16a34a;
+    font-weight: 700;
+}
+
 .schedule-dropdown-style {
     padding: 5px;
     font-size: 16px;
@@ -31,4 +45,12 @@
 
 th.schedule-header {
     text-align: left;
+}
+
+.closest-stop-hint {
+    padding: 8px;
+    margin: 10px 0;
+    background-color: #f0f9ff;
+    border-left: 4px solid #2563eb;
+    border-radius: 4px;
 }

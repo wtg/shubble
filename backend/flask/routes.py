@@ -183,12 +183,16 @@ async def get_locations(response: Response, db: AsyncSession = Depends(get_db)):
             oldest_timestamp = loc.timestamp
 
         # Get closest point result from smart_closest_point
-        closest_distance, _, closest_route_name, polyline_index, _ = closest_points.get(
+        closest_distance, _, closest_route_name, polyline_index, _, stop_name = closest_points.get(
             loc.vehicle_id,
-            (None, None, None, None, None)
+            (None, None, None, None, None, None)
         )
 
-        route_name = closest_route_name if closest_distance < 0.050 else None
+        route_name = closest_route_name if closest_distance is not None and closest_distance < 0.050 else None
+
+        # Determine if vehicle is at a stop
+        is_at_stop = stop_name is not None
+        current_stop = stop_name if is_at_stop else None
 
         # Get current driver info
         driver_info = None
@@ -200,8 +204,13 @@ async def get_locations(response: Response, db: AsyncSession = Depends(get_db)):
             }
         else:
             driver_info = None
+
         # Get ETA and predicted location for this vehicle
-        eta_data = etas_dict.get(loc.vehicle_id)
+        # Withhold ETAs if vehicle is at Student Union
+        if stop_name == "Student Union":
+            eta_data = None
+        else:
+            eta_data = etas_dict.get(loc.vehicle_id)
         predicted_data = predicted_dict.get(loc.vehicle_id)
 
         response_data[loc.vehicle_id] = {
@@ -225,6 +234,8 @@ async def get_locations(response: Response, db: AsyncSession = Depends(get_db)):
             "driver": driver_info,
             "eta": eta_data,
             "predicted_location": predicted_data,
+            "is_at_stop": is_at_stop,
+            "current_stop": current_stop,
         }
 
     # Add timing metadata as HTTP headers to help frontend synchronize with Samsara API

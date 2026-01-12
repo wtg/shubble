@@ -8,6 +8,7 @@ import Schedule from '../schedule/Schedule';
 import "./styles/LiveLocation.css";
 import routeData from '../shared/routes.json';
 import type { ShuttleRouteData } from '../types/route';
+import type { VehicleETAs } from '../types/vehicleLocation';
 import aggregatedSchedule from '../shared/aggregated_schedule.json';
 
 export default function LiveLocation() {
@@ -15,6 +16,12 @@ export default function LiveLocation() {
 
   //New selection state for the schedule
   const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
+
+  // Stop times state (historical, predicted, and future)
+  const [stopTimes, setStopTimes] = useState<VehicleETAs>({});
+
+  // Current stops state: maps stop_name to array of vehicle IDs at that stop
+  const [vehiclesAtStops, setVehiclesAtStops] = useState<Record<string, string[]>>({});
 
   // Filter routeData to only include routes present in aggregatedSchedule
   useEffect(() => {
@@ -32,11 +39,15 @@ export default function LiveLocation() {
         routeData={filteredRouteData}
         selectedRoute={selectedRoute}
         setSelectedRoute={setSelectedRoute}
+        onStopTimesUpdate={setStopTimes}
+        onVehiclesAtStopsUpdate={setVehiclesAtStops}
       />
       <div className="schedule-table">
         <Schedule
           selectedRoute={selectedRoute}
           setSelectedRoute={setSelectedRoute}
+          stopTimes={stopTimes}
+          vehiclesAtStops={vehiclesAtStops}
         />
       </div>
     </div>

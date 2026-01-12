@@ -18,18 +18,21 @@ type VehicleLocationData = {
     vehicle_name: string;
     vin: string;
     eta?: {
-        etas: {
-            next_stop: string; // ISO 8601 format datetime
-        };
+        etas: Record<string, string>; // stop_key -> ISO 8601 format datetime
         timestamp: string; // ISO 8601 format
     } | null;
     predicted_location?: {
         speed_kmh: number;
         timestamp: string; // ISO 8601 format
     } | null;
+    is_at_stop?: boolean;
+    current_stop?: string | null;
 }
 
 export type VehicleInformationMap = Record<string, VehicleLocationData>;
+
+// ETAs: vehicle_id -> stop_name -> ISO 8601 datetime
+export type VehicleETAs = Record<string, Record<string, string>>;
 
 export type VehicleAnnotationProps = {
   coordinate: { latitude: number; longitude: number };

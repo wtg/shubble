@@ -2,6 +2,7 @@
 from sqlalchemy import func, and_, select
 from fastapi_cache.decorator import cache
 from typing import Dict, Tuple, Optional, List
+import pandas as pd
 
 from backend.models import GeofenceEvent
 from backend.time_utils import get_campus_start_of_day
@@ -69,7 +70,7 @@ async def get_vehicles_in_geofence(session_factory):
 @cache(expire=60, namespace="smart_closest_point")
 async def smart_closest_point(
     vehicle_ids: List[str]
-) -> Dict[str, Tuple[Optional[float], Optional[Tuple[float, float]], Optional[str], Optional[int], Optional[int]]]:
+) -> Dict[str, Tuple[Optional[float], Optional[Tuple[float, float]], Optional[str], Optional[int], Optional[int], Optional[str]]]:
     """
     Get the closest point data for each vehicle from the cached dataframe (cached for 60 seconds).
 
@@ -81,8 +82,8 @@ async def smart_closest_point(
         vehicle_ids: List of vehicle IDs to get closest point data for
 
     Returns:
-        Dictionary mapping vehicle_id to (distance, closest_point, route_name, polyline_idx, segment_idx)
-        Returns (None, None, None, None, None) for vehicles not found in the cache.
+        Dictionary mapping vehicle_id to (distance, closest_point, route_name, polyline_idx, segment_idx, stop_name)
+        Returns (None, None, None, None, None, None) for vehicles not found in the cache.
     """
     results = {}
 
@@ -93,7 +94,7 @@ async def smart_closest_point(
         if df.empty:
             # No cached data, return None for all vehicles
             for vehicle_id in vehicle_ids:
-                results[vehicle_id] = (None, None, None, None, None)
+                results[vehicle_id] = (None, None, None, None, None, None)
             return results
 
         # Ensure vehicle_id is string type for comparison
@@ -105,7 +106,7 @@ async def smart_closest_point(
 
             if vehicle_data.empty:
                 # No data for this vehicle
-                results[vehicle_id] = (None, None, None, None, None)
+                results[vehicle_id] = (None, None, None, None, None, None)
                 continue
 
             # Get the latest row (dataframe is sorted by timestamp)
@@ -119,6 +120,7 @@ async def smart_closest_point(
             segment_idx = latest.get('segment_idx')
             closest_lat = latest.get('closest_lat')
             closest_lon = latest.get('closest_lon')
+            stop_name = latest.get('stop_name')  # From stops pipeline
 
             # Build closest_point tuple if coordinates are available
             if closest_lat is not None and closest_lon is not None:
@@ -139,7 +141,13 @@ async def smart_closest_point(
                 except (ValueError, TypeError):
                     segment_idx = None
 
-            results[vehicle_id] = (distance, closest_point, route_name, polyline_idx, segment_idx)
+            # Convert stop_name to string or None
+            if stop_name is not None and not pd.isna(stop_name):
+                stop_name = str(stop_name)
+            else:
+                stop_name = None
+
+            results[vehicle_id] = (distance, closest_point, route_name, polyline_idx, segment_idx, stop_name)
 
     except Exception as e:
         # If anything goes wrong, return None for all vehicles
@@ -148,6 +156,6 @@ async def smart_closest_point(
         logger.error(f"Error in smart_closest_point: {e}")
 
         for vehicle_id in vehicle_ids:
-            results[vehicle_id] = (None, None, None, None, None)
+            results[vehicle_id] = (None, None, None, None, None, None)
 
     return results

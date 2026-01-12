@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import './styles/Schedule.css';
 import rawRouteData from '../shared/routes.json';
 import rawAggregatedSchedule from '../shared/aggregated_schedule.json';
 import type { AggregatedDaySchedule, AggregatedScheduleType} from '../types/schedule';
 import type { ShuttleRouteData, ShuttleStopData } from '../types/route';
+import type { VehicleETAs } from '../types/vehicleLocation';
 import {buildAllStops, findClosestStop, type Stop, type ClosestStop, } from '../types/ClosestStop';
 
 
@@ -15,9 +16,11 @@ const routeData = rawRouteData as unknown as ShuttleRouteData;
 type ScheduleProps = {
   selectedRoute: string | null;
   setSelectedRoute: (route: string | null) => void;
+  stopTimes?: VehicleETAs;
+  vehiclesAtStops?: Record<string, string[]>;
 };
 
-export default function Schedule({ selectedRoute, setSelectedRoute }: ScheduleProps) {
+export default function Schedule({ selectedRoute, setSelectedRoute, stopTimes = {}, vehiclesAtStops = {} }: ScheduleProps) {
   // Validate props once at the top
   if (typeof setSelectedRoute !== 'function') {
     throw new Error('setSelectedRoute must be a function');
@@ -26,11 +29,29 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
   const now = new Date();
   const [selectedDay, setSelectedDay] = useState(now.getDay());
   const [routeNames, setRouteNames] = useState(Object.keys(aggregatedSchedule[selectedDay]));
-  const [stopNames, setStopNames] = useState<string[]>([]);
   const [schedule, setSchedule] = useState<AggregatedDaySchedule>(aggregatedSchedule[selectedDay]);
 
   const [allStops, setAllStops] = useState<Stop[]>([]);
   const [closestStop, setClosestStop] = useState<ClosestStop | null>(null);
+
+  // Compute minimum stop time for each stop across all shuttles
+  const minStopTimes = useMemo(() => {
+    const stopTimeMap: Record<string, Date> = {};
+
+    // Iterate through all vehicles and their stop times
+    Object.values(stopTimes).forEach((vehicleStopTimes) => {
+      Object.entries(vehicleStopTimes).forEach(([stopKey, timeString]) => {
+        const timeDate = new Date(timeString);
+
+        // If this stop doesn't have a time yet, or this time is earlier, update it
+        if (!stopTimeMap[stopKey] || timeDate < stopTimeMap[stopKey]) {
+          stopTimeMap[stopKey] = timeDate;
+        }
+      });
+    });
+
+    return stopTimeMap;
+  }, [stopTimes]);
 
   // Whenever selectedDay changes, recompute today's stops
   useEffect(() => {
@@ -51,12 +72,6 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
       setSelectedRoute(firstRoute);
     }
   }, [selectedDay, selectedRoute, setSelectedRoute]);
-
-  // Update stopNames when selectedRoute changes
-  useEffect(() => {
-    if (!safeSelectedRoute || !(safeSelectedRoute in routeData)) return;
-    setStopNames(routeData[safeSelectedRoute as keyof typeof routeData].STOPS);
-  }, [selectedRoute]);
 
   // Handle day change from dropdown
   const handleDayChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -169,7 +184,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
         <table>
           <thead>
             <tr>
-              <th className="schedule-header"><span className="bold">Time</span> (estimated)</th>
+              <th className="schedule-header"><span className="bold">Time</span> (estimated) | <span className="bold live-eta-header">Live ETA</span></th>
             </tr>
           </thead>
           <tbody>
@@ -178,22 +193,88 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
               const route = routeData[routeKey];
               const times = schedule[routeKey];
 
-              return times.map((time, index) =>
-                route.STOPS.map((stop, sidx) => {
+              // Find the current time loop index if viewing today's schedule
+              let currentLoopIdx = -1;
+              if (selectedDay === now.getDay()) {
+                for (let i = 0; i < times.length; i++) {
+                  const time = times[i];
+                  const firstStop = route.STOPS[0];
+                  const firstStopData = route[firstStop] as ShuttleStopData;
+                  const loopTime = offsetTime(time, firstStopData.OFFSET);
+
+                  if (loopTime >= now) {
+                    currentLoopIdx = i;
+                    break;
+                  }
+                }
+              }
+
+              // If no current loop found, use the last loop
+              if (currentLoopIdx === -1) {
+                currentLoopIdx = times.length - 1;
+              }
+
+              // Build the full list of rows
+              const allRows: Array<{
+                time: string;
+                index: number;
+                stop: string;
+                sidx: number;
+                stopData: ShuttleStopData;
+                displayTime: string;
+              }> = [];
+
+              times.forEach((time, index) => {
+                route.STOPS.forEach((stop, sidx) => {
                   const stopData = route[stop] as ShuttleStopData;
                   const displayTime = offsetTime(time, stopData.OFFSET).toLocaleTimeString(
                     undefined,
-                    { timeStyle: "short" }
+                    { hour: 'numeric', minute: '2-digit' }
                   );
-                  return (
-                    <tr key={`${index}-${sidx}`}>
-                      <td className={sidx === 0 ? "outdented" : "indented-time"}>
-                        {sidx === 0 ? displayTime : ""} {stopData.NAME}
-                      </td>
-                    </tr>
-                  );
-                })
-              );
+                  allRows.push({ time, index, stop, sidx, stopData, displayTime });
+                });
+              });
+
+              // Find occurrences of each stop in the current loop
+              const currentLoopOccurrenceMap = new Map<string, number>();
+              const stopsPerLoop = route.STOPS.length;
+              const currentLoopStartIdx = currentLoopIdx * stopsPerLoop;
+              const currentLoopEndIdx = currentLoopStartIdx + stopsPerLoop;
+
+              for (let rowIdx = currentLoopStartIdx; rowIdx < currentLoopEndIdx && rowIdx < allRows.length; rowIdx++) {
+                const row = allRows[rowIdx];
+                currentLoopOccurrenceMap.set(row.stop, rowIdx);
+              }
+
+              // Render all rows, showing times/NOW only on current loop occurrence
+              return allRows.map((row, rowIdx) => {
+                const { stop, sidx, stopData, displayTime, index } = row;
+
+                // Check if there are vehicles currently at this stop
+                const vehiclesAtThisStop = vehiclesAtStops[stopData.NAME] || [];
+                const hasVehicleNow = vehiclesAtThisStop.length > 0;
+
+                // Get stop time for this stop using the stop key
+                const stopTime = minStopTimes[stop];
+
+                // Only show time on the current loop occurrence of this stop
+                const isCurrentLoopOccurrence = currentLoopOccurrenceMap.get(stop) === rowIdx;
+                const shouldShowTime = stopTime && isCurrentLoopOccurrence;
+                const timeDisplay = shouldShowTime
+                  ? stopTime.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+                  : "";
+
+                // Only show NOW on current loop occurrence as well
+                const shouldShowNow = hasVehicleNow && isCurrentLoopOccurrence;
+
+                return (
+                  <tr key={`${index}-${sidx}`}>
+                    <td className={sidx === 0 ? "outdented" : "indented-time"}>
+                      {sidx === 0 ? displayTime : ""} {shouldShowNow && <span className="inline-now">NOW </span>}{timeDisplay && <span className="inline-eta">{timeDisplay} </span>}{stopData.NAME}
+                    </td>
+                  </tr>
+                );
+              });
             })()}
 
           </tbody>
