@@ -44,7 +44,7 @@ function aggregateSchedule(scheduleData) {
 
 const aggregatedSchedule = aggregateSchedule(scheduleData);
 
-const outputPath = path.join(process.cwd(), 'data', 'aggregated_schedule.json');
-fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+// Write to the shared directory (where this script is located)
+const outputPath = path.join(path.dirname(new URL(import.meta.url).pathname), 'aggregated_schedule.json');
 fs.writeFileSync(outputPath, JSON.stringify(aggregatedSchedule, null, 2));
 console.log(`aggregatedSchedule.json generated at ${outputPath}`);
