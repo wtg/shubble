@@ -1188,7 +1188,7 @@ if __name__ == "__main__":
     arima_parser.add_argument("--load", action="store_true", help="Re-load data from database")
     arima_parser.add_argument("--fit", action="store_true", help="Re-fit model")
     arima_parser.add_argument("--max-timedelta", type=float, default=15)
-    arima_parser.add_argument("--max-distance", type=float, default=0.01)
+    arima_parser.add_argument("--max-distance", type=float, default=0.02)
     arima_parser.add_argument("--min-segment-length", type=int, default=3)
     arima_parser.add_argument("--window-size", type=int, default=5, help="Window size for cleaning NaN routes")
     arima_parser.add_argument("--test-ratio", type=float, default=0.2)
