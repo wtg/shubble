@@ -76,7 +76,8 @@ def apply_pipeline_hierarchy(kwargs: dict) -> dict:
 from ml.cache import (
     get_cache_path, load_cached_csv, save_csv,
     ARIMA_CACHE_DIR, LSTM_CACHE_DIR,
-    RAW_CSV, PREPROCESSED_CSV
+    RAW_CSV, PREPROCESSED_CSV,
+    get_polyline_dir
 )
 
 
@@ -756,8 +757,7 @@ def lstm_pipeline(
             continue
 
         # Create polyline-specific directory
-        safe_route = route_name.replace(' ', '_').replace('/', '_')
-        polyline_dir = LSTM_CACHE_DIR / f"{safe_route}_{polyline_idx}"
+        polyline_dir = get_polyline_dir(route_name, polyline_idx)
         polyline_dir.mkdir(parents=True, exist_ok=True)
 
         # Define paths for this polyline
@@ -877,8 +877,7 @@ def lstm_pipeline(
     logger.info("="*70)
     logger.info(f"Successfully trained {len(polyline_models)} models:")
     for (route, idx), (model, results) in sorted(polyline_models.items()):
-        safe_route = route.replace(' ', '_').replace('/', '_')
-        polyline_dir = LSTM_CACHE_DIR / f"{safe_route}_{idx}"
+        polyline_dir = get_polyline_dir(route, idx)
         logger.info(f"  {route} seg {idx}: RMSE={results['rmse']:.4f}, MAE={results['mae']:.4f}")
         logger.info(f"    → {polyline_dir}/")
 

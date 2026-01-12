@@ -81,6 +81,25 @@ def get_cache_path(base_name: str, cache_dir: Path = SHARED_CACHE_DIR, extension
     return cache_dir / f"{base_name}_{param_str}.{extension}"
 
 
+def get_polyline_dir(route: str, idx: int) -> Path:
+    """
+    Get directory for a specific route and polyline index.
+
+    Args:
+        route: Route name
+        idx: Polyline index
+
+    Returns:
+        Path to the polyline directory
+    """
+    try:
+        idx = int(idx)
+    except ValueError:
+        raise ValueError(f"Polyline index must be an integer, got: {idx}")
+    safe_route = route.replace(' ', '_').replace('/', '_')
+    return LSTM_CACHE_DIR / f"{safe_route}_{idx}"
+
+
 def load_cached_csv(path: Path, description: str) -> Optional[pd.DataFrame]:
     """Load a cached CSV file with timestamp parsing."""
     if not path.exists():

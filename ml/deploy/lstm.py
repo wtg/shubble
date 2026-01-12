@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from ml.cache import LSTM_CACHE_DIR
+from ml.cache import LSTM_CACHE_DIR, get_polyline_dir
 from ml.models.lstm import LSTMModel
 
 logger = logging.getLogger(__name__)
@@ -158,9 +158,8 @@ def load_lstm_for_route(
     """
     from ml.models.lstm import LSTMModel
 
-    # Convert route name to safe directory name
-    safe_route = route_name.replace(' ', '_').replace('/', '_')
-    polyline_dir = CACHE_DIR / f"{safe_route}_{polyline_idx}"
+    # Get polyline directory
+    polyline_dir = get_polyline_dir(route_name, polyline_idx)
     model_path = polyline_dir / "model.pth"
 
     if not model_path.exists():
