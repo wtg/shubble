@@ -177,7 +177,8 @@ async def update_driver_assignments(session_factory, vehicle_ids):
         "vehicleIds": ",".join(vehicle_ids),
     }
 
-    print('url womp womp', url)
+    logger.info(f"Fetching driver assignments for {len(vehicle_ids)} vehicles")
+    logger.info('url is ', url)
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
