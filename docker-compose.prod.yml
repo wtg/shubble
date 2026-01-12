@@ -68,8 +68,6 @@ services:
       - "${FRONTEND_PORT:-3000}:80"
     environment:
       VITE_BACKEND_URL: ${VITE_BACKEND_URL:-http://localhost:8000}
-    env_file:
-      - .env
     networks:
       - dokploy-network
     labels:
