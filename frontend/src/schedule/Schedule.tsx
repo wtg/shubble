@@ -130,14 +130,23 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopTimes = 
     if (!scheduleDiv) return;
 
     if (selectedDay !== now.getDay()) return; // only scroll if viewing today's schedule
-    const currentTimeRow = Array.from(scheduleDiv.querySelectorAll('td.outdented')).find(td => {
+
+    // Find all times before now and get the last one (excluding 12AM)
+    const timesBeforeNow = Array.from(scheduleDiv.querySelectorAll('td.outdented')).filter(td => {
       const timeStr = td.textContent?.trim();
+
+      // Exclude 12AM times (end of schedule)
+      if (timeStr?.includes('12:') && timeStr?.includes('AM')) {
+        return false;
+      }
 
       // Expect "H:MM AM/PM" → split at the first space
       const timeDate = timeToDate(timeStr || "");
 
-      return timeDate >= now;
+      return timeDate < now;
     });
+
+    const currentTimeRow = timesBeforeNow[timesBeforeNow.length - 1];
 
     if (currentTimeRow) {
       currentTimeRow.scrollIntoView({ behavior: "auto" });
@@ -194,6 +203,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopTimes = 
               const times = schedule[routeKey];
 
               // Find the current time loop index if viewing today's schedule
+              // Use the last time before now (excluding 12AM)
               let currentLoopIdx = -1;
               if (selectedDay === now.getDay()) {
                 for (let i = 0; i < times.length; i++) {
@@ -202,8 +212,14 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopTimes = 
                   const firstStopData = route[firstStop] as ShuttleStopData;
                   const loopTime = offsetTime(time, firstStopData.OFFSET);
 
-                  if (loopTime >= now) {
+                  // Exclude 12AM times (end of schedule)
+                  const timeStr = loopTime.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+                  const is12AM = timeStr.includes('12:') && timeStr.includes('AM');
+
+                  if (loopTime < now && !is12AM) {
                     currentLoopIdx = i;
+                    // Keep going to find the last one before now
+                  } else if (loopTime >= now) {
                     break;
                   }
                 }
@@ -260,9 +276,18 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopTimes = 
                 // Only show time on the current loop occurrence of this stop
                 const isCurrentLoopOccurrence = currentLoopOccurrenceMap.get(stop) === rowIdx;
                 const shouldShowTime = stopTime && isCurrentLoopOccurrence;
+
+                // Check if stop time is in the past
+                const isStopTimePast = stopTime && stopTime < now;
+
+                // For historical stops, show "---" instead of the time
                 const timeDisplay = shouldShowTime
-                  ? stopTime.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+                  ? (isStopTimePast
+                      ? "---"
+                      : stopTime.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }))
                   : "";
+
+                const etaClassName = isStopTimePast ? "inline-eta-past" : "inline-eta";
 
                 // Only show NOW on current loop occurrence as well
                 const shouldShowNow = hasVehicleNow && isCurrentLoopOccurrence;
@@ -270,7 +295,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopTimes = 
                 return (
                   <tr key={`${index}-${sidx}`}>
                     <td className={sidx === 0 ? "outdented" : "indented-time"}>
-                      {sidx === 0 ? displayTime : ""} {shouldShowNow && <span className="inline-now">NOW </span>}{timeDisplay && <span className="inline-eta">{timeDisplay} </span>}{stopData.NAME}
+                      {sidx === 0 ? displayTime : ""} {shouldShowNow && <span className="inline-now">NOW </span>}{timeDisplay && <span className={etaClassName}>{timeDisplay} </span>}{stopData.NAME}
                     </td>
                   </tr>
                 );

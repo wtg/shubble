@@ -17,8 +17,8 @@ type VehicleLocationData = {
     timestamp: string; // ISO 8601 format
     vehicle_name: string;
     vin: string;
-    eta?: {
-        etas: Record<string, string>; // stop_key -> ISO 8601 format datetime
+    stop_times?: {
+        stop_times: Record<string, string>; // stop_key -> ISO 8601 format datetime
         timestamp: string; // ISO 8601 format
     } | null;
     predicted_location?: {

@@ -172,10 +172,6 @@ async def get_all_stop_times(vehicle_ids: List[str]) -> Dict[str, List[Tuple[str
         Dictionary mapping vehicle_id to list of (stop_key, datetime) tuples
         for all stops on the route (past, present, and future).
     """
-    # Get ML prediction for next stop (current transition)
-    next_stop_etas = await predict_eta(vehicle_ids)
-    if not next_stop_etas:
-        return {}
 
     # Get full vehicle dataframe to find historical stop times and current position
     try:
@@ -187,11 +183,13 @@ async def get_all_stop_times(vehicle_ids: List[str]) -> Dict[str, List[Tuple[str
     if full_df.empty:
         return {}
 
-    # Ensure vehicle_id is string type
-    full_df['vehicle_id'] = full_df['vehicle_id'].astype(str)
-
     # Load routes data from Stops class
     routes = Stops.routes_data
+
+    # Get ML prediction for next stop (current transition)
+    next_stop_etas = await predict_eta(vehicle_ids)
+    if not next_stop_etas:
+        return {}
 
     results: Dict[str, List[Tuple[str, datetime]]] = {}
 
@@ -204,6 +202,7 @@ async def get_all_stop_times(vehicle_ids: List[str]) -> Dict[str, List[Tuple[str
         last_point = vehicle_df.iloc[-1]
         route = last_point.get('route')
         current_polyline_idx = last_point.get('polyline_idx')
+        now_stop_key = last_point.get('stop_name')
 
         if pd.isna(route) or pd.isna(current_polyline_idx):
             continue
@@ -225,6 +224,16 @@ async def get_all_stop_times(vehicle_ids: List[str]) -> Dict[str, List[Tuple[str
         # Polyline index N represents transition from STOPS[N] to STOPS[N+1]
         # So if current_polyline_idx = 0, vehicle is going from STOPS[0] to STOPS[1]
 
+        if not pd.isna(now_stop_key):
+            now_stop_idx = stops.index(now_stop_key)
+            if now_stop_idx == current_polyline_idx:
+                # Vehicle is at the stop it's going to, increment to next
+                current_polyline_idx += 1
+
+        # Safety check
+        if current_polyline_idx < 0 or current_polyline_idx >= len(stops):
+            continue
+
         # Determine which stop we're heading to (destination of current transition)
         next_stop_idx = current_polyline_idx + 1
 
@@ -238,18 +247,15 @@ async def get_all_stop_times(vehicle_ids: List[str]) -> Dict[str, List[Tuple[str
         # 1. Add historical stop times (stops before the one we're going to)
         for i in range(next_stop_idx):
             stop_key = stops[i]
-            stop_data = route_data.get(stop_key, {})
-            stop_name = stop_data.get('NAME')
 
-            if stop_name:
-                # Find last time vehicle was at this stop (where stop_name matches)
-                at_stop = vehicle_df[vehicle_df['stop_name'] == stop_name]
-                if not at_stop.empty:
-                    last_at_stop = at_stop.iloc[-1]
-                    stop_timestamp = pd.to_datetime(last_at_stop['timestamp']).to_pydatetime()
-                    if stop_timestamp.tzinfo is None:
-                        stop_timestamp = stop_timestamp.replace(tzinfo=timezone.utc)
-                    stop_times.append((stop_key, stop_timestamp))
+            # Find last time vehicle was at this stop (where stop_name matches)
+            at_stop = vehicle_df[vehicle_df['stop_name'] == stop_key]
+            if not at_stop.empty:
+                last_at_stop = at_stop.iloc[-1]
+                stop_timestamp = pd.to_datetime(last_at_stop['timestamp']).to_pydatetime()
+                if stop_timestamp.tzinfo is None:
+                    stop_timestamp = stop_timestamp.replace(tzinfo=timezone.utc)
+                stop_times.append((stop_key, stop_timestamp))
 
         # 2. Add ML prediction for the stop we're currently going to
         next_stop_eta = next_stop_etas.get(vehicle_id)
@@ -281,6 +287,8 @@ async def get_all_stop_times(vehicle_ids: List[str]) -> Dict[str, List[Tuple[str
 
         if stop_times:
             results[vehicle_id] = stop_times
+
+    print(results)
 
     return results
 

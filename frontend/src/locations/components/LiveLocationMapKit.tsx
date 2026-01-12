@@ -76,8 +76,8 @@ export default function LiveLocationMapKit({
     if (onStopTimesUpdate) {
       const stopTimes: VehicleETAs = {};
       Object.entries(vehicles).forEach(([vehicleId, vehicleData]) => {
-        if (vehicleData.eta?.etas) {
-          stopTimes[vehicleId] = vehicleData.eta.etas;
+        if (vehicleData.stop_times?.stop_times) {
+          stopTimes[vehicleId] = vehicleData.stop_times.stop_times;
         }
       });
       onStopTimesUpdate(stopTimes);

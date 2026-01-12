@@ -30,6 +30,11 @@
     font-weight: 600;
 }
 
+.inline-eta-past {
+    color: #9ca3af;
+    font-weight: 400;
+}
+
 .inline-now {
     color: #16a34a;
     font-weight: 700;

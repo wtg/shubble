@@ -19,6 +19,7 @@ from backend.models import Vehicle, GeofenceEvent, VehicleLocation, DriverVehicl
 from backend.config import settings
 from backend.time_utils import get_campus_start_of_day
 from backend.utils import get_vehicles_in_geofence_query, smart_closest_point
+from shared.stops import Stops
 # from shared.schedules import Schedule
 
 logger = logging.getLogger(__name__)
@@ -99,7 +100,7 @@ async def get_latest_etas_and_predicted_locations(vehicle_ids: list[str], db: As
     etas_dict = {}
     for eta in etas:
         etas_dict[eta.vehicle_id] = {
-            "etas": eta.etas,
+            "stop_times": eta.etas,
             "timestamp": eta.timestamp.isoformat(),
         }
 
@@ -205,12 +206,16 @@ async def get_locations(response: Response, db: AsyncSession = Depends(get_db)):
         else:
             driver_info = None
 
-        # Get ETA and predicted location for this vehicle
-        # Withhold ETAs if vehicle is at Student Union
-        if stop_name == "Student Union":
-            eta_data = None
+        # Get stop times and predicted location for this vehicle
+        # Withhold stop times if vehicle is at Student Union
+        routes = Stops.routes_data
+        if route_name:
+            if stop_name == routes[route_name]['STOPS'][0]:
+                stop_times_data = None
+            else:
+                stop_times_data = etas_dict.get(loc.vehicle_id)
         else:
-            eta_data = etas_dict.get(loc.vehicle_id)
+            stop_times_data = None
         predicted_data = predicted_dict.get(loc.vehicle_id)
 
         response_data[loc.vehicle_id] = {
@@ -232,7 +237,7 @@ async def get_locations(response: Response, db: AsyncSession = Depends(get_db)):
             "gateway_model": vehicle.gateway_model,
             "gateway_serial": vehicle.gateway_serial,
             "driver": driver_info,
-            "eta": eta_data,
+            "stop_times": stop_times_data,
             "predicted_location": predicted_data,
             "is_at_stop": is_at_stop,
             "current_stop": current_stop,
