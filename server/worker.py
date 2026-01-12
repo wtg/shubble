@@ -178,7 +178,7 @@ async def update_driver_assignments(session_factory, vehicle_ids):
     }
 
     logger.error(f"Fetching driver assignments for {len(vehicle_ids)} vehicles")
-    logger.error('url is ', url)
+    logger.error(f"url is {url}")
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
