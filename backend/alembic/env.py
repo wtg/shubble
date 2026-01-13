@@ -25,6 +25,8 @@ from backend.models import (
     VehicleLocation,
     Driver,
     DriverVehicleAssignment,
+    ETA,
+    PredictedLocation,
 )
 
 # this is the Alembic Config object, which provides

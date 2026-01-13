@@ -57,7 +57,9 @@ services:
         condition: service_healthy
     restart: unless-stopped
     volumes:
-      - ./server:/app/server
+      - ./backend:/app/backend
+      - ./shared:/app/shared
+      - ./ml:/app/ml
     profiles:
       - backend
 
@@ -80,6 +82,10 @@ services:
       backend:
         condition: service_started
     restart: unless-stopped
+    volumes:
+      - ./backend:/app/backend
+      - ./shared:/app/shared
+      - ./ml:/app/ml
     profiles:
       - backend
 
@@ -93,7 +99,9 @@ services:
       VITE_BACKEND_URL: ${VITE_BACKEND_URL:-http://localhost:8000}
     restart: unless-stopped
     volumes:
-      - ./client:/app/client
+      - ./frontend:/app/frontend
+      - ./shared:/app/shared
+      - /app/frontend/node_modules
     profiles:
       - frontend
 

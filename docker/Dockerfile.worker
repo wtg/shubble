@@ -4,12 +4,15 @@ FROM python:3.13-slim
 WORKDIR /app
 
 # Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir --root-user-action=ignore -r requirements.txt
+COPY backend/requirements.txt .
+COPY ml/requirements.txt ./ml_requirements.txt
+RUN pip install --no-cache-dir --root-user-action=ignore -r requirements.txt && \
+    pip install --no-cache-dir --root-user-action=ignore -r ml_requirements.txt
 
 # Copy application code
 COPY backend/ ./backend/
 COPY shared/ ./shared/
+COPY ml/ ./ml/
 
 # Create non-root user
 RUN useradd -m -u 1000 shubble && chown -R shubble:shubble /app

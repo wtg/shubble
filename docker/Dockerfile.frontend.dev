@@ -1,22 +1,20 @@
 # Frontend Dockerfile for Shubble
-FROM node:24-alpine AS builder
+FROM node:24-alpine
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
-COPY client/package*.json ./client/
-
-# Install dependencies
+# Copy package files and install dependencies
+COPY frontend/package*.json ./frontend/
+WORKDIR /app/frontend
 RUN npm ci
 
-# Copy source files and data
-COPY client/ ./client/
-COPY data/ ./data/
-COPY vite.config.ts ./
-COPY tsconfig*.json ./
-COPY .env ./client/
+# Copy source files and shared data
+WORKDIR /app
+COPY frontend/ ./frontend/
+COPY shared/ ./shared/
 
-EXPOSE 3000 
+WORKDIR /app/frontend
+
+EXPOSE 3000
 
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "3000"]

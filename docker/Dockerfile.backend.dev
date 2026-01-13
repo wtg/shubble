@@ -4,14 +4,15 @@ FROM python:3.13-slim
 WORKDIR /app
 
 # Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir --root-user-action=ignore -r requirements.txt
+COPY backend/requirements.txt .
+COPY ml/requirements.txt ./ml_requirements.txt
+RUN pip install --no-cache-dir --root-user-action=ignore -r requirements.txt && \
+    pip install --no-cache-dir --root-user-action=ignore -r ml_requirements.txt
 
 # Copy application code
-COPY server/ ./server/
-COPY data/ ./data/
-COPY alembic/ ./alembic/
-COPY alembic.ini .
+COPY backend/ ./backend/
+COPY shared/ ./shared/
+COPY ml/ ./ml/
 COPY shubble.py .
 
 # Create non-root user
@@ -27,4 +28,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD python -c "import httpx; httpx.get('http://localhost:8000/api/locations', timeout=5.0)"
 
 # Run database migrations and start uvicorn
-CMD ["sh", "-c", "alembic upgrade head && uvicorn shubble:app --host 0.0.0.0 --port 8000 --reload --log-level ${LOG_LEVEL:-info}"]
+CMD ["sh", "-c", "cd backend && alembic upgrade head && cd .. && uvicorn shubble:app --host 0.0.0.0 --port 8000 --reload --log-level ${LOG_LEVEL:-info}"]
