@@ -508,10 +508,8 @@ export default function MapKitMap({ routeData, displayVehicles = true, generateR
       // --- Update or create annotation ---
       if (existingAnnotation) {
         // existing vehicle — update position and subtitle
-        // Only update coordinate directly if we don't have an animation state (to avoid flicker)
-        if (!vehicleAnimationStates.current[key]) {
-          existingAnnotation.coordinate = coordinate;
-        }
+        // SMOOTHING DISABLED: Always update coordinate directly
+        existingAnnotation.coordinate = coordinate;
         existingAnnotation.subtitle = `${vehicle.speed_mph.toFixed(1)} mph`;
 
         // Handle route status updates
@@ -551,10 +549,12 @@ export default function MapKitMap({ routeData, displayVehicles = true, generateR
     });
 
     // --- Update Animation State for new/updated vehicles ---
+    // SMOOTHING DISABLED: Animation state updates commented out
+    /*
     const now = Date.now();
     Object.keys(vehicles).forEach((key) => {
       const vehicle = vehicles[key];
-      // If we don't have a route for this vehicle, we can't animate along a path nicely. 
+      // If we don't have a route for this vehicle, we can't animate along a path nicely.
       // We'll just rely on the API updates or maybe simple linear extrapolation later?
       // For now, let's only set up animation if we have a valid route.
       if (!vehicle.route_name || !flattenedRoutes[vehicle.route_name]) return;
@@ -674,6 +674,7 @@ export default function MapKitMap({ routeData, displayVehicles = true, generateR
         }
       }
     });
+    */
 
     // --- Remove stale vehicles ---
     const currentVehicleKeys = new Set(Object.keys(vehicles));
@@ -687,6 +688,8 @@ export default function MapKitMap({ routeData, displayVehicles = true, generateR
 
 
   // --- Animation Loop ---
+  // SMOOTHING DISABLED: Animation loop commented out
+  /*
   useEffect(() => {
     // We use setTimeout/setInterval or requestAnimationFrame. The user "Considered" setTimeout.
     // We will use requestAnimationFrame for smoothness, but structure it to calculate delta
@@ -764,6 +767,7 @@ export default function MapKitMap({ routeData, displayVehicles = true, generateR
       if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
     };
   }, [vehicles]); // Restart loop if vehicles change? Not strictly necessary if refs are used, but ensures we have latest `vehicles` closure if needed. Actually with refs we don't need to dependency on vehicles often if we read from ref, but here we read `vehicles` prop.
+  */
 
 
 
