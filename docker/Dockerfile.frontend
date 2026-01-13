@@ -3,24 +3,19 @@ FROM node:24-alpine AS builder
 
 WORKDIR /app
 
-# Copy shared resources needed for build
-COPY shared/ ./shared/
+COPY frontend/package*.json ./frontend/
 
-# Copy frontend directory with all config files
-COPY frontend/ ./frontend/
-
-# Set working directory to frontend
 WORKDIR /app/frontend
 
 # Install dependencies
 RUN npm ci
 
 # Copy source files and data
-COPY client/ ./client/
+COPY shared/ ./shared/
+COPY frontend/ ./frontend/
 COPY data/ ./data/
-COPY vite.config.ts ./
-COPY tsconfig*.json ./
-COPY .env ./client/
+COPY frontend/vite.config.ts ./frontend/
+COPY frontend/tsconfig*.json ./frontend/
 
 RUN npm run build
 
