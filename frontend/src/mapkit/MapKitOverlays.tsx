@@ -51,7 +51,6 @@ export default function MapKitOverlays({ map, overlays, onAnnotationsReady }: Ma
     });
 
     if (overlaysToRemove.length > 0) {
-      console.log(`MapKitOverlays: Removing ${overlaysToRemove.length} overlays`);
       map.removeAnnotations(overlaysToRemove);
       keysToRemove.forEach(key => {
         renderedOverlaysByKey.current.delete(key);
@@ -81,7 +80,6 @@ export default function MapKitOverlays({ map, overlays, onAnnotationsReady }: Ma
     });
 
     if (overlaysToAdd.length > 0) {
-      console.log(`MapKitOverlays: Adding ${overlaysToAdd.length} overlays`);
       map.addAnnotations(overlaysToAdd);
     }
 

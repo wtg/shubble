@@ -6,5 +6,4 @@ const config = {
     apiBaseUrl: import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 };
 
-console.log(config);
 export default config;

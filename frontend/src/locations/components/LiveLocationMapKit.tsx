@@ -46,7 +46,7 @@ export default function LiveLocationMapKit({
 
     const pollLocation = async () => {
       try {
-        const response = await fetch(`${config.apiBaseUrl}/api/locations`);
+        const response = await fetch(`${config.apiBaseUrl}/api/locations`, { cache: 'no-store' });
         if (!response.ok) {
           throw new Error('Network response was not ok');
         }
@@ -165,7 +165,7 @@ export default function LiveLocationMapKit({
         url: { 1: svgShuttle },
         size: { width: 25, height: 25 },
         anchorOffset: new DOMPoint(0, -13),
-        
+
         // AnimatedAnnotation specific
         heading: vehicle.heading_degrees,
         speedMph: vehicle.speed_mph,

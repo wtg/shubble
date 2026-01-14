@@ -42,7 +42,7 @@ export default function MapKitAnimation({
 
   // --- Update Animation State for new/updated vehicles ---
   useEffect(() => {
-    if (!annotations) return;
+    if (!annotations || showTrueLocation) return;
 
     const now = Date.now();
     annotations.forEach((annotation) => {
@@ -165,6 +165,8 @@ export default function MapKitAnimation({
 
   // --- Animation Loop ---
   useEffect(() => {
+    if (showTrueLocation) return; // No animation needed
+
     let lastFrameTime = Date.now();
 
     const animate = () => {
@@ -206,7 +208,7 @@ export default function MapKitAnimation({
         const distanceToMove = targetPosition - animState.distanceTraveled;
 
         // Skip if no movement needed
-        if (distanceToMove === 0 || showTrueLocation) return;
+        if (distanceToMove === 0) return;
 
         // Move along polyline
         const { index, point } = moveAlongPolyline(
