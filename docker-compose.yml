@@ -131,7 +131,7 @@ services:
   test-client:
     build:
       context: .
-      dockerfile: docker/Dockerfile.test-client
+      dockerfile: docker/test-client/Dockerfile.test-client
     ports:
       - "${TEST_FRONTEND_PORT:-5174}:80"
     environment:
