@@ -187,7 +187,7 @@ export default function MapKitMap({ routeData, displayVehicles = true, generateR
 
     const pollLocation = async () => {
       try {
-        const response = await fetch(`${config.apiBaseUrl}/api/locations`);
+        const response = await fetch(`${config.apiBaseUrl}/api/locations`, { cache: 'no-store' });
         if (!response.ok) {
           throw new Error('Network response was not ok');
         }
@@ -513,7 +513,7 @@ export default function MapKitMap({ routeData, displayVehicles = true, generateR
         existingAnnotation.subtitle = `${vehicle.speed_mph.toFixed(1)} mph`;
 
         // Handle route status updates
-        // If shuttle does not have a route null 
+        // If shuttle does not have a route null
         if (vehicle.route_name === null) {
           // shuttle off-route (exiting)
           if (existingAnnotation.lockedRoute) {
