@@ -1,12 +1,12 @@
 # Frontend Dockerfile for Shubble
 FROM node:24-alpine AS builder
 
-WORKDIR /app
+WORKDIR /app/frontend
 
 COPY frontend/package*.json ./frontend/
 
 # Install dependencies
-RUN cd frontend && npm ci
+RUN npm ci
 
 # Copy source files and data
 COPY shared/ ./shared/
