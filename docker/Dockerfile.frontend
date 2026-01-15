@@ -11,8 +11,8 @@ WORKDIR /app/frontend
 RUN npm ci
 
 # Copy source files and data
-COPY shared/ ./shared/
-COPY frontend/ ./frontend/
+COPY shared/ /app/shared/
+COPY frontend/ /app/frontend/
 
 RUN npm run build
 
