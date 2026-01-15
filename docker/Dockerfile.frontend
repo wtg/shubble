@@ -14,11 +14,11 @@ COPY frontend/ ./frontend/
 
 # Accept build-time env vars
 ARG VITE_API_BASE_URL
-ARG VITE_MAPKIT_TOKEN
+ARG VITE_MAPKIT_KEY
 
 # Make them visible to Vite
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
-ENV VITE_MAPKIT_TOKEN=$VITE_MAPKIT_TOKEN
+ENV VITE_MAPKIT_KEY=$VITE_MAPKIT_KEY
 
 RUN cd frontend && npm run build
 
