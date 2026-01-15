@@ -11,7 +11,6 @@ RUN cd frontend && npm ci
 # Copy source files and data
 COPY shared/ ./shared/
 COPY frontend/ ./frontend/
-COPY data/ ./data/
 
 RUN npm run build
 
