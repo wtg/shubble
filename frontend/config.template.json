@@ -1,0 +1,4 @@
+{
+  "apiBaseUrl": "${VITE_BACKEND_URL}",
+  "deployMode": "${VITE_DEPLOY_MODE}"
+}

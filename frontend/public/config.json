@@ -1,0 +1,4 @@
+{
+  "apiBaseUrl": "http://localhost:8000",
+  "deployMode": "development"
+}
