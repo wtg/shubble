@@ -1,0 +1,42 @@
+# Production Frontend Dockerfile for Shubble
+FROM node:24-alpine AS builder
+
+WORKDIR /app
+
+# --- Shared setup (same as dev) ---
+# Copy package files
+COPY frontend/package*.json ./frontend/
+
+WORKDIR /app/frontend
+
+# Install dependencies
+RUN npm ci
+
+# Copy source files and shared data
+WORKDIR /app
+COPY frontend/ ./frontend/
+COPY shared/ ./shared/
+
+WORKDIR /app/frontend
+# --- End shared setup ---
+
+# Build for production
+RUN npm run build
+
+# Production stage with nginx
+FROM nginx:alpine
+
+# Copy built files to nginx
+COPY --from=builder /app/frontend/dist /usr/share/nginx/html
+
+# Copy config template and entrypoint for runtime env substitution
+COPY frontend/config.template.json /usr/share/nginx/html/config.template.json
+COPY docker/frontend/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Copy nginx configuration
+COPY docker/frontend/nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+ENTRYPOINT ["/entrypoint.sh"]
