@@ -14,8 +14,6 @@ RUN npm ci
 COPY shared/ ./shared/
 COPY frontend/ ./frontend/
 COPY data/ ./data/
-COPY frontend/vite.config.ts ./frontend/
-COPY frontend/tsconfig*.json ./frontend/
 
 RUN npm run build
 
