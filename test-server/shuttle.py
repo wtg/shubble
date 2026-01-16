@@ -1,7 +1,7 @@
 import time
 from enum import Enum
 import random
-from data.stops import Stops
+from shared.stops import Stops
 import uuid
 from datetime import datetime, timezone
 import requests
@@ -27,7 +27,7 @@ class Shuttle:
         # shuttle properties
         self.last_updated = time.time()
         self.location = (latitude, longitude)
-        self.speed = 0.0002
+        self.speed = 20 # mph
 
         self.path = []
         self.path_index = 0
@@ -80,7 +80,9 @@ class Shuttle:
             return False
 
         # Distance to travel this update
-        travel_distance = self.speed * (time.time() - self.last_updated)
+        speed_mps = self.speed * 0.44704  # Convert mph to meters/second
+        speed_pseudo_lat_long = speed_mps / 1000 * 0.02  # Approx conversion to degrees lat/long
+        travel_distance = speed_pseudo_lat_long * (time.time() - self.last_updated)
 
         # Get current segment start/end
         start = self.path[self.path_index][self.subpath_index]

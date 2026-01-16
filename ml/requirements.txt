@@ -1,0 +1,20 @@
+# Database and backend dependencies
+asyncpg>=0.30.0
+SQLAlchemy>=2.0.41
+pydantic>=2.10.0
+pydantic-settings>=2.7.0
+python-dotenv>=1.1.1
+greenlet
+
+# Data analysis and ML dependencies
+pandas>=2.0.0
+numpy
+scipy
+scikit-learn
+matplotlib
+seaborn
+tqdm
+
+# Optional: for time series analysis
+statsmodels
+torch

@@ -1,0 +1,37 @@
+# Test Server Dockerfile for Mock Samsara API
+FROM python:3.13-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install Python dependencies
+COPY backend/requirements.txt ./backend/
+RUN pip install --no-cache-dir --root-user-action=ignore -r backend/requirements.txt
+
+# Copy application code
+COPY backend/ ./backend/
+COPY shared/ ./shared/
+COPY test-server/ ./test-server/
+
+# Create non-root user
+RUN useradd -m -u 1000 shubble && chown -R shubble:shubble /app
+USER shubble
+
+# Expose port
+EXPOSE 4000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD python -c "import httpx; httpx.get('http://localhost:4000/api/shuttles', timeout=5.0)"
+
+# Run test server with uvicorn
+CMD ["uvicorn", "test-server.server:app", \
+    "--host", "0.0.0.0", \
+    "--port", "4000", \
+    "--workers", "1", \
+    "--log-level", "info"]

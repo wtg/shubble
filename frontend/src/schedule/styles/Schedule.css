@@ -1,0 +1,61 @@
+.schedule-scroll {
+    padding: 10px 15px;
+    overflow: scroll;
+    border-style: solid;
+    border-width: thin;
+    margin-bottom: 0;
+    height: calc(50vh - 150px);
+    min-width: 250px;
+}
+
+.schedule-scroll::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+.schedule-scroll::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+.indented-time {
+    padding-left: 20px;
+}
+
+.live-eta-header {
+    color: #2563eb;
+}
+
+.inline-eta {
+    color: #2563eb;
+    font-weight: 600;
+}
+
+.inline-eta-past {
+    color: #9ca3af;
+    font-weight: 400;
+}
+
+.inline-now {
+    color: #16a34a;
+    font-weight: 700;
+}
+
+.schedule-dropdown-style {
+    padding: 5px;
+    font-size: 16px;
+    border: 1px solid;
+    border-radius: 5px;
+    margin: 5px 0 5px 5px;
+}
+
+th.schedule-header {
+    text-align: left;
+}
+
+.closest-stop-hint {
+    padding: 8px;
+    margin: 10px 0;
+    background-color: #f0f9ff;
+    border-left: 4px solid #2563eb;
+    border-radius: 4px;
+}

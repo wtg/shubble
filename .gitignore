@@ -1,8 +1,8 @@
 
-__pycache__/
+**__pycache__/
 node_modules/
 .env
-client/dist
+frontend/dist
 .DS_Store
 
 .vscode/

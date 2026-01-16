@@ -1,0 +1,2 @@
+route,polyline_idx,avg_travel_time_seconds,std_travel_time_seconds,sample_count,min_time,max_time
+NORTH,6.0,18.225128305037572,23.62716551839474,10779,4.0,225.02

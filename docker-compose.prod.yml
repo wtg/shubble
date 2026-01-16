@@ -1,0 +1,103 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-shubble}
+      POSTGRES_USER: ${POSTGRES_USER:-shubble}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-shubble}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-shubble}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+     - dokploy-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dokploy-network
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile.backend.prod
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    environment:
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-shubble}:${POSTGRES_PASSWORD:-shubble}@postgres:5432/${POSTGRES_DB:-shubble}}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      DEBUG: ${DEBUG:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      API_KEY: ${API_KEY:-}
+      SAMSARA_SECRET: ${SAMSARA_SECRET:-}
+    env_file:
+      - .env
+    networks:
+      - dokploy-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.shubble-backend.rule=Host(`${BACKEND_DOMAIN:-api-shuttles.rpi.edu}`)"
+      - "traefik.http.routers.shubble-backend.entrypoints=websecure"
+      - "traefik.http.routers.shubble-backend.tls.certResolver=letsencrypt"
+      - "traefik.http.services.shubble-backend.loadbalancer.server.port=${BACKEND_PORT:-8000}"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile.frontend.prod
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    environment:
+      VITE_BACKEND_URL: ${VITE_BACKEND_URL:-http://localhost:8000}
+    networks:
+      - dokploy-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.shubble-frontend.rule=Host(`${FRONTEND_DOMAIN:-shuttles.rpi.edu}`)"
+      - "traefik.http.routers.shubble-frontend.entrypoints=websecure"
+      - "traefik.http.routers.shubble-frontend.tls.certResolver=letsencrypt"
+      - "traefik.http.services.shubble-frontend.loadbalancer.server.port=3000"
+    restart: unless-stopped
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    extra_hosts:
+      - "localhost:host-gateway"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://shubble:shubble@postgres:5432/shubble}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      API_KEY: ${API_KEY:-}
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - dokploy-network
+
+networks:
+  dokploy-network:
+    external: true
+
+volumes:
+  postgres_data:
+  redis_data:
