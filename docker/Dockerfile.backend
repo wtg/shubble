@@ -11,7 +11,6 @@ RUN pip install --no-cache-dir --root-user-action=ignore -r requirements.txt
 COPY backend/ ./backend/
 COPY shared/ ./shared/
 COPY alembic/ ./alembic/
-COPY alembic.ini .
 COPY shubble.py .
 
 # Create non-root user
