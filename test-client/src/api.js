@@ -1,5 +1,5 @@
 // api wrappers
-import config from './config.js';
+import { config} from './config.js';
 
 export function fetchShuttles() {
     return fetch(`${config.apiBaseUrl}/api/shuttles`);

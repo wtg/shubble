@@ -14,7 +14,7 @@ import { useState, useEffect } from "react";
 import type { ShuttleRouteData } from './types/route';
 import Navigation from './components/Navigation';
 import ErrorBoundary from './components/ErrorBoundary';
-import config from "./utils/config";
+import { config } from "./utils/config";
 
 function App() {
   const [selectedRoute, setSelectedRoute] = useState<string | null>(null);

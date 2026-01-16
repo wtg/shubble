@@ -6,7 +6,7 @@ import "./styles/Dashboard.css"
 import DataBoard from './components/DataBoard';
 import ShuttleRow from './components/ShuttleRow';
 import type { VehicleInformationMap } from '../types/vehicleLocation';
-import config from '../utils/config';
+import { config } from '../utils/config';
 
 export default function Data() {
 

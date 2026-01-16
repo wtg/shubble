@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import '../styles/MapKitMap.css';
 import ShuttleIcon from "./ShuttleIcon";
-import config from "../../utils/config";
+import { config } from "../../utils/config";
 
 import type { ShuttleRouteData } from "../../types/route";
 import type { VehicleInformationMap, VehicleETAs } from "../../types/vehicleLocation";

@@ -1,7 +1,7 @@
 import { Link, Outlet } from "react-router";
 import Feedback from "./Feedback";
 import AnnouncementBanner, { Banner } from "./AnnouncementBanner";
-import config from "../utils/config";
+import { config } from "../utils/config";
 
 export default function Navigation({ GIT_REV }: { GIT_REV: string }) {
   // Build staging warning message with markdown link
