@@ -103,24 +103,28 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopTimes = 
     return date;
   }
 
-// Use user location and get closest stop to them
+  // Use user location and get closest stop to them
   useEffect(() => {
-    if (!('geolocation' in navigator)) return;
+    async function getClosestStop() {
+      const permissionPromise = await navigator.permissions.query({ name: 'geolocation' });
+      if (permissionPromise.state !== 'granted') return;
 
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const userPoint = {
-          lat: pos.coords.latitude,
-          lon: pos.coords.longitude,
-        };
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const userPoint = {
+            lat: pos.coords.latitude,
+            lon: pos.coords.longitude,
+          };
 
-        const closest = findClosestStop(userPoint, allStops);
-        setClosestStop(closest);
-      },
-      (err) => {
-        console.error('Error getting user location', err);
-      }
-    );
+          const closest = findClosestStop(userPoint, allStops);
+          setClosestStop(closest);
+        },
+        (err) => {
+          console.error('Error getting user location', err);
+        }
+      );
+    }
+    getClosestStop();
   }, [allStops]);
 
 
