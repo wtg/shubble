@@ -27,7 +27,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD python -c "import httpx; httpx.get('http://localhost:8000/api/locations', timeout=5.0)"
 
 # Run database migrations
-RUN alembic upgrade head
+RUN alembic -c backend/alembic.ini upgrade head
 
 # Start the app
 CMD ["uvicorn", "shubble:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--log-level", "${LOG_LEVEL:-info}"]
