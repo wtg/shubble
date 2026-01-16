@@ -3,7 +3,7 @@ FROM node:24-alpine AS builder
 
 WORKDIR /app
 
-# --- Shared setup (same as prod) ---
+# --- Shared setup (same as dev) ---
 # Copy package files
 COPY frontend/package*.json ./frontend/
 
