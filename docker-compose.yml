@@ -37,7 +37,7 @@ services:
   backend:
     build:
       context: .
-      dockerfile: docker/Dockerfile.backend.dev
+      dockerfile: docker/backend/Dockerfile.backend.dev
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     extra_hosts:
@@ -92,7 +92,7 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: docker/Dockerfile.frontend.dev
+      dockerfile: docker/frontend/Dockerfile.frontend.dev
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     environment:
@@ -131,7 +131,7 @@ services:
   test-client:
     build:
       context: .
-      dockerfile: docker/Dockerfile.test-client
+      dockerfile: docker/test-client/Dockerfile.test-client
     ports:
       - "${TEST_FRONTEND_PORT:-5174}:80"
     environment:

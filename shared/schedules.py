@@ -1,43 +1,48 @@
 import pandas as pd
 import numpy as np
-import json
 import logging
 from scipy.optimize import linear_sum_assignment
-from backend.models import VehicleLocation
-from data.stops import Stops
 from datetime import datetime, timezone
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.models import VehicleLocation
 from backend.time_utils import get_campus_start_of_day
-from backend import db, cache
+from shared.stops import Stops
 
 logger = logging.getLogger(__name__)
+
 
 class Schedule:
 
     @classmethod
-    def get_stop_info(cls, row):
+    async def get_stop_info(cls, row, redis):
         """
         Calculate whether Vehicle is at Stop. Return (route_name, stop_name)
         or (None, None) if not at stop using Redis to cache repeated coordinate lookups.
         """
-        coords = (float(row.latitude), float(row.longitude))
+        coords = (float(row['latitude']), float(row['longitude']))
         key = f"coords:{coords[0]}:{coords[1]}"
 
         # Try Redis cache first
-        cached = cache.get(key)
+        cached = await redis.get(key)
         if cached:
-            return cached
+            import pickle
+            return pickle.loads(cached)
 
         try:
             route_name, stop_name = Stops.is_at_stop(coords)
         except Exception:
             route_name, stop_name = None, None
 
-        # Store in Redis
-        cache.set(key, (route_name, stop_name), timeout=60 * 60 * 24)
+        # Store in Redis (24 hour TTL)
+        import pickle
+        await redis.set(key, pickle.dumps((route_name, stop_name)), ex=60 * 60 * 24)
         return route_name, stop_name
 
     @classmethod
-    def load_and_label_stops(cls):
+    async def load_and_label_stops(cls, db: AsyncSession, redis):
         """
         Load DB rows and add new columns route_name and stop_name using is_at_stop().
         Uses Redis to cache labeled stop results
@@ -46,23 +51,26 @@ class Schedule:
         now = datetime.now(timezone.utc)
 
         cache_key = f"labeled_stops:{start.date()}"
-        cached_df = cache.get(cache_key)
+        cached_df = await redis.get(cache_key)
         if cached_df is not None:
-            return cached_df
+            import pickle
+            return pickle.loads(cached_df)
 
-        rows = (
-            db.session.query(VehicleLocation)
-            .filter(
+        query = (
+            select(VehicleLocation)
+            .where(
                 VehicleLocation.timestamp >= start,
                 VehicleLocation.timestamp <= now
             )
             .order_by(VehicleLocation.timestamp.asc())
-            .all()
         )
+        result = await db.execute(query)
+        rows = result.scalars().all()
 
         if not rows:
-            empty_df = pd.DataFrame(columns=['vehicle_id','timestamp','route_name','stop_name'])
-            cache.set(cache_key, empty_df, timeout=60 * 10)
+            empty_df = pd.DataFrame(columns=['vehicle_id', 'timestamp', 'route_name', 'stop_name'])
+            import pickle
+            await redis.set(cache_key, pickle.dumps(empty_df), ex=60 * 10)
             return empty_df
 
         df = pd.DataFrame([
@@ -76,41 +84,46 @@ class Schedule:
         ])
 
         # Add route_name and stop_name columns
-        df[['route_name','stop_name']] = df.apply(
-            lambda r: pd.Series(cls.get_stop_info(r)), axis=1
-        )
+        stop_info_results = []
+        for _, row in df.iterrows():
+            stop_info = await cls.get_stop_info(row, redis)
+            stop_info_results.append(stop_info)
 
-        labeled = df.dropna(subset=['route_name','stop_name'])[
-            ['vehicle_id','timestamp','route_name','stop_name']
+        df[['route_name', 'stop_name']] = pd.DataFrame(stop_info_results, index=df.index)
+
+        labeled = df.dropna(subset=['route_name', 'stop_name'])[
+            ['vehicle_id', 'timestamp', 'route_name', 'stop_name']
         ].copy()
 
         if labeled.empty:
-            return {} #No shuttles matched stops
+            return {}  # No shuttles matched stops
 
-        # Cache for the duration of the day
-        cache.set(cache_key, labeled, timeout=60 * 10)
+        # Cache for 10 minutes
+        import pickle
+        await redis.set(cache_key, pickle.dumps(labeled), ex=60 * 10)
         return labeled
 
     @classmethod
-    def match_shuttles_to_schedules(cls):
+    async def match_shuttles_to_schedules(cls, db: AsyncSession, redis):
         """
         Match shuttle vehicle data to the most likely schedule route
         based on timestamp and stop location using the Hungarian algorithm.
 
         Redis caching prevents recomputation for one hour.
         """
-        cached = cache.get("schedule_entries")
+        cached = await redis.get("schedule_entries")
         if cached is not None:
-            return cached
+            import pickle
+            return pickle.loads(cached)
 
-        at_stops = cls.load_and_label_stops()
+        at_stops = await cls.load_and_label_stops(db, redis)
 
         sched = Stops.schedule_data
 
         # Determine day from first timestamp
         required_cols = {"vehicle_id", "timestamp", "route_name"}
 
-        if not at_stops or not required_cols.issubset(at_stops.columns):
+        if not isinstance(at_stops, pd.DataFrame) or not required_cols.issubset(at_stops.columns):
             logger.warning("at_stops is missing required data returning empty match.")
             return {}
 
@@ -118,10 +131,10 @@ class Schedule:
         day_name = first_ts.day_name().upper()
         day_key = sched[day_name]
 
-        #Get routes for the day
+        # Get routes for the day
         routes = sched[day_key]
 
-        #Get Unique shuttles that are at stops
+        # Get Unique shuttles that are at stops
         shuttles = at_stops['vehicle_id'].unique().tolist()
 
         # Expand schedule with actual date
@@ -139,18 +152,15 @@ class Schedule:
         # Precompute minute-aligned timestamps
         at_stops['minute'] = at_stops['timestamp'].dt.floor('min')
 
-
         # Group logs
         shuttle_groups = {k: v for k, v in at_stops.groupby('vehicle_id')}
-
-
 
         # Build cost matrix
         for i, shuttle in enumerate(shuttles):
 
             logs = shuttle_groups.get(shuttle)
             if logs is None or logs.empty:
-                W[i] = 1  #No data for shuttle
+                W[i] = 1  # No data for shuttle
                 continue
 
             log_pairs = set(zip(logs['route_name'], logs['minute']))
@@ -173,9 +183,7 @@ class Schedule:
         result = {shuttles[r]: sched_flat[c][0] for r, c in zip(row, col)}
 
         # Cache results for 1 hour
-        cache.set("schedule_entries", result, timeout=3600)
+        import pickle
+        await redis.set("schedule_entries", pickle.dumps(result), ex=3600)
 
         return result
-
-if __name__ == "__main__":
-    result = Schedule.match_shuttles_to_schedules()

@@ -1,11 +1,15 @@
-# Frontend Dockerfile for Shubble
+# Development Frontend Dockerfile for Shubble
 FROM node:24-alpine
 
 WORKDIR /app
 
-# Copy package files and install dependencies
+# --- Shared setup (same as prod) ---
+# Copy package files
 COPY frontend/package*.json ./frontend/
+
 WORKDIR /app/frontend
+
+# Install dependencies
 RUN npm ci
 
 # Copy source files and shared data
@@ -14,6 +18,7 @@ COPY frontend/ ./frontend/
 COPY shared/ ./shared/
 
 WORKDIR /app/frontend
+# --- End shared setup ---
 
 EXPOSE 3000
 

@@ -21,75 +21,69 @@ Shubble is a real-time shuttle tracking application for Rensselaer Polytechnic I
 - **GPS Data**: Samsara API integration
 - **ML**: ARIMA (statsmodels) and LSTM (PyTorch) models
 
-## Quick Start
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed setup instructions.
-
-```bash
-# Clone and setup
-git clone git@github.com:wtg/shubble.git
-cd shubble
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-
-# Database setup
-createdb shubble
-cd backend && alembic upgrade head && cd ..
-
-# Run backend (in two terminals)
-uvicorn shubble:app --reload --port 8000   # Terminal 1: API server
-python -m backend.worker                    # Terminal 2: GPS worker
-
-# Run frontend
-cd frontend && npm install && npm run dev
-```
-
 ## Project Structure
 
 ```
-shuttletracker-new/
-├── backend/             # FastAPI backend
-│   ├── flask/          # API routes and app factory
-│   └── worker/         # Background GPS polling worker
-├── frontend/            # React frontend
-├── ml/                  # Machine learning pipelines
-│   ├── pipelines.py    # Data processing pipelines
-│   ├── deploy/         # Model deployment utilities
-│   ├── models/         # ARIMA and LSTM implementations
-│   └── cache/          # Cached datasets and models
-├── shared/              # Shared resources (routes, schedules, stops)
-├── alembic/             # Database migrations
-└── test-server/         # Mock Samsara API for development
+shubble/
+├── backend/              # FastAPI backend application
+│   ├── flask/            # API routes and app factory
+│   └── worker/           # Background GPS polling worker
+├── frontend/             # React + TypeScript frontend
+├── ml/                   # Machine learning pipelines
+│   ├── models/           # ARIMA and LSTM implementations
+│   ├── deploy/           # Model deployment utilities
+│   └── data/             # Data loading and preprocessing
+├── shared/               # Shared resources (routes, schedules, stops)
+├── test-server/          # Mock Samsara API for development
+├── test-client/          # Test UI for mock server
+├── docker/               # Docker configurations
+│   ├── backend/          # Backend Dockerfiles (dev/prod)
+│   ├── frontend/         # Frontend Dockerfiles (dev/prod)
+│   └── test-client/      # Test client Dockerfile
+└── alembic/              # Database migrations
 ```
 
-## ML Pipelines
+## Getting Started
 
-Run complete ML training pipelines:
+See [docs/INSTALLATION.md](docs/INSTALLATION.md) for setup instructions and [docs/TESTING.md](docs/TESTING.md) for running the test environment.
+
+## Documentation
+
+- [backend/README.md](backend/README.md) - Backend API documentation
+- [frontend/README.md](frontend/README.md) - Frontend development guide
+- [ml/README.md](ml/README.md) - Machine learning pipelines
+- [test-server/README.md](test-server/README.md) - Mock API server
+- [test-client/README.md](test-client/README.md) - Test client UI
+
+## Environment Variables
+
+Copy `.env.example` to `.env` and configure:
 
 ```bash
-# ARIMA pipeline (speed prediction)
-python -m ml.pipelines arima --segment --p 3 --d 0 --q 2
+# Required
+DATABASE_URL=postgresql://shubble:shubble@localhost:5432/shubble
+REDIS_URL=redis://localhost:6379/0
+FRONTEND_URL=http://localhost:3000
 
-# LSTM pipeline (ETA prediction)
-python -m ml.pipelines lstm --stops --train --epochs 20
+# Samsara API (not needed with test-server)
+API_KEY=sms_live_...
+SAMSARA_SECRET=...
 
-# See all options
-python -m ml.pipelines --help
+# Frontend
+VITE_BACKEND_URL=http://localhost:8000
+VITE_DEPLOY_MODE=development
 ```
-
-See [ml/README.md](ml/README.md) for detailed ML documentation.
 
 ## Contributing
 
-This is an open source project under Rensselaer Polytechnic Institute's
-Rensselaer Center for Open Source (RCOS). We welcome all contributions:
+This is an open source project under Rensselaer Polytechnic Institute's Rensselaer Center for Open Source (RCOS). We welcome all contributions:
 
 - **Code**: Bug fixes, new features, optimizations
 - **Documentation**: Improve guides, add examples
 - **Design**: UI/UX improvements, accessibility
 - **Testing**: Report bugs, write tests
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed setup instructions.
 
 ## License
 

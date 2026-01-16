@@ -1,13 +1,12 @@
-# Backend Dockerfile for Shubble FastAPI
+# Production Backend Dockerfile for Shubble FastAPI
 FROM python:3.13-slim
 
 WORKDIR /app
 
+# --- Shared setup (same as dev) ---
 # Copy requirements and install Python dependencies
-COPY backend/requirements.txt .
-COPY ml/requirements.txt ./ml_requirements.txt
-RUN pip install --no-cache-dir --root-user-action=ignore -r requirements.txt && \
-    pip install --no-cache-dir --root-user-action=ignore -r ml_requirements.txt
+COPY backend/requirements.txt ./backend/
+RUN pip install --no-cache-dir --root-user-action=ignore -r backend/requirements.txt
 
 # Copy application code
 COPY backend/ ./backend/
@@ -19,13 +18,12 @@ COPY shubble.py .
 RUN useradd -m -u 1000 shubble && chown -R shubble:shubble /app
 USER shubble
 
-# Expose port
-
 EXPOSE 8000
+# --- End shared setup ---
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD python -c "import httpx; httpx.get('http://localhost:8000/api/locations', timeout=5.0)"
 
-# Run database migrations and start uvicorn
-CMD ["sh", "-c", "alembic -c backend/alembic.ini upgrade head && uvicorn shubble:app --host 0.0.0.0 --port 8000 --reload --log-level ${LOG_LEVEL:-info}"]
+# Run database migrations and start uvicorn with workers
+CMD ["sh", "-c", "alembic -c backend/alembic.ini upgrade head && exec uvicorn shubble:app --host 0.0.0.0 --port 8000 --workers 2 --log-level ${LOG_LEVEL:-info}"]

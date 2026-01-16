@@ -11,7 +11,7 @@ This package provides end-to-end ML pipelines for:
 3. **Model Deployment** - Load trained models for inference
 4. **Evaluation** - Assess model performance on test data
 
-## Quick Start
+## Usage
 
 ```bash
 # Run complete ARIMA pipeline

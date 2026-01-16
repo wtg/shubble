@@ -1,12 +1,116 @@
-# React + Vite
+# Shubble Test Client
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React UI for controlling the mock Samsara API test server.
 
-Currently, two official plugins are available:
+## Purpose
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+The test client provides a web interface to:
 
-## Expanding the ESLint configuration
+- Add/remove simulated shuttles
+- Control shuttle states (running, stopped, out of service)
+- Assign shuttles to routes
+- View real-time shuttle positions
+- Clear test data
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+This is useful for development and testing without access to the real Samsara API.
+
+## Project Structure
+
+```
+test-client/
+├── src/
+│   ├── main.jsx        # Entry point (loads config)
+│   ├── App.jsx         # Main UI component
+│   ├── api.js          # API wrapper functions
+│   ├── config.js       # Runtime configuration
+│   ├── AutoTest.js     # Automated testing utilities
+│   └── utils.js        # Helper functions
+│
+├── public/
+│   └── config.json     # Default config for local dev
+│
+├── config.template.json  # Template for Docker runtime config
+└── package.json
+```
+
+## Configuration
+
+### Local Development
+
+Edit `public/config.json`:
+
+```json
+{
+  "apiBaseUrl": "http://localhost:4000"
+}
+```
+
+### Docker
+
+Environment variables are substituted at container startup:
+
+```bash
+docker run -p 5174:80 \
+  -e VITE_TEST_BACKEND_URL=http://localhost:4000 \
+  shubble-test-client
+```
+
+## API Integration
+
+The test client communicates with the test server:
+
+```javascript
+import config from './config.js';
+
+// Fetch shuttles
+fetch(`${config.apiBaseUrl}/api/shuttles`);
+
+// Add a new shuttle
+fetch(`${config.apiBaseUrl}/api/shuttles`, { method: 'POST' });
+
+// Set shuttle state
+fetch(`${config.apiBaseUrl}/api/shuttles/${id}/set-next-state`, {
+  method: 'POST',
+  body: JSON.stringify({ state: 'running', route: 'East Route' })
+});
+```
+
+## Docker
+
+```bash
+# Build
+docker build -f docker/test-client/Dockerfile.test-client -t shubble-test-client .
+
+# Run
+docker run -p 5174:80 \
+  -e VITE_TEST_BACKEND_URL=http://localhost:4000 \
+  shubble-test-client
+```
+
+## Usage with Docker Compose
+
+```bash
+# Start test environment (test-server + test-client + backend)
+docker-compose --profile test --profile backend up
+```
+
+Access at: http://localhost:5174
+
+## Features
+
+### Shuttle Management
+
+- **Add Shuttle** - Create a new simulated shuttle
+- **Remove Shuttle** - Delete a shuttle from simulation
+- **Set State** - Change shuttle state (running, stopped, etc.)
+- **Assign Route** - Assign shuttle to a specific route
+
+### Data Management
+
+- **View Events** - See geofence entry/exit events
+- **Clear Events** - Reset test data
+- **View Routes** - Display available routes
+
+### Auto Test
+
+The `AutoTest.js` module provides automated testing capabilities for simulating realistic shuttle behavior over time.

@@ -14,7 +14,7 @@ The codebase is organized into three main areas:
 
 For each area, you have two options for running the services:
 
-### Option 1: Dockerized (Recommended for Quick Start)
+### Option 1: Dockerized (Recommended for First-Time Setup)
 
 **Advantages:**
 - Zero local setup required (no Node.js, Python, PostgreSQL, Redis installation)
@@ -64,7 +64,7 @@ For example:
 - Working on the backend? Run backend on host, frontend in Docker
 - Testing integration? Run everything in Docker
 
-## Quick Start with Docker
+## Docker Setup
 
 ### Prerequisites
 
