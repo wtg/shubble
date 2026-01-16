@@ -7,19 +7,15 @@ WORKDIR /app
 # Copy package files
 COPY frontend/package*.json ./frontend/
 
-WORKDIR /app/frontend
-
 # Install dependencies
-RUN npm ci
+RUN cd frontend && npm ci
 
 # Copy source files and shared data
-WORKDIR /app
 COPY frontend/ ./frontend/
 COPY shared/ ./shared/
 
-WORKDIR /app/frontend
 # --- End shared setup ---
 
 EXPOSE 3000
 
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "3000"]
+CMD ["sh", "-c", "cd frontend && npm run dev -- --host 0.0.0.0 --port 3000"]
