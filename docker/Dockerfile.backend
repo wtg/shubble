@@ -30,11 +30,6 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 ARG DATABASE_URL
 ENV DATABASE_URL=$DATABASE_URL
 
-RUN ping -c 3 $(echo $DATABASE_URL | sed -E 's|.*://([^:/]+).*|\1|')
-
-# Run database migrations
-RUN alembic -c backend/alembic.ini upgrade head
-
-# Start the app
-CMD ["uvicorn", "shubble:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--log-level", "${LOG_LEVEL:-info}"]
+# Run database migrations and start uvicorn
+CMD ["sh", "-c", "alembic -c backend/alembic.ini upgrade head && exec uvicorn shubble:app --host 0.0.0.0 --port 8000 --workers 2 --log-level ${LOG_LEVEL:-info}"]
 
