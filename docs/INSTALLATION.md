@@ -173,9 +173,9 @@ docker compose down -v
 
 ### Test Services Setup
 
-1. **Install test-client dependencies:**
+1. **Install test/client dependencies:**
    ```bash
-   cd test-client
+   cd test/client
    npm install
    ```
 
@@ -187,13 +187,13 @@ docker compose down -v
 
 3. **Start the test server (in one terminal):**
    ```bash
-   cd test-server
+   cd test/server
    python server.py
    ```
 
 4. **Start the test client (in another terminal):**
    ```bash
-   cd test-client
+   cd test/client
    npm run dev
    ```
 

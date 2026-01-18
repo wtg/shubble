@@ -34,8 +34,10 @@ shubble/
 │   ├── deploy/           # Model deployment utilities
 │   └── data/             # Data loading and preprocessing
 ├── shared/               # Shared resources (routes, schedules, stops)
-├── test-server/          # Mock Samsara API for development
-├── test-client/          # Test UI for mock server
+├── test/                 # Test environment
+│   ├── server/           # Mock Samsara API for development
+│   ├── client/           # Test UI for mock server
+│   └── files/            # Example test files
 ├── docker/               # Docker configurations
 │   ├── backend/          # Backend Dockerfiles (dev/prod)
 │   ├── frontend/         # Frontend Dockerfiles (dev/prod)
@@ -52,8 +54,7 @@ See [docs/INSTALLATION.md](docs/INSTALLATION.md) for setup instructions and [doc
 - [backend/README.md](backend/README.md) - Backend API documentation
 - [frontend/README.md](frontend/README.md) - Frontend development guide
 - [ml/README.md](ml/README.md) - Machine learning pipelines
-- [test-server/README.md](test-server/README.md) - Mock API server
-- [test-client/README.md](test-client/README.md) - Test client UI
+- [test/README.md](test/README.md) - Test environment
 
 ## Environment Variables
 

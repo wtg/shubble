@@ -1,13 +1,17 @@
-let config = null;
+interface Config {
+    apiBaseUrl: string;
+}
 
-export async function loadConfig() {
+let config: Config | null = null;
+
+export async function loadConfig(): Promise<Config> {
     if (config) {
         return config;
     }
 
     try {
         const response = await fetch('/config.json');
-        const json = await response.json();
+        const json = await response.json() as { apiBaseUrl?: string };
 
         config = {
             apiBaseUrl: json.apiBaseUrl || 'http://localhost:4000'
@@ -22,7 +26,7 @@ export async function loadConfig() {
     return config;
 }
 
-export function getConfig() {
+export function getConfig(): Config {
     if (!config) {
         throw new Error('Config not loaded. Call loadConfig() first.');
     }

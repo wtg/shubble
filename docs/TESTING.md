@@ -63,7 +63,7 @@ python -m backend.worker
 
 ```bash
 # Terminal 3: Mock Samsara API
-cd test-server
+cd test/server
 uvicorn server:app --port 4000
 ```
 
@@ -71,7 +71,7 @@ uvicorn server:app --port 4000
 
 ```bash
 # Terminal 4: Test control UI
-cd test-client
+cd test/client
 npm install
 npm run dev
 ```
@@ -239,7 +239,7 @@ TEST_FRONTEND_PORT=5175
 
 ## Automated Testing
 
-For automated testing scenarios, see the `AutoTest.js` module in `test-client/src/`. This provides utilities for:
+For automated testing scenarios, see the `AutoTest.js` module in `test/client/src/`. This provides utilities for:
 
 - Programmatically adding/removing shuttles
 - Simulating realistic shuttle behavior over time
@@ -247,6 +247,6 @@ For automated testing scenarios, see the `AutoTest.js` module in `test-client/sr
 
 ## Next Steps
 
-- See [test-server/README.md](../test-server/README.md) for test server details
-- See [test-client/README.md](../test-client/README.md) for test client details
+- See [test/server/README.md](../test/server/README.md) for test server details
+- See [test/client/README.md](../test/client/README.md) for test client details
 - See [INSTALLATION.md](INSTALLATION.md) for full setup instructions

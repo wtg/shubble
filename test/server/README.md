@@ -8,7 +8,7 @@ The test server simulates the Samsara Fleet API, providing:
 
 - Mock GPS data for simulated shuttles
 - Geofence entry/exit events
-- Shuttle state management
+- Shuttle state management via action queues
 - Route simulation along real polylines
 
 This allows development without access to the real Samsara API or live shuttle data.
@@ -16,10 +16,13 @@ This allows development without access to the real Samsara API or live shuttle d
 ## Project Structure
 
 ```
-test-server/
+test/server/
 ├── __init__.py       # Package init
-├── server.py         # FastAPI application and routes
-└── shuttle.py        # Shuttle simulation logic
+├── server.py         # FastAPI application entry point
+├── shuttle.py        # Shuttle simulation logic
+├── shuttles.py       # Shuttle management routes
+├── events.py         # Event management routes
+└── mock_samsara.py   # Mock Samsara API routes
 ```
 
 ## API Endpoints
@@ -29,7 +32,9 @@ test-server/
 ```
 GET  /api/shuttles                    # List all shuttles
 POST /api/shuttles                    # Add a new shuttle
-POST /api/shuttles/{id}/set-next-state  # Set shuttle state/route
+POST /api/shuttles/{id}/queue         # Queue actions for a shuttle
+GET  /api/shuttles/{id}/queue         # Get shuttle's action queue
+DELETE /api/shuttles/{id}/queue       # Clear shuttle's pending actions
 ```
 
 ### Mock Samsara API
@@ -41,8 +46,8 @@ GET /fleet/vehicles/stats             # Vehicle locations (Samsara format)
 ### Events
 
 ```
-GET    /api/events/today              # Get today's geofence events
-DELETE /api/events/today              # Clear today's events
+GET    /api/events/counts             # Get event counts
+DELETE /api/events                    # Clear events
 ```
 
 ### Routes
@@ -51,42 +56,16 @@ DELETE /api/events/today              # Clear today's events
 GET /api/routes                       # Get available routes
 ```
 
-## Shuttle States
+## Action Types
 
-Shuttles can be in one of several states:
+Shuttles process queued actions:
 
-```python
-class ShuttleState:
-    STOPPED = "stopped"           # Stationary
-    RUNNING = "running"           # Moving along route
-    AT_STOP = "at_stop"          # At a bus stop
-    OUT_OF_SERVICE = "out_of_service"  # Not in geofence
-```
-
-## Simulation
-
-### Route Following
-
-Shuttles move along real route polylines from `shared/routes.json`:
-
-1. Shuttle is assigned a route
-2. Position updates follow polyline coordinates
-3. Speed varies based on state (stopped, running)
-4. Geofence events generated on entry/exit
-
-### Position Updates
-
-The server generates realistic GPS data:
-
-```python
-{
-    "latitude": 42.7284,
-    "longitude": -73.6788,
-    "heading_degrees": 180,
-    "speed_mph": 25,
-    "timestamp": "2025-01-15T12:00:00Z"
-}
-```
+| Action | Description | Required Fields |
+|--------|-------------|-----------------|
+| `entering` | Enter service area (triggers geofence entry) | - |
+| `looping` | Loop on a route | `route` |
+| `on_break` | Pause for a duration | `duration` |
+| `exiting` | Exit service area (triggers geofence exit) | - |
 
 ## Configuration
 
@@ -131,7 +110,7 @@ The backend worker will poll the test server instead of the real Samsara API.
 
 ```bash
 # Start complete test environment
-docker-compose --profile test --profile backend up
+docker compose --profile test --profile backend up
 
 # Services started:
 # - postgres (port 5432)
@@ -147,28 +126,34 @@ docker-compose --profile test --profile backend up
 # Add a new shuttle
 curl -X POST http://localhost:4000/api/shuttles
 
-# Set shuttle to run on East Route
-curl -X POST http://localhost:4000/api/shuttles/1/set-next-state \
+# Queue actions for the shuttle
+curl -X POST http://localhost:4000/api/shuttles/000000000000001/queue \
   -H "Content-Type: application/json" \
-  -d '{"state": "running", "route": "East Route"}'
+  -d '{"actions": [
+    {"action": "entering"},
+    {"action": "looping", "route": "NORTH"},
+    {"action": "exiting"}
+  ]}'
 
 # Get shuttle positions (Samsara API format)
 curl http://localhost:4000/fleet/vehicles/stats
 
 # Clear test data
-curl -X DELETE http://localhost:4000/api/events/today
+curl -X DELETE http://localhost:4000/api/events
 ```
 
 ## Integration with Test Client
 
-The test client (test-client/) provides a web UI for controlling shuttles. Start both services:
+The test client (`test/client/`) provides a web UI for controlling shuttles. Start both services:
 
 ```bash
 # Terminal 1: Test server
-uvicorn test-server.server:app --port 4000
+cd test/server
+uvicorn server:app --port 4000
 
 # Terminal 2: Test client
-cd test-client && npm run dev
+cd test/client
+npm run dev
 ```
 
-Access the test client at http://localhost:5173
+Access the test client at http://localhost:5174

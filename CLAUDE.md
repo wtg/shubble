@@ -67,14 +67,16 @@ shuttletracker-new/
 │   ├── Dockerfile.backend
 │   ├── Dockerfile.worker
 │   ├── Dockerfile.frontend
-│   ├── Dockerfile.test-server
-│   └── Dockerfile.test-client
+│   ├── Dockerfile.test/server
+│   └── test/client/      # Test client Docker config
 │
-├── test-server/           # Mock Samsara API for dev
-│   ├── server.py         # FastAPI mock server
-│   └── shuttle.py        # Shuttle simulation
+├── test/                  # Test environment
+│   ├── server/           # Mock Samsara API for dev
+│   │   ├── server.py     # FastAPI mock server
+│   │   └── shuttle.py    # Shuttle simulation
+│   ├── client/           # Test frontend
+│   └── files/            # Example test files
 │
-├── test-client/           # Test frontend setup
 ├── .github/workflows/     # CI/CD pipelines
 ├── shubble.py            # FastAPI entry point
 └── docker-compose.yml    # Multi-service orchestration
@@ -219,7 +221,7 @@ shuttletracker-new/
 - Async location polling from Samsara
 - Pagination handling
 - Duplicate location filtering
-- Environment-aware (test-server vs production)
+- Environment-aware (test/server vs production)
 
 ### Frontend (`frontend/src/`)
 
@@ -283,8 +285,8 @@ shuttletracker-new/
 - `frontend`: Nginx serving React build
 
 **Test Profile:**
-- `test-server`: Mock Samsara API (port 4000)
-- `test-client`: Test frontend (port 5174)
+- `test/server`: Mock Samsara API (port 4000)
+- `test/client`: Test frontend (port 5174)
 
 **Health Checks:**
 - Backend: HTTP GET /api/locations
@@ -378,15 +380,15 @@ alembic upgrade head
 
 ## Testing
 
-**Mock API Server (`test-server/`):**
+**Mock API Server (`test/server/`):**
 - Simulates Samsara API for development
 - Provides realistic vehicle movement
 - No external API keys needed
 - Reads real route polylines from `shared/`
 
-**Test Client (`test-client/`):**
+**Test Client (`test/client/`):**
 - Separate Vite frontend for testing
-- Uses test-server backend (port 4000)
+- Uses test/server backend (port 4000)
 
 **CI/CD (`.github/workflows/`):**
 - Build validation
@@ -460,7 +462,7 @@ alembic upgrade head
 5. Frontend nginx serves static files
 
 **Environment-based Configuration:**
-- Development: Uses test-server, detailed logs
+- Development: Uses test/server, detailed logs
 - Staging: Real Samsara API, verbose logs
 - Production: Real Samsara API, minimal logs
 

@@ -4,14 +4,14 @@ FROM node:24-alpine AS builder
 WORKDIR /app
 
 # Copy package files
-COPY test-client/package*.json ./test-client/
+COPY test/client/package*.json ./test/client/
 
 # Install dependencies
-WORKDIR /app/test-client
+WORKDIR /app/test/client
 RUN npm ci
 
 # Copy source files
-COPY test-client/ ./
+COPY test/client/ ./
 
 # Build the application
 RUN npm run build
@@ -20,10 +20,10 @@ RUN npm run build
 FROM nginx:alpine
 
 # Copy built files to nginx
-COPY --from=builder /app/test-client/dist /usr/share/nginx/html
+COPY --from=builder /app/test/client/dist /usr/share/nginx/html
 
 # Copy config template and entrypoint for runtime env substitution
-COPY test-client/config.template.json /usr/share/nginx/html/config.template.json
+COPY test/client/config.template.json /usr/share/nginx/html/config.template.json
 COPY docker/test-client/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 

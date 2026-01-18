@@ -1,0 +1,24 @@
+{
+  "shuttles": [
+    {
+      "id": "north-shuttle",
+      "events": [
+        { "type": "entering" },
+        { "type": "looping", "route": "NORTH" },
+        { "type": "looping", "route": "NORTH" },
+        { "type": "looping", "route": "NORTH" },
+        { "type": "exiting" }
+      ]
+    },
+    {
+      "id": "west-shuttle",
+      "events": [
+        { "type": "entering" },
+        { "type": "looping", "route": "WEST" },
+        { "type": "looping", "route": "WEST" },
+        { "type": "looping", "route": "WEST" },
+        { "type": "exiting" }
+      ]
+    }
+  ]
+}
