@@ -1,7 +1,7 @@
 {
   "shuttles": [
     {
-      "id": "shuttle-1",
+      "id": "1",
       "events": [
         { "type": "entering" },
         { "type": "looping", "route": "NORTH" },

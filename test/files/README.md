@@ -10,7 +10,7 @@ Test files are JSON with the following structure:
 {
   "shuttles": [
     {
-      "id": "shuttle-name",
+      "id": "1",
       "events": [
         { "type": "entering" },
         { "type": "looping", "route": "ROUTE_NAME" },
@@ -28,7 +28,7 @@ Test files are JSON with the following structure:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `id` | string | Yes | Identifier for the shuttle (used for logging) |
+| `id` | string | Yes | Numeric string identifier for the shuttle (e.g., "1", "2") |
 | `events` | array | Yes | Sequence of actions to queue |
 
 ### Event
@@ -61,7 +61,7 @@ A typical shuttle shift:
 {
   "shuttles": [
     {
-      "id": "morning-shift",
+      "id": "1",
       "events": [
         { "type": "entering" },
         { "type": "looping", "route": "NORTH" },
