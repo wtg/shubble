@@ -16,7 +16,7 @@ RUN pip install --no-cache-dir --root-user-action=ignore -r backend/requirements
 # Copy application code
 COPY backend/ ./backend/
 COPY shared/ ./shared/
-COPY test-server/ ./test-server/
+COPY test/server/ ./test/server/
 
 # Create non-root user
 RUN useradd -m -u 1000 shubble && chown -R shubble:shubble /app
@@ -30,7 +30,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD python -c "import httpx; httpx.get('http://localhost:4000/api/shuttles', timeout=5.0)"
 
 # Run test server with uvicorn
-CMD ["uvicorn", "test-server.server:app", \
+CMD ["uvicorn", "test.server.server:app", \
     "--host", "0.0.0.0", \
     "--port", "4000", \
     "--workers", "1", \

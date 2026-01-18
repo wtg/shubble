@@ -23,7 +23,7 @@ backend/
 ├── time_utils.py         # Timezone utilities
 ├── alembic.ini           # Alembic configuration
 │
-├── flask/                # FastAPI application
+├── fastapi/              # FastAPI application
 │   ├── __init__.py       # App factory, CORS, Redis setup
 │   └── routes.py         # API endpoints
 │
@@ -237,7 +237,7 @@ To develop without Samsara API access:
 
 ```bash
 # Start test server (provides mock GPS data)
-cd test-server
+cd test/server
 uvicorn server:app --port 4000
 
 # Configure backend to use test server

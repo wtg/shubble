@@ -67,14 +67,16 @@ shuttletracker-new/
 │   ├── Dockerfile.backend
 │   ├── Dockerfile.worker
 │   ├── Dockerfile.frontend
-│   ├── Dockerfile.test-server
-│   └── Dockerfile.test-client
+│   ├── Dockerfile.test/server
+│   └── test/client/      # Test client Docker config
 │
-├── test-server/           # Mock Samsara API for dev
-│   ├── server.py         # FastAPI mock server
-│   └── shuttle.py        # Shuttle simulation
+├── test/                  # Test environment
+│   ├── server/           # Mock Samsara API for dev
+│   │   ├── server.py     # FastAPI mock server
+│   │   └── shuttle.py    # Shuttle simulation
+│   ├── client/           # Test frontend
+│   └── files/            # Example test files
 │
-├── test-client/           # Test frontend setup
 ├── .github/workflows/     # CI/CD pipelines
 ├── shubble.py            # FastAPI entry point
 └── docker-compose.yml    # Multi-service orchestration
@@ -210,7 +212,7 @@ shuttletracker-new/
 - `get_campus_start_of_day()`: Campus timezone midnight to UTC conversion
 - Uses America/New_York timezone
 
-**`backend/flask/routes.py`** - FastAPI endpoints
+**`backend/fastapi/routes.py`** - FastAPI endpoints
 - CORS configured via middleware
 - Cache decorator for frequently accessed data
 - Webhook signature verification
@@ -219,7 +221,7 @@ shuttletracker-new/
 - Async location polling from Samsara
 - Pagination handling
 - Duplicate location filtering
-- Environment-aware (test-server vs production)
+- Environment-aware (test/server vs production)
 
 ### Frontend (`frontend/src/`)
 
@@ -283,8 +285,8 @@ shuttletracker-new/
 - `frontend`: Nginx serving React build
 
 **Test Profile:**
-- `test-server`: Mock Samsara API (port 4000)
-- `test-client`: Test frontend (port 5174)
+- `test/server`: Mock Samsara API (port 4000)
+- `test/client`: Test frontend (port 5174)
 
 **Health Checks:**
 - Backend: HTTP GET /api/locations
@@ -362,8 +364,8 @@ alembic upgrade head
 | `backend/models.py` | Shared ORM models (database schema) |
 | `backend/utils.py` | Shared database query utilities |
 | `backend/time_utils.py` | Shared timezone utilities |
-| `backend/flask/__init__.py` | App factory, middleware, Redis |
-| `backend/flask/routes.py` | API endpoints |
+| `backend/fastapi/__init__.py` | App factory, middleware, Redis |
+| `backend/fastapi/routes.py` | API endpoints |
 | `backend/worker/worker.py` | GPS polling worker |
 | `frontend/src/App.tsx` | Frontend router/layout |
 | `frontend/src/locations/LiveLocation.tsx` | Live tracking page |
@@ -378,15 +380,15 @@ alembic upgrade head
 
 ## Testing
 
-**Mock API Server (`test-server/`):**
+**Mock API Server (`test/server/`):**
 - Simulates Samsara API for development
 - Provides realistic vehicle movement
 - No external API keys needed
 - Reads real route polylines from `shared/`
 
-**Test Client (`test-client/`):**
+**Test Client (`test/client/`):**
 - Separate Vite frontend for testing
-- Uses test-server backend (port 4000)
+- Uses test/server backend (port 4000)
 
 **CI/CD (`.github/workflows/`):**
 - Build validation
@@ -404,7 +406,7 @@ alembic upgrade head
 
 **CORS:**
 - Configured to whitelist `FRONTEND_URL` only
-- Set in `backend/flask/__init__.py`
+- Set in `backend/fastapi/__init__.py`
 
 **Database:**
 - Async SQLAlchemy prevents SQL injection
@@ -433,7 +435,7 @@ alembic upgrade head
 3. Use scipy's `linear_sum_assignment` to optimize vehicle-to-stop matching
 4. Cache results in Redis (24-hour TTL)
 
-**Location Caching (`backend/flask/routes.py`):**
+**Location Caching (`backend/fastapi/routes.py`):**
 1. Check Redis for cached location data (60s TTL)
 2. If miss, query PostgreSQL for latest locations
 3. Join with geofence events to filter active vehicles
@@ -460,7 +462,7 @@ alembic upgrade head
 5. Frontend nginx serves static files
 
 **Environment-based Configuration:**
-- Development: Uses test-server, detailed logs
+- Development: Uses test/server, detailed logs
 - Staging: Real Samsara API, verbose logs
 - Production: Real Samsara API, minimal logs
 

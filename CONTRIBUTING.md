@@ -28,8 +28,7 @@ See **[README.md](README.md)** for an overview of the project structure. Each ma
 - [backend/README.md](backend/README.md) - FastAPI backend, API endpoints, database schema
 - [frontend/README.md](frontend/README.md) - React frontend, components, configuration
 - [ml/README.md](ml/README.md) - Machine learning pipelines, model training
-- [test-server/README.md](test-server/README.md) - Mock Samsara API server
-- [test-client/README.md](test-client/README.md) - Test client UI
+- [test/README.md](test/README.md) - Test environment
 
 ### 3. Testing
 
