@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, type ChangeEvent } from "react";
+import { useEffect, useState, useCallback } from "react";
 import type { ShuttlesState, ShuttleAction as ShuttleActionType } from './types.ts';
 import {
     fetchShuttlesFromApi,
@@ -7,8 +7,8 @@ import {
     addToQueueApi
 } from './utils/shuttles.ts';
 import { fetchEventCounts, deleteEvents } from './api/events.ts';
-import { loadTestFile } from './utils/testFiles.ts';
 import Shuttle from './components/Shuttle.tsx';
+import ImportTestFileModal from './components/ImportTestFileModal.tsx';
 import "./App.css";
 
 function App() {
@@ -18,9 +18,7 @@ function App() {
     const [geofenceCount, setGeofenceCount] = useState(0);
     const [routes, setRoutes] = useState<string[]>([]);
     const [menuOpen, setMenuOpen] = useState(false);
-
-    // Refs for stable references
-    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [importModalOpen, setImportModalOpen] = useState(false);
 
     // Fetch shuttles from API
     const updateShuttles = useCallback(async () => {
@@ -53,23 +51,13 @@ function App() {
         await updateShuttles();
     };
 
-    const handleUploadTest = async (event: ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
-
-        try {
-            await loadTestFile(file);
-            await updateShuttles();
-        } catch (err) {
-            console.error('Failed to load test file:', err);
-        }
-
-        event.target.value = "";
+    const handleOpenImportModal = () => {
         setMenuOpen(false);
+        setImportModalOpen(true);
     };
 
-    const handleLoadTestClick = () => {
-        fileInputRef.current?.click();
+    const handleImportComplete = async () => {
+        await updateShuttles();
     };
 
     // Load routes on mount
@@ -138,9 +126,9 @@ function App() {
                         <div className="dropdown-menu">
                             <button
                                 className="dropdown-item"
-                                onClick={handleLoadTestClick}
+                                onClick={handleOpenImportModal}
                             >
-                                Load Test File
+                                Import Test File
                             </button>
                             <div className="dropdown-divider" />
                             <button
@@ -162,16 +150,15 @@ function App() {
                         </div>
                     )}
 
-                    {/* Hidden file input */}
-                    <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept=".json"
-                        onChange={handleUploadTest}
-                        style={{ display: 'none' }}
-                    />
                 </div>
             </header>
+
+            {/* Import Test File Modal */}
+            <ImportTestFileModal
+                isOpen={importModalOpen}
+                onClose={() => setImportModalOpen(false)}
+                onImportComplete={handleImportComplete}
+            />
 
             {/* Tabs */}
             <div className="tabs">
