@@ -23,7 +23,7 @@ backend/
 ├── time_utils.py         # Timezone utilities
 ├── alembic.ini           # Alembic configuration
 │
-├── flask/                # FastAPI application
+├── fastapi/              # FastAPI application
 │   ├── __init__.py       # App factory, CORS, Redis setup
 │   └── routes.py         # API endpoints
 │

@@ -28,7 +28,7 @@ Shubble is a real-time shuttle tracking application for Rensselaer Polytechnic I
 - **Dev with Mock API**: `docker-compose --profile test --profile backend up`
 
 ## Project Structure
-- `backend/`: FastAPI application (located in `backend/flask/` - note that this is NOT a Flask app) and background worker (`backend/worker/`).
+- `backend/`: FastAPI application (`backend/fastapi/`) and background worker (`backend/worker/`).
 - `frontend/`: React application.
 - `shared/`: Shared JSON data (routes, schedules) and Python/JS utilities used by both ends.
 - `test/`: Test environment (mock Samsara API, test client UI, example test files).

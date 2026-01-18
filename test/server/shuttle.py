@@ -48,7 +48,7 @@ class Shuttle:
 
         # Location state
         self._location: tuple[float, float] = (0.0, 0.0)
-        self._last_updated: float = time.time()
+        self._last_updated: datetime = datetime.now(timezone.utc)
         self._speed: float = 20.0  # mph
 
         # Path following state
@@ -88,7 +88,7 @@ class Shuttle:
             return self._speed
 
     @property
-    def last_updated(self) -> float:
+    def last_updated(self) -> datetime:
         with self.lock:
             return self._last_updated
 
@@ -174,7 +174,7 @@ class Shuttle:
                 "state": self._current_action.value if self._current_action else None,
                 "next_state": next_action,
                 "location": self._location,
-                "last_updated": self._last_updated,
+                "last_updated": self._last_updated.isoformat(),
                 "speed": self._speed,
                 "action_index": self._action_index,
                 "queue": queue,
@@ -206,7 +206,7 @@ class Shuttle:
             elif current_action in (ShuttleAction.ENTERING, ShuttleAction.LOOPING, ShuttleAction.EXITING):
                 self._handle_movement()
 
-            self._last_updated = time.time()
+            self._last_updated = datetime.now(timezone.utc)
 
     # --- Action Handlers ---
 
@@ -290,7 +290,8 @@ class Shuttle:
         # Distance to travel this update
         speed_mps = self._speed * 0.44704  # mph to m/s
         speed_pseudo = speed_mps / 1000 * 0.02  # Approx to degrees
-        travel_distance = speed_pseudo * (time.time() - self._last_updated)
+        elapsed_seconds = (datetime.now(timezone.utc) - self._last_updated).total_seconds()
+        travel_distance = speed_pseudo * elapsed_seconds
 
         # Current segment
         start = self._path[self._path_index][self._subpath_index]

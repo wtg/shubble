@@ -37,9 +37,7 @@ async def mock_stats(vehicleIds: str = "", after: str = None):
                         "gps": {
                             "latitude": lat,
                             "longitude": lon,
-                            "time": datetime.fromtimestamp(shuttle.last_updated)
-                            .isoformat(timespec="seconds")
-                            .replace("+00:00", "Z"),
+                            "time": shuttle.last_updated.isoformat(timespec="seconds").replace("+00:00", "Z"),
                             "speedMilesPerHour": shuttle.speed,
                             "headingDegrees": 90,
                             "reverseGeo": {"formattedLocation": "Test Location"},
@@ -79,9 +77,7 @@ async def mock_feed(vehicleIds: str = "", after: str = None):
                             {
                                 "latitude": lat,
                                 "longitude": lon,
-                                "time": datetime.fromtimestamp(shuttle.last_updated)
-                                .isoformat(timespec="seconds")
-                                .replace("+00:00", "Z"),
+                                "time": shuttle.last_updated.isoformat(timespec="seconds").replace("+00:00", "Z"),
                                 "speedMilesPerHour": shuttle.speed,
                                 "headingDegrees": 90,
                                 "reverseGeo": {"formattedLocation": "Test Location"},

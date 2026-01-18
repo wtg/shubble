@@ -1,5 +1,5 @@
 """ASGI application entry point for FastAPI."""
-from backend.flask import app
+from backend.fastapi import app
 
 # Export for uvicorn: uvicorn shubble:app
 __all__ = ["app"]

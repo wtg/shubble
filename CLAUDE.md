@@ -212,7 +212,7 @@ shuttletracker-new/
 - `get_campus_start_of_day()`: Campus timezone midnight to UTC conversion
 - Uses America/New_York timezone
 
-**`backend/flask/routes.py`** - FastAPI endpoints
+**`backend/fastapi/routes.py`** - FastAPI endpoints
 - CORS configured via middleware
 - Cache decorator for frequently accessed data
 - Webhook signature verification
@@ -364,8 +364,8 @@ alembic upgrade head
 | `backend/models.py` | Shared ORM models (database schema) |
 | `backend/utils.py` | Shared database query utilities |
 | `backend/time_utils.py` | Shared timezone utilities |
-| `backend/flask/__init__.py` | App factory, middleware, Redis |
-| `backend/flask/routes.py` | API endpoints |
+| `backend/fastapi/__init__.py` | App factory, middleware, Redis |
+| `backend/fastapi/routes.py` | API endpoints |
 | `backend/worker/worker.py` | GPS polling worker |
 | `frontend/src/App.tsx` | Frontend router/layout |
 | `frontend/src/locations/LiveLocation.tsx` | Live tracking page |
@@ -406,7 +406,7 @@ alembic upgrade head
 
 **CORS:**
 - Configured to whitelist `FRONTEND_URL` only
-- Set in `backend/flask/__init__.py`
+- Set in `backend/fastapi/__init__.py`
 
 **Database:**
 - Async SQLAlchemy prevents SQL injection
@@ -435,7 +435,7 @@ alembic upgrade head
 3. Use scipy's `linear_sum_assignment` to optimize vehicle-to-stop matching
 4. Cache results in Redis (24-hour TTL)
 
-**Location Caching (`backend/flask/routes.py`):**
+**Location Caching (`backend/fastapi/routes.py`):**
 1. Check Redis for cached location data (60s TTL)
 2. If miss, query PostgreSQL for latest locations
 3. Join with geofence events to filter active vehicles
