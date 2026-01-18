@@ -4,7 +4,7 @@ import { ACTIONS } from '../types.ts';
 import { addShuttleToApi, addToQueueApi } from './shuttles.ts';
 
 export interface ValidationError {
-    shuttleId?: string;
+    shuttleIndex?: number;
     eventIndex?: number;
     message: string;
 }
@@ -60,23 +60,12 @@ export function validateTestData(data: TestData): ValidationResult {
 
     const validActions = new Set<ShuttleAction>(Object.values(ACTIONS));
 
-    for (const shuttle of data.shuttles) {
-        if (typeof shuttle.id !== 'string') {
-            errors.push({ message: 'Shuttle missing "id" field' });
-            continue;
-        }
-
-        // Check if ID is a numeric string
-        if (!/^\d+$/.test(shuttle.id)) {
-            errors.push({
-                shuttleId: shuttle.id,
-                message: `Shuttle ID "${shuttle.id}" must be a numeric string (e.g., "1", "2")`
-            });
-        }
+    for (let shuttleIndex = 0; shuttleIndex < data.shuttles.length; shuttleIndex++) {
+        const shuttle = data.shuttles[shuttleIndex];
 
         if (!shuttle.events || !Array.isArray(shuttle.events)) {
             errors.push({
-                shuttleId: shuttle.id,
+                shuttleIndex,
                 message: 'Missing or invalid "events" array'
             });
             continue;
@@ -84,18 +73,18 @@ export function validateTestData(data: TestData): ValidationResult {
 
         if (shuttle.events.length === 0) {
             errors.push({
-                shuttleId: shuttle.id,
+                shuttleIndex,
                 message: 'No events defined'
             });
         }
 
-        for (let i = 0; i < shuttle.events.length; i++) {
-            const evt = shuttle.events[i];
+        for (let eventIndex = 0; eventIndex < shuttle.events.length; eventIndex++) {
+            const evt = shuttle.events[eventIndex];
 
             if (!evt.type) {
                 errors.push({
-                    shuttleId: shuttle.id,
-                    eventIndex: i,
+                    shuttleIndex,
+                    eventIndex,
                     message: 'Event missing "type" field'
                 });
                 continue;
@@ -103,24 +92,24 @@ export function validateTestData(data: TestData): ValidationResult {
 
             if (!validActions.has(evt.type)) {
                 errors.push({
-                    shuttleId: shuttle.id,
-                    eventIndex: i,
+                    shuttleIndex,
+                    eventIndex,
                     message: `Unknown action type "${evt.type}"`
                 });
             }
 
             if (evt.type === ACTIONS.LOOPING && !evt.route) {
                 errors.push({
-                    shuttleId: shuttle.id,
-                    eventIndex: i,
+                    shuttleIndex,
+                    eventIndex,
                     message: 'Looping action requires "route" field'
                 });
             }
 
             if (evt.type === ACTIONS.ON_BREAK && typeof evt.duration !== 'number') {
                 errors.push({
-                    shuttleId: shuttle.id,
-                    eventIndex: i,
+                    shuttleIndex,
+                    eventIndex,
                     message: 'On break action requires numeric "duration" field'
                 });
             }

@@ -40,7 +40,6 @@ export interface TestEvent {
 }
 
 export interface TestShuttle {
-    id: string;
     events: TestEvent[];
 }
 

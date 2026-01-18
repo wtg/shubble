@@ -156,9 +156,9 @@ export default function ImportTestFileModal({
                                 <ul className="error-list">
                                     {validation.errors.map((err, i) => (
                                         <li key={i}>
-                                            {err.shuttleId && <strong>Shuttle {err.shuttleId}</strong>}
+                                            {err.shuttleIndex !== undefined && <strong>Shuttle {err.shuttleIndex + 1}</strong>}
                                             {err.eventIndex !== undefined && <span> Event {err.eventIndex + 1}</span>}
-                                            {(err.shuttleId || err.eventIndex !== undefined) && ': '}
+                                            {(err.shuttleIndex !== undefined || err.eventIndex !== undefined) && ': '}
                                             {err.message}
                                         </li>
                                     ))}
@@ -175,7 +175,7 @@ export default function ImportTestFileModal({
                                 {parseResult.data.shuttles.map((shuttle, i) => (
                                     <div key={i} className="preview-shuttle">
                                         <div className="preview-shuttle-header">
-                                            Shuttle {shuttle.id}
+                                            Shuttle {i + 1}
                                             <span className="preview-event-count">
                                                 {shuttle.events?.length ?? 0} events
                                             </span>
