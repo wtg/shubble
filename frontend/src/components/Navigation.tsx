@@ -34,7 +34,7 @@ export default function Navigation({ GIT_REV }: { GIT_REV: string }) {
       </header>
 
       <div className="App">
-        {config.isStaging && <Banner message={stagingMessage} type="warning" />}
+        {config.isStaging && <Banner message={stagingMessage} type="info" />}
         <AnnouncementBanner />
         <Outlet />
 

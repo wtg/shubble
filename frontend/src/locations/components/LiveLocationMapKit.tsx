@@ -5,7 +5,7 @@ import ShuttleIcon from "./ShuttleIcon";
 import config from "../../utils/config";
 
 import type { ShuttleRouteData } from "../../types/route";
-import type { VehicleInformationMap, VehicleETAs } from "../../types/vehicleLocation";
+import type { VehicleInformationMap } from "../../types/vehicleLocation";
 import type { Coordinate } from "../../utils/mapUtils";
 
 import MapKitCanvas from "../../mapkit/MapKitCanvas";
@@ -21,8 +21,6 @@ type LiveLocationMapKitProps = {
   setSelectedRoute?: (route: string | null) => void;
   isFullscreen?: boolean;
   showTrueLocation?: boolean;
-  onStopTimesUpdate?: (stopTimes: VehicleETAs) => void;
-  onVehiclesAtStopsUpdate?: (vehiclesAtStops: Record<string, string[]>) => void;
 };
 
 export default function LiveLocationMapKit({
@@ -32,9 +30,7 @@ export default function LiveLocationMapKit({
   selectedRoute,
   setSelectedRoute,
   isFullscreen = false,
-  showTrueLocation = true,
-  onStopTimesUpdate,
-  onVehiclesAtStopsUpdate
+  showTrueLocation = true
 }: LiveLocationMapKitProps) {
   const [map, setMap] = useState<(mapkit.Map | null)>(null);
   const [vehicles, setVehicles] = useState<VehicleInformationMap | null>(null);
@@ -68,36 +64,6 @@ export default function LiveLocationMapKit({
 
   }, []);
 
-  // Extract and pass stop times and vehicles at stops to parent component
-  useEffect(() => {
-    if (!vehicles) return;
-
-    // Extract stop times
-    if (onStopTimesUpdate) {
-      const stopTimes: VehicleETAs = {};
-      Object.entries(vehicles).forEach(([vehicleId, vehicleData]) => {
-        if (vehicleData.stop_times?.stop_times) {
-          stopTimes[vehicleId] = vehicleData.stop_times.stop_times;
-        }
-      });
-      onStopTimesUpdate(stopTimes);
-    }
-
-    // Extract vehicles at stops
-    if (onVehiclesAtStopsUpdate) {
-      const vehiclesAtStops: Record<string, string[]> = {};
-      Object.entries(vehicles).forEach(([vehicleId, vehicleData]) => {
-        if (vehicleData.is_at_stop && vehicleData.current_stop) {
-          const stopName = vehicleData.current_stop;
-          if (!vehiclesAtStops[stopName]) {
-            vehiclesAtStops[stopName] = [];
-          }
-          vehiclesAtStops[stopName].push(vehicleId);
-        }
-      });
-      onVehiclesAtStopsUpdate(vehiclesAtStops);
-    }
-  }, [vehicles, onStopTimesUpdate, onVehiclesAtStopsUpdate]);
 
   // Memoize flattened routes to avoid recalculating on every render
   const flattenedRoutes = useMemo(() => {
