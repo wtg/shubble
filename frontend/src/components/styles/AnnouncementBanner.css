@@ -4,34 +4,45 @@
   align-items: center;
   justify-content: center;
   width: 100%;
-  padding: 14px 24px;
+  padding: 12px 24px;
   box-sizing: border-box;
   text-align: center;
-  font-weight: 600;
-  font-size: 17px;
-  letter-spacing: 0.2px;
+  font-family: "Karla", sans-serif;
+  font-weight: 500;
+  font-size: 15px;
+  letter-spacing: 0.3px;
   margin: 0;
-  gap: 10px;
+  gap: 12px;
 }
 
 .announcement-banner.info {
-  background-color: #184b7f;
-  color: #ffffff;
+  background-color: #ffffff;
+  color: #141301;
+  border-bottom: 1px solid #d9d9d9;
 }
 
 .announcement-banner.warning {
-  background-color: #b8860b;
+  background-color: #d4a017;
   color: #ffffff;
 }
 
 .announcement-banner.error {
-  background-color: #c41e3a;
+  background-color: #c94a4a;
   color: #ffffff;
 }
 
 .announcement-banner a {
-  color: #ffffff;
+  color: inherit;
   text-decoration: underline;
+  font-weight: 600;
+}
+
+.announcement-banner a:hover {
+  text-decoration: none;
+}
+
+.announcement-banner.info a {
+  color: #578FCA;
 }
 
 .announcement-banner p {
@@ -39,17 +50,28 @@
 }
 
 .announcement-banner .reload-btn {
-  background: rgba(255, 255, 255, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
   color: #ffffff;
-  padding: 6px 12px;
-  border-radius: 4px;
+  padding: 6px 14px;
+  border-radius: 6px;
   cursor: pointer;
-  font-size: 14px;
+  font-family: "Karla", sans-serif;
+  font-size: 13px;
   font-weight: 500;
   transition: background-color 0.2s ease;
 }
 
 .announcement-banner .reload-btn:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.announcement-banner.info .reload-btn {
+  background: #578FCA;
+  border: 1px solid #578FCA;
+  color: #ffffff;
+}
+
+.announcement-banner.info .reload-btn:hover {
+  background: #4a7db5;
 }

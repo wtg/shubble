@@ -1,6 +1,6 @@
 :root {
   --text-color: #141301;
-  --header-color: #a1c3ff;
+  --header-color: #578FCA;
 }
 
 .App {
@@ -14,12 +14,21 @@
   width: 100%;
 }
 
+.title,
+.title:link,
+.title:visited {
+  font-family: "KoHo", sans-serif;
+  font-weight: 700;
+  color: var(--text-color);
+  text-decoration: none;
+}
+
 nav.small ul {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
   display: flex;
-  gap: 10px;
+  gap: 50px;
   flex-direction: row;
   width: 100%;
   list-style: none;
@@ -29,13 +38,15 @@ nav.small ul {
 nav.big ul {
   margin: 0;
   padding: 0;
+  padding-top: 10px;
   box-sizing: border-box;
   display: flex;
   gap: 30px;
   flex-direction: row;
   width: 100%;
   list-style: none;
-  font-size: 0.8em;
+  font-size: 0.6em;
+  font-family: "Karla", sans-serif;
 }
 
 li {
@@ -54,19 +65,17 @@ header {
   box-sizing: border-box;
   max-height: 100px;
   background-color: var(--header-color);
-  padding: 20px;
+  padding: 10px;
   margin: 0;
   font-size: 2em;
-  font-weight: bold;
   z-index: 1000;
   display: flex;
   flex-direction: row;
-  justify-content: space-between;
-  gap: 10px;
+  gap: 30px;
+  justify-content: center;
 }
 
 @media (max-width: 1024px) {
-
   /* mobile mode*/
   .big {
     display: none;
@@ -78,6 +87,7 @@ header {
 
   footer {
     border-radius: 20px 20px 0 0;
+    background-color: #e1e1e1;
   }
 }
 
@@ -86,7 +96,6 @@ header {
 }
 
 @media (min-width: 1024px) {
-
   /* desktop mode*/
   .schedule {
     display: block;
@@ -94,6 +103,7 @@ header {
 
   footer {
     border-radius: 0;
+    border-top: 1px solid #d9d9d9;
   }
 }
 
@@ -120,14 +130,19 @@ footer {
   padding: 20px;
   box-sizing: border-box;
   width: 100%;
-  background-color: #ddd;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
 }
 
 .big-footer {
   display: flex;
-  flex-direction: row;
-  justify-content: space-between;
+  flex-direction: column;
+  justify-content: center;
   align-items: center;
+  font-family: "Karla", sans-serif;
+  background-color: #ffffff;
 }
 
 .git-copy {
@@ -138,8 +153,6 @@ footer {
   align-items: center;
   padding: 0 20px;
 }
-
-
 
 /*shubble text link styling*/
 .site-title,

@@ -1,0 +1,32 @@
+.text-animation {
+    display: flex;
+    flex-direction: column;
+    height: var(--word-height, 40px);
+    overflow: hidden;
+}
+
+.animation-container {
+    display: flex;
+    flex-direction: column;
+    height: var(--container-height, 80px);
+}
+
+.animation-container.animate {
+    animation: animate var(--animation-duration, 1s) ease-in-out;
+}
+
+.current-word, .next-word {
+    height: var(--word-height, 40px);
+    font-size: var(--font-size, 16px);
+    display: flex;
+    align-items: center;
+}
+
+@keyframes animate {
+    0% {
+        transform: translateY(0%);
+    }
+    100% {
+        transform: translateY(-50%);
+    }
+}
