@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import '../locations/styles/MapKitMap.css';
+import config from "../utils/config";
 
 import type { ShuttleRouteData, ShuttleStopData } from "../types/route";
 
@@ -102,7 +103,6 @@ async function generateRoutePolylines(updatedRouteData: ShuttleRouteData) {
 export default function MapKitCanvas({ routeData, generateRoutes = false, selectedRoute, setSelectedRoute, isFullscreen = false, onMapReady }: MapKitCanvasProps) {
   const mapRef = useRef(null);
   const [mapLoaded, setMapLoaded] = useState(false);
-  const token = import.meta.env.VITE_MAPKIT_KEY;
   const [map, setMap] = useState<(mapkit.Map | null)>(null);
 
   const circleWidth = 15;
@@ -124,7 +124,7 @@ export default function MapKitCanvas({ routeData, generateRoutes = false, select
       await setupMapKitJs();
       mapkit.init({
         authorizationCallback: (done) => {
-          done(token);
+          done(config.mapkitKey);
         },
       });
       setMapLoaded(true);
