@@ -117,18 +117,22 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
     return currentIdx;
   };
 
-  // Scroll to current time on route/day change
+  // Scroll to current time on route/day change (only within the timeline container)
   useEffect(() => {
-    const timelineContainer = document.querySelector('.timeline-container');
+    const timelineContainer = document.querySelector('.timeline-container') as HTMLElement;
     if (!timelineContainer) return;
     if (selectedDay !== now.getDay()) return;
 
     const targetItem = Array.from(timelineContainer.querySelectorAll('.timeline-item')).find(item => {
       return !item.classList.contains('past-time') || item.classList.contains('current-loop');
-    });
+    }) as HTMLElement | undefined;
 
     if (targetItem) {
-      targetItem.scrollIntoView({ behavior: "auto", block: "center" });
+      // Calculate scroll position within the container only
+      const containerRect = timelineContainer.getBoundingClientRect();
+      const targetRect = targetItem.getBoundingClientRect();
+      const scrollTop = targetItem.offsetTop - timelineContainer.offsetTop - (containerRect.height / 2) + (targetRect.height / 2);
+      timelineContainer.scrollTop = Math.max(0, scrollTop);
     }
   }, [selectedRoute, selectedDay, schedule]);
 

@@ -1,7 +1,6 @@
 /* About page styles */
 .about {
   width: 100%;
-  min-height: 100%;
 }
 
 /* Hero Section */
@@ -221,8 +220,12 @@
     max-width: none;
   }
 
+  .about {
+    padding-bottom: 20px;
+  }
+
   .about-section {
-    padding: 40px 20px;
+    padding: 30px 20px;
   }
 
   .section-title {
