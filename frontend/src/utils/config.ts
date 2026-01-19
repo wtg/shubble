@@ -2,6 +2,7 @@ interface Config {
     isStaging: boolean;
     isDev: boolean;
     apiBaseUrl: string;
+    mapkitKey: string;
 }
 
 let config: Config | null = null;
@@ -20,14 +21,16 @@ export async function loadConfig(): Promise<Config> {
         config = {
             isStaging,
             isDev: isStaging,
-            apiBaseUrl: json.apiBaseUrl || 'http://localhost:8000'
+            apiBaseUrl: json.apiBaseUrl || 'http://localhost:8000',
+            mapkitKey: json.mapkitKey || ''
         };
     } catch {
         // Fallback for local development without config.json
         config = {
             isStaging: true,
             isDev: true,
-            apiBaseUrl: 'http://localhost:8000'
+            apiBaseUrl: 'http://localhost:8000',
+            mapkitKey: import.meta.env.VITE_MAPKIT_KEY || ''
         };
     }
 
@@ -44,5 +47,6 @@ export function getConfig(): Config {
 export default {
     get isStaging() { return getConfig().isStaging; },
     get isDev() { return getConfig().isDev; },
-    get apiBaseUrl() { return getConfig().apiBaseUrl; }
+    get apiBaseUrl() { return getConfig().apiBaseUrl; },
+    get mapkitKey() { return getConfig().mapkitKey; }
 };
