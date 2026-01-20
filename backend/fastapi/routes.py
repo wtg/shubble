@@ -465,7 +465,7 @@ async def data_today(db: AsyncSession = Depends(get_db)):
 async def get_shuttle_routes():
     """Serve routes.json file."""
     root_dir = Path(__file__).parent.parent
-    routes_file = root_dir / "data" / "routes.json"
+    routes_file = root_dir / "shared" / "routes.json"
     if routes_file.exists():
         return FileResponse(routes_file)
     raise HTTPException(status_code=404, detail="Routes file not found")
@@ -475,7 +475,7 @@ async def get_shuttle_routes():
 async def get_shuttle_schedule():
     """Serve schedule.json file."""
     root_dir = Path(__file__).parent.parent
-    schedule_file = root_dir / "data" / "schedule.json"
+    schedule_file = root_dir / "shared" / "schedule.json"
     if schedule_file.exists():
         return FileResponse(schedule_file)
     raise HTTPException(status_code=404, detail="Schedule file not found")
@@ -485,7 +485,7 @@ async def get_shuttle_schedule():
 async def get_aggregated_shuttle_schedule():
     """Serve aggregated_schedule.json file."""
     root_dir = Path(__file__).parent.parent
-    aggregated_file = root_dir / "data" / "aggregated_schedule.json"
+    aggregated_file = root_dir / "shared" / "aggregated_schedule.json"
     if aggregated_file.exists():
         return FileResponse(aggregated_file)
     raise HTTPException(status_code=404, detail="Aggregated schedule file not found")
