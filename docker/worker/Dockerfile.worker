@@ -18,9 +18,9 @@ COPY ml/ ./ml/
 RUN useradd -m -u 1000 shubble && chown -R shubble:shubble /app
 USER shubble
 
-# Health check (worker should be running)
-HEALTHCHECK --interval=60s --timeout=10s --start-period=10s --retries=3 \
-    CMD pgrep -f "python -m backend.worker" > /dev/null || exit 1
+# # Health check (worker should be running)
+# HEALTHCHECK --interval=60s --timeout=10s --start-period=10s --retries=3 \
+#     CMD pgrep -f "python -m backend.worker" > /dev/null || exit 1
 
 # Run worker
 CMD ["python", "-m", "backend.worker"]
