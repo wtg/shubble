@@ -5,9 +5,10 @@ WORKDIR /app
 
 # Copy requirements and install Python dependencies
 COPY backend/requirements.txt .
+RUN pip install --no-cache-dir --root-user-action=ignore -r requirements.txt
+
 COPY ml/requirements.txt ./ml_requirements.txt
-RUN pip install --no-cache-dir --root-user-action=ignore -r requirements.txt && \
-    pip install --no-cache-dir --root-user-action=ignore -r ml_requirements.txt
+RUN pip install --no-cache-dir --root-user-action=ignore -r ml_requirements.txt
 
 # Copy application code
 COPY backend/ ./backend/
