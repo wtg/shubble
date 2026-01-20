@@ -152,7 +152,7 @@ LOG_LEVEL=info
 DEBUG=false
 
 # Environment
-ENVIRONMENT=development  # development, staging, production
+DEPLOY_MODE=development  # development, staging, production
 ```
 
 ## Background Worker

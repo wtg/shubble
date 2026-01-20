@@ -48,6 +48,7 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       DEBUG: ${DEBUG:-true}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      DEPLOY_MODE: ${DEPLOY_MODE:-development}
       API_KEY: ${API_KEY:-}
       SAMSARA_SECRET: ${SAMSARA_SECRET:-}
     depends_on:
@@ -66,13 +67,14 @@ services:
   worker:
     build:
       context: .
-      dockerfile: docker/Dockerfile.worker
+      dockerfile: docker/worker/Dockerfile.worker
     extra_hosts:
       - "localhost:host-gateway"
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://shubble:shubble@postgres:5432/shubble}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      DEPLOY_MODE: ${DEPLOY_MODE:-development}
       API_KEY: ${API_KEY:-}
     depends_on:
       postgres:
@@ -96,7 +98,9 @@ services:
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     environment:
-      VITE_BACKEND_URL: ${VITE_BACKEND_URL:-http://localhost:8000}
+      BACKEND_URL: ${BACKEND_URL:-http://localhost:8000}
+      DEPLOY_MODE: ${DEPLOY_MODE:-development}
+      MAPKIT_KEY: ${MAPKIT_KEY:-}
     restart: unless-stopped
     volumes:
       - ./frontend:/app/frontend
@@ -108,7 +112,7 @@ services:
   test-server:
     build:
       context: .
-      dockerfile: docker/Dockerfile.test-server
+      dockerfile: docker/test-server/Dockerfile.test-server
     ports:
       - "${TEST_BACKEND_PORT:-4000}:4000"
     extra_hosts:
@@ -135,7 +139,7 @@ services:
     ports:
       - "${TEST_FRONTEND_PORT:-5174}:80"
     environment:
-      VITE_TEST_BACKEND_URL: ${VITE_TEST_BACKEND_URL:-http://localhost:4000}
+      TEST_BACKEND_URL: ${TEST_BACKEND_URL:-http://localhost:4000}
     restart: unless-stopped
     profiles:
       - test

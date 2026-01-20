@@ -248,7 +248,7 @@ shuttletracker-new/
 - Responsive design
 
 **`utils/config.ts`** - Runtime config
-- Backend URL from `VITE_BACKEND_URL`
+- Backend URL from runtime config.json (or `VITE_MAPKIT_KEY` fallback for local dev)
 - Staging vs production detection
 - Analytics configuration
 
@@ -302,7 +302,7 @@ shuttletracker-new/
 ```bash
 # Service URLs
 FRONTEND_URL=http://localhost:3000
-VITE_BACKEND_URL=http://localhost:8000
+BACKEND_URL=http://localhost:8000
 
 # Database
 DATABASE_URL=postgresql://shubble:shubble@postgres:5432/shubble
@@ -312,10 +312,10 @@ REDIS_URL=redis://redis:6379
 
 # Samsara API
 API_KEY=sms_live_...
-SAMSARA_SECRET_BASE64=...
+SAMSARA_SECRET=...
 
 # Environment
-ENVIRONMENT=development
+DEPLOY_MODE=development
 ```
 
 ---
@@ -402,7 +402,7 @@ alembic upgrade head
 
 **Authentication:**
 - No user authentication currently implemented
-- Webhook signature verification using `SAMSARA_SECRET_BASE64`
+- Webhook signature verification using `SAMSARA_SECRET`
 
 **CORS:**
 - Configured to whitelist `FRONTEND_URL` only
