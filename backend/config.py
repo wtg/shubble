@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     DEPLOY_MODE: str = "development"
 
     # Logging settings
-    LOG_LEVEL: str = "INFO"  # Global default log level
+    LOG_LEVEL: str = "info"  # Global default log level
     FASTAPI_LOG_LEVEL: Optional[str] = None  # FastAPI backend logging (falls back to LOG_LEVEL)
     WORKER_LOG_LEVEL: Optional[str] = None  # Worker logging (falls back to LOG_LEVEL)
     ML_LOG_LEVEL: Optional[str] = None  # ML pipeline logging (falls back to LOG_LEVEL)
@@ -67,14 +67,14 @@ class Settings(BaseSettings):
             The log level string (e.g., "INFO", "DEBUG", "WARNING")
         """
         component_levels = {
-            "fastapi": self.FASTAPI_LOG_LEVEL,
-            "worker": self.WORKER_LOG_LEVEL,
-            "ml": self.ML_LOG_LEVEL,
+            "fastapi": self.FASTAPI_LOG_LEVEL.lower() if self.FASTAPI_LOG_LEVEL else None,
+            "worker": self.WORKER_LOG_LEVEL.lower() if self.WORKER_LOG_LEVEL else None,
+            "ml": self.ML_LOG_LEVEL.lower() if self.ML_LOG_LEVEL else None,
         }
 
         # Return component-specific level if set, otherwise fall back to LOG_LEVEL
         component_level = component_levels.get(component)
-        return component_level if component_level else self.LOG_LEVEL
+        return component_level if component_level else self.LOG_LEVEL.lower()
 
 
 # Global settings instance
