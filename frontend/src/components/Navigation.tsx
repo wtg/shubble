@@ -10,7 +10,7 @@ export default function Navigation({ GIT_REV }: { GIT_REV: string }) {
 
   return (
     <>
-      <header>
+      <header className="title">
         <Link to='/' className='site-title'>SHUBBLE</Link>
         <nav className='big'>
           <ul>
