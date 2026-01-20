@@ -123,16 +123,24 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
     if (!timelineContainer) return;
     if (selectedDay !== now.getDay()) return;
 
-    const targetItem = Array.from(timelineContainer.querySelectorAll('.timeline-item')).find(item => {
-      return !item.classList.contains('past-time') || item.classList.contains('current-loop');
-    }) as HTMLElement | undefined;
+    // Prioritize the item with current-loop class (where ETAs are displayed)
+    let targetItem = timelineContainer.querySelector('.timeline-item.current-loop') as HTMLElement | null;
+
+    // Fall back to first non-past item if no current loop
+    if (!targetItem) {
+      targetItem = Array.from(timelineContainer.querySelectorAll('.timeline-item')).find(item =>
+        !item.classList.contains('past-time')
+      ) as HTMLElement | null;
+    }
 
     if (targetItem) {
-      // Calculate scroll position within the container only
+      // Calculate scroll position using getBoundingClientRect for accurate positioning
       const containerRect = timelineContainer.getBoundingClientRect();
       const targetRect = targetItem.getBoundingClientRect();
-      const scrollTop = targetItem.offsetTop - timelineContainer.offsetTop - (containerRect.height / 2) + (targetRect.height / 2);
-      timelineContainer.scrollTop = Math.max(0, scrollTop);
+      // Convert visual offset to scroll position within the container
+      const targetOffsetInContainer = targetRect.top - containerRect.top + timelineContainer.scrollTop;
+      // Position the current loop at the top of the container
+      timelineContainer.scrollTop = Math.max(0, targetOffsetInContainer);
     }
   }, [selectedRoute, selectedDay, schedule]);
 
