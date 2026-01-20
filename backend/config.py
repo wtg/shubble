@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     # Hosting settings
     DEBUG: bool = True
-    ENV: str = "development"
+    DEPLOY_MODE: str = "development"
 
     # Logging settings
     LOG_LEVEL: str = "INFO"  # Global default log level
@@ -33,7 +33,7 @@ class Settings(BaseSettings):
 
     # Samsara API secret (base64 encoded)
     # for webhook signature verification
-    SAMSARA_SECRET_BASE64: Optional[str] = None
+    SAMSARA_SECRET: Optional[str] = None
 
     # Samsara API key
     API_KEY: Optional[str] = None
@@ -50,10 +50,10 @@ class Settings(BaseSettings):
         return v
 
     @property
-    def SAMSARA_SECRET(self) -> Optional[bytes]:
+    def samsara_secret_decoded(self) -> Optional[bytes]:
         """Decode base64 Samsara secret."""
-        if self.SAMSARA_SECRET_BASE64:
-            return base64.b64decode(self.SAMSARA_SECRET_BASE64.encode("utf-8"))
+        if self.SAMSARA_SECRET:
+            return base64.b64decode(self.SAMSARA_SECRET.encode("utf-8"))
         return None
 
     def get_log_level(self, component: str = "default") -> str:

@@ -70,9 +70,10 @@ FRONTEND_URL=http://localhost:3000
 API_KEY=sms_live_...
 SAMSARA_SECRET=...
 
-# Frontend
-VITE_BACKEND_URL=http://localhost:8000
-VITE_DEPLOY_MODE=development
+# Frontend (for Docker deployment)
+BACKEND_URL=http://localhost:8000
+DEPLOY_MODE=development
+MAPKIT_KEY=
 ```
 
 ## Contributing

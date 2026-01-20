@@ -1,5 +1,5 @@
 {
-  "apiBaseUrl": "${VITE_BACKEND_URL}",
-  "deployMode": "${VITE_DEPLOY_MODE}",
-  "mapkitKey": "${VITE_MAPKIT_KEY}"
+  "apiBaseUrl": "${BACKEND_URL}",
+  "deployMode": "${DEPLOY_MODE}",
+  "mapkitKey": "${MAPKIT_KEY}"
 }

@@ -58,7 +58,7 @@ Environment variables are substituted at container startup:
 
 ```bash
 docker run -p 5174:80 \
-  -e VITE_TEST_BACKEND_URL=http://localhost:4000 \
+  -e TEST_BACKEND_URL=http://localhost:4000 \
   shubble-test-client
 ```
 
@@ -70,7 +70,7 @@ docker build -f docker/test-client/Dockerfile.test-client -t shubble-test-client
 
 # Run
 docker run -p 5174:80 \
-  -e VITE_TEST_BACKEND_URL=http://localhost:4000 \
+  -e TEST_BACKEND_URL=http://localhost:4000 \
   shubble-test-client
 ```
 

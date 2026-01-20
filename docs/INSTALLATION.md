@@ -157,8 +157,8 @@ docker compose down -v
 
 2. **Set up environment variables:**
    ```bash
-   # In .env, set:
-   VITE_BACKEND_URL=http://localhost:8000
+   # In .env, set (for Docker deployment):
+   BACKEND_URL=http://localhost:8000
    ```
 
 3. **Start the development server:**
@@ -181,8 +181,8 @@ docker compose down -v
 
 2. **Set up environment variables:**
    ```bash
-   # In .env, set:
-   VITE_TEST_BACKEND_URL=http://localhost:4000
+   # In .env, set (for Docker deployment):
+   TEST_BACKEND_URL=http://localhost:4000
    ```
 
 3. **Start the test server (in one terminal):**
@@ -238,9 +238,9 @@ Key environment variables (see `.env.example` for full list):
 
 ### Service URLs
 - `FRONTEND_URL` - Main frontend URL
-- `VITE_BACKEND_URL` - Backend API URL for frontend
+- `BACKEND_URL` - Backend API URL for frontend (Docker deployment)
 - `TEST_FRONTEND_URL` - Test client URL
-- `VITE_TEST_BACKEND_URL` - Test server API URL for test client
+- `TEST_BACKEND_URL` - Test server API URL for test client (Docker deployment)
 
 ### Database & Cache
 - `DATABASE_URL` - PostgreSQL connection string

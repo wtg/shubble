@@ -44,7 +44,7 @@ async def update_locations(session_factory):
 
     headers = {"Accept": "application/json"}
     # Determine API URL based on environment
-    if settings.ENV == "development":
+    if settings.DEPLOY_MODE == "development":
         url = "http://localhost:4000/fleet/vehicles/stats"
     else:
         api_key = settings.API_KEY
@@ -173,7 +173,7 @@ async def update_driver_assignments(session_factory, vehicle_ids):
 
     headers = {"Accept": "application/json"}
     # Determine API URL based on environment
-    if settings.ENV == "development":
+    if settings.DEPLOY_MODE == "development":
         url = "http://localhost:4000/fleet/driver-vehicle-assignments"
     else:
         api_key = settings.API_KEY

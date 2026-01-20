@@ -261,7 +261,7 @@ async def webhook(request: Request, db: AsyncSession = Depends(get_db)):
     Expects JSON payload with event details.
     """
     # Verify webhook signature if secret is configured
-    if secret := settings.SAMSARA_SECRET:
+    if secret := settings.samsara_secret_decoded:
         try:
             timestamp = request.headers["X-Samsara-Timestamp"]
             signature = request.headers["X-Samsara-Signature"]

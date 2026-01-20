@@ -78,8 +78,9 @@ The `config.template.json` is processed by `entrypoint.sh` at container startup:
 
 ```json
 {
-  "apiBaseUrl": "${VITE_BACKEND_URL}",
-  "deployMode": "${VITE_DEPLOY_MODE}"
+  "apiBaseUrl": "${BACKEND_URL}",
+  "deployMode": "${DEPLOY_MODE}",
+  "mapkitKey": "${MAPKIT_KEY}"
 }
 ```
 
@@ -103,8 +104,9 @@ docker build -f docker/frontend/Dockerfile.frontend.prod -t shubble-frontend .
 
 # Run with environment variables
 docker run -p 80:80 \
-  -e VITE_BACKEND_URL=https://api.shuttles.rpi.edu \
-  -e VITE_DEPLOY_MODE=production \
+  -e BACKEND_URL=https://api.shuttles.rpi.edu \
+  -e DEPLOY_MODE=production \
+  -e MAPKIT_KEY=your_mapkit_key \
   shubble-frontend
 ```
 
