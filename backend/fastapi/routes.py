@@ -27,7 +27,40 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@cache(expire=60, namespace="predictions")
+# Custom key builders for cache decorators
+# These exclude Response and AsyncSession objects which change per-request
+def locations_key_builder(
+    func,
+    namespace: str = "",
+    *,
+    request=None,
+    response=None,
+    args=None,
+    kwargs=None
+):
+    """Custom key builder for /api/locations that excludes Response and db session."""
+    prefix = FastAPICache.get_prefix()
+    return f"{prefix}:{namespace}:{func.__module__}:{func.__name__}"
+
+
+def predictions_key_builder(
+    func,
+    namespace: str = "",
+    *,
+    request=None,
+    response=None,
+    args=None,
+    kwargs=None
+):
+    """Custom key builder for predictions that includes vehicle_ids but excludes db session."""
+    prefix = FastAPICache.get_prefix()
+    vehicle_ids = kwargs.get("vehicle_ids", []) if kwargs else []
+    # Sort for consistent cache keys
+    vehicle_key = ",".join(sorted(vehicle_ids)) if vehicle_ids else "none"
+    return f"{prefix}:{namespace}:{func.__name__}:{vehicle_key}"
+
+
+@cache(expire=60, namespace="predictions", key_builder=predictions_key_builder)
 async def get_latest_etas_and_predicted_locations(vehicle_ids: list[str], db: AsyncSession):
     """
     Get the latest ETA and predicted location for each vehicle.
@@ -115,7 +148,7 @@ async def get_latest_etas_and_predicted_locations(vehicle_ids: list[str], db: As
 
 
 @router.get("/api/locations")
-@cache(expire=60, namespace="locations")
+@cache(expire=60, namespace="locations", key_builder=locations_key_builder)
 async def get_locations(response: Response, db: AsyncSession = Depends(get_db)):
     """
     Returns the latest location for each vehicle currently inside the geofence.
