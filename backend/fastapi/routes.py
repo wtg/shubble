@@ -30,34 +30,32 @@ router = APIRouter()
 # Custom key builders for cache decorators
 # These exclude Response and AsyncSession objects which change per-request
 def locations_key_builder(
-    func,
+    func: function,
     namespace: str = "",
     *,
-    request=None,
-    response=None,
-    args=None,
-    kwargs=None
+    request: Request = None,
+    response: Response = None,
+    *args,
+    **kwargs,
 ):
     """Custom key builder for /api/locations that excludes Response and db session."""
-    prefix = FastAPICache.get_prefix()
-    return f"{prefix}:{namespace}:{func.__module__}:{func.__name__}"
-
+    return f"{namespace}:{func.__name__}"
 
 def predictions_key_builder(
-    func,
+    func: function,
     namespace: str = "",
     *,
-    request=None,
-    response=None,
-    args=None,
-    kwargs=None
+    request: Request = None,
+    response: Response = None,
+    *args,
+    **kwargs,
 ):
     """Custom key builder for predictions that includes vehicle_ids but excludes db session."""
-    prefix = FastAPICache.get_prefix()
+    # Extract vehicle_ids from kwargs, excluding 'db'
     vehicle_ids = kwargs.get("vehicle_ids", []) if kwargs else []
     # Sort for consistent cache keys
     vehicle_key = ",".join(sorted(vehicle_ids)) if vehicle_ids else "none"
-    return f"{prefix}:{namespace}:{func.__name__}:{vehicle_key}"
+    return f"{namespace}:{func.__name__}:{vehicle_key}"
 
 
 @cache(expire=60, namespace="predictions", key_builder=predictions_key_builder)
