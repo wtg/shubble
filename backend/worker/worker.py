@@ -147,6 +147,7 @@ async def update_locations(session_factory):
                         )
                         # Invalidate cache for locations
                         await FastAPICache.clear(namespace="vehicles_in_geofence")
+                        await FastAPICache.clear(namespace="locations")
                     else:
                         logger.info(
                             f"No new location data for {len(current_vehicle_ids)} vehicles"
