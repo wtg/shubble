@@ -42,7 +42,7 @@ export default function LiveLocationMapKit({
 
     const pollLocation = async () => {
       try {
-        const response = await fetch(`${config.apiBaseUrl}/api/locations`, { cache: 'reload' });
+        const response = await fetch(`${config.apiBaseUrl}/api/locations`, { cache: 'no-store', headers: { 'Cache-Control': '' } });
         if (!response.ok) {
           throw new Error('Network response was not ok');
         }
