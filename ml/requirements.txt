@@ -13,7 +13,7 @@ scipy
 scikit-learn
 matplotlib
 seaborn
-tqdm>=4.65.0
+tqdm>=4.67.1
 
 # Optional: for time series analysis
 statsmodels
