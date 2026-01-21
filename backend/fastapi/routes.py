@@ -285,6 +285,8 @@ async def get_locations(response: Response, db: AsyncSession = Depends(get_db)):
     response.headers['X-Server-Time'] = now.isoformat()
     response.headers['X-Oldest-Data-Time'] = oldest_timestamp.isoformat() if oldest_timestamp else ''
     response.headers['X-Data-Age-Seconds'] = str(data_age) if data_age is not None else ''
+    # Prevent browser caching (server-side caching via fastapi-cache still works)
+    response.headers['Cache-Control'] = 'no-store'
 
     return response_data
 
