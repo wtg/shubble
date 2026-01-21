@@ -10,6 +10,7 @@ recompute affected rows instead of reprocessing the entire dataset:
 
 This significantly reduces computation time as the dataset grows throughout the day.
 """
+import asyncio
 import logging
 import pickle
 from datetime import datetime, timezone
@@ -194,9 +195,9 @@ async def get_today_dataframe() -> pd.DataFrame:
         logger.info(f"Loading {today_str} raw data from database")
         raw_df = await load_today_dataframe()
 
-        # Process data
+        # Process data in thread pool to avoid blocking the event loop
         logger.info(f"Processing {len(raw_df)} records through ML pipeline...")
-        processed_df = process_raw_dataframe(raw_df)
+        processed_df = await asyncio.to_thread(process_raw_dataframe, raw_df)
 
         # Save to cache
         # Serialize with pickle
@@ -316,7 +317,7 @@ async def update_today_dataframe(window_size: int = 5) -> pd.DataFrame:
                 rows_to_process[col] = pd.NA
 
         logger.info(f"Processing {len(rows_to_process)} rows with additive mode (preserves context, computes new)")
-        newly_processed_df = process_raw_dataframe(rows_to_process)
+        newly_processed_df = await asyncio.to_thread(process_raw_dataframe, rows_to_process)
 
         # Create a set of (vehicle_id, timestamp) pairs that are genuinely new
         # (not from the context window)

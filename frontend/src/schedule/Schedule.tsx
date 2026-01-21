@@ -35,7 +35,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
   useEffect(() => {
     const fetchETAs = async () => {
       try {
-        const response = await fetch(`${config.apiBaseUrl}/api/locations`, { cache: 'no-store' });
+        const response = await fetch(`${config.apiBaseUrl}/api/locations`, { cache: 'no-store', headers: { 'Cache-Control': '' } });
         if (!response.ok) return;
 
         const data: VehicleInformationMap = await response.json();

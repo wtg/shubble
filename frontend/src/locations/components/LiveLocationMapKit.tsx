@@ -42,7 +42,7 @@ export default function LiveLocationMapKit({
 
     const pollLocation = async () => {
       try {
-        const response = await fetch(`${config.apiBaseUrl}/api/locations`, { cache: 'no-store' });
+        const response = await fetch(`${config.apiBaseUrl}/api/locations`, { cache: 'no-store', headers: { 'Cache-Control': '' } });
         if (!response.ok) {
           throw new Error('Network response was not ok');
         }
@@ -120,7 +120,7 @@ export default function LiveLocationMapKit({
       // Get route polyline
       let routePolyline: Coordinate[] | undefined;
       if (vehicle.route_name && flattenedRoutes[vehicle.route_name]) {
-          routePolyline = flattenedRoutes[vehicle.route_name];
+        routePolyline = flattenedRoutes[vehicle.route_name];
       }
 
       list.push({

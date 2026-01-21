@@ -27,7 +27,42 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@cache(expire=60, namespace="predictions")
+# Custom key builders for cache decorators
+# These exclude Response and AsyncSession objects which change per-request
+from typing import Any, Callable, Dict, Optional, Tuple
+
+
+def locations_key_builder(
+    func: Callable[..., Any],
+    namespace: str = "",
+    *,
+    request: Optional[Request] = None,
+    response: Optional[Response] = None,
+    args: Tuple[Any, ...] = (),
+    kwargs: Dict[str, Any] = None,
+) -> str:
+    """Custom key builder for /api/locations that excludes Response and db session."""
+    return f"{namespace}:{func.__name__}"
+
+
+def predictions_key_builder(
+    func: Callable[..., Any],
+    namespace: str = "",
+    *,
+    request: Optional[Request] = None,
+    response: Optional[Response] = None,
+    args: Tuple[Any, ...] = (),
+    kwargs: Dict[str, Any] = None,
+) -> str:
+    """Custom key builder for predictions that includes vehicle_ids but excludes db session."""
+    # Extract vehicle_ids from kwargs, excluding 'db'
+    vehicle_ids = kwargs.get("vehicle_ids", []) if kwargs else []
+    # Sort for consistent cache keys
+    vehicle_key = ",".join(sorted(vehicle_ids)) if vehicle_ids else "none"
+    return f"{namespace}:{func.__name__}:{vehicle_key}"
+
+
+@cache(expire=60, namespace="predictions", key_builder=predictions_key_builder)
 async def get_latest_etas_and_predicted_locations(vehicle_ids: list[str], db: AsyncSession):
     """
     Get the latest ETA and predicted location for each vehicle.
@@ -115,7 +150,7 @@ async def get_latest_etas_and_predicted_locations(vehicle_ids: list[str], db: As
 
 
 @router.get("/api/locations")
-@cache(expire=60, namespace="locations")
+@cache(expire=60, namespace="locations", key_builder=locations_key_builder)
 async def get_locations(response: Response, db: AsyncSession = Depends(get_db)):
     """
     Returns the latest location for each vehicle currently inside the geofence.
@@ -250,6 +285,8 @@ async def get_locations(response: Response, db: AsyncSession = Depends(get_db)):
     response.headers['X-Server-Time'] = now.isoformat()
     response.headers['X-Oldest-Data-Time'] = oldest_timestamp.isoformat() if oldest_timestamp else ''
     response.headers['X-Data-Age-Seconds'] = str(data_age) if data_age is not None else ''
+    # Prevent browser caching (server-side caching via fastapi-cache still works)
+    response.headers['Cache-Control'] = 'no-store'
 
     return response_data
 
