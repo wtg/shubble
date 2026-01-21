@@ -29,27 +29,31 @@ router = APIRouter()
 
 # Custom key builders for cache decorators
 # These exclude Response and AsyncSession objects which change per-request
+from typing import Any, Callable, Dict, Optional, Tuple
+
+
 def locations_key_builder(
-    func: function,
+    func: Callable[..., Any],
     namespace: str = "",
     *,
-    request: Request = None,
-    response: Response = None,
-    *args,
-    **kwargs,
-):
+    request: Optional[Request] = None,
+    response: Optional[Response] = None,
+    args: Tuple[Any, ...] = (),
+    kwargs: Dict[str, Any] = None,
+) -> str:
     """Custom key builder for /api/locations that excludes Response and db session."""
     return f"{namespace}:{func.__name__}"
 
+
 def predictions_key_builder(
-    func: function,
+    func: Callable[..., Any],
     namespace: str = "",
     *,
-    request: Request = None,
-    response: Response = None,
-    *args,
-    **kwargs,
-):
+    request: Optional[Request] = None,
+    response: Optional[Response] = None,
+    args: Tuple[Any, ...] = (),
+    kwargs: Dict[str, Any] = None,
+) -> str:
     """Custom key builder for predictions that includes vehicle_ids but excludes db session."""
     # Extract vehicle_ids from kwargs, excluding 'db'
     vehicle_ids = kwargs.get("vehicle_ids", []) if kwargs else []
