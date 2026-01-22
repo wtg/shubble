@@ -19,7 +19,7 @@ dependencies = [
     "fastapi-cache2[redis]>=0.2.2",
     # Data processing (used by worker for DataFrame caching)
     "numpy",
-    "pandas==2.2.1",
+    "pandas>=2.0.0,<3.0.0",
 ]
 
 [dependency-groups]
