@@ -148,8 +148,7 @@ The test client (`test/client/`) provides a web UI for controlling shuttles. Sta
 
 ```bash
 # Terminal 1: Test server
-cd test/server
-uvicorn server:app --port 4000
+uv run uvicorn test.server.server:app --port 4000
 
 # Terminal 2: Test client
 cd test/client

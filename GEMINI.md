@@ -8,14 +8,15 @@ Shubble is a real-time shuttle tracking application for Rensselaer Polytechnic I
 - **Cache**: Redis 7.
 - **Database**: PostgreSQL 17.
 - **GPS Data**: Samsara API (polling via background worker).
+- **Package Manager**: [uv](https://docs.astral.sh/uv/) for Python dependency management.
 
 ## Core Commands
 
 ### Backend (from root)
-- **Install**: `pip install -r backend/requirements.txt`
-- **Run API**: `uvicorn shubble:app --reload`
-- **Run Worker**: `python -m backend.worker`
-- **Migrations**: `alembic upgrade head` (from `backend/` directory)
+- **Install**: `uv sync` (or `uv sync --group ml` for ML dependencies)
+- **Run API**: `uv run uvicorn shubble:app --reload`
+- **Run Worker**: `uv run python -m backend.worker`
+- **Migrations**: `uv run alembic -c backend/alembic.ini upgrade head`
 
 ### Frontend (from `frontend/`)
 - **Install**: `npm install`

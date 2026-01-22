@@ -39,8 +39,7 @@ docker compose --profile test --profile backend up
 
 ```bash
 # Terminal 1: Start the test server
-cd test/server
-uvicorn server:app --port 4000 --reload
+uv run uvicorn test.server.server:app --port 4000 --reload
 
 # Terminal 2: Start the test client
 cd test/client

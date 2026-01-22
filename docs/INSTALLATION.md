@@ -134,17 +134,17 @@ docker compose down -v
 
 4. **Run database migrations:**
    ```bash
-   alembic upgrade head
+   uv run alembic -c backend/alembic.ini upgrade head
    ```
 
 5. **Start the backend server:**
    ```bash
-   uvicorn shubble:app --host 0.0.0.0 --port 8000 --reload
+   uv run uvicorn shubble:app --host 0.0.0.0 --port 8000 --reload
    ```
 
 6. **Start the worker (in a separate terminal):**
    ```bash
-   python -m backend.worker
+   uv run python -m backend.worker
    ```
 
 ### Frontend Setup
@@ -187,8 +187,7 @@ docker compose down -v
 
 3. **Start the test server (in one terminal):**
    ```bash
-   cd test/server
-   python server.py
+   uv run uvicorn test.server.server:app --port 4000
    ```
 
 4. **Start the test client (in another terminal):**
@@ -223,10 +222,10 @@ npm run dev
 docker compose up postgres redis
 
 # Terminal 2: Run backend on host
-uvicorn shubble:app --host 0.0.0.0 --port 8000 --reload
+uv run uvicorn shubble:app --host 0.0.0.0 --port 8000 --reload
 
 # Terminal 3: Run worker on host
-python -m backend.worker
+uv run python -m backend.worker
 
 # Terminal 4 (optional): Run frontend in Docker
 docker compose --profile frontend up
@@ -276,7 +275,7 @@ docker compose down -v
 docker compose up postgres
 
 # Run migrations
-alembic upgrade head
+uv run alembic -c backend/alembic.ini upgrade head
 ```
 
 ### Dependency Issues

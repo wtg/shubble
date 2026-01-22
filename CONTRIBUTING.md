@@ -80,11 +80,11 @@ When modifying the database schema:
 1. Update models in `backend/models.py`
 2. Generate a migration:
    ```bash
-   alembic -c backend/alembic.ini revision --autogenerate -m "Description"
+   uv run alembic -c backend/alembic.ini revision --autogenerate -m "Description"
    ```
 3. Apply the migration:
    ```bash
-   alembic -c backend/alembic.ini upgrade head
+   uv run alembic -c backend/alembic.ini upgrade head
    ```
 4. Commit the migration file in `alembic/versions/`
 
