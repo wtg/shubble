@@ -424,10 +424,6 @@ async def generate_and_save_predictions(vehicle_ids: List[str]):
 
     await save_predictions(etas, next_states)
 
-    # Invalidate predictions cache after saving new predictions
-    await clear_namespace("etas")
-    await clear_namespace("velocities")
-
     count_etas = len(etas)
     count_locs = len(next_states)
     if count_etas > 0 or count_locs > 0:

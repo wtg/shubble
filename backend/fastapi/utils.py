@@ -10,6 +10,10 @@ from backend.models import VehicleLocation, DriverVehicleAssignment, ETA, Predic
 from backend.cache_dataframe import get_today_dataframe
 from backend.utils import get_vehicles_in_geofence_query
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class VehicleInfoDict(TypedDict):
     license_plate: Optional[str]
@@ -138,8 +142,6 @@ async def smart_closest_point(
 
     except Exception as e:
         # If anything goes wrong, return None for all vehicles
-        import logging
-        logger = logging.getLogger(__name__)
         logger.error(f"Error in smart_closest_point: {e}")
 
         for vehicle_id in vehicle_ids:
@@ -201,7 +203,7 @@ async def get_latest_vehicle_locations(session_factory) -> List[VehicleLocationD
                 "gateway_model": vehicle.gateway_model,
                 "gateway_serial": vehicle.gateway_serial,
             }
-            
+
             loc_dict: VehicleLocationDict = {
                 "vehicle_id": loc.vehicle_id,
                 "name": loc.name,
@@ -217,7 +219,7 @@ async def get_latest_vehicle_locations(session_factory) -> List[VehicleLocationD
                 "vehicle": vehicle_dict,
             }
             location_dicts.append(loc_dict)
-            
+
         return location_dicts
 
 
@@ -258,7 +260,7 @@ async def get_current_driver_assignments(
                     "id": assignment.driver.id,
                     "name": assignment.driver.name,
                 }
-            
+
             result_dict[assignment.vehicle_id] = {
                 "vehicle_id": assignment.vehicle_id,
                 "driver": driver_dict,
