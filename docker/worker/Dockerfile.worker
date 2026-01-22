@@ -1,14 +1,17 @@
 # Worker Dockerfile for Shubble Background Location Poller
 FROM python:3.13-slim
 
+# Install uv for fast dependency management
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
 WORKDIR /app
 
-# Copy requirements and install Python dependencies
-COPY backend/requirements.txt .
-RUN pip install --no-cache-dir --root-user-action=ignore -r requirements.txt
+# Copy dependency files first (for layer caching)
+COPY pyproject.toml uv.lock ./
 
-COPY ml/requirements.txt ./ml_requirements.txt
-RUN pip install --no-cache-dir --root-user-action=ignore -r ml_requirements.txt
+# Install dependencies with ML group (cached layer)
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --group ml --no-install-project
 
 # Copy application code
 COPY backend/ ./backend/
@@ -19,9 +22,5 @@ COPY ml/ ./ml/
 RUN useradd -m -u 1000 shubble && chown -R shubble:shubble /app
 USER shubble
 
-# # Health check (worker should be running)
-# HEALTHCHECK --interval=60s --timeout=10s --start-period=10s --retries=3 \
-#     CMD pgrep -f "python -m backend.worker" > /dev/null || exit 1
-
 # Run worker
-CMD ["python", "-m", "backend.worker"]
+CMD ["uv", "run", "python", "-m", "backend.worker"]
