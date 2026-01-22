@@ -15,13 +15,13 @@ This package provides end-to-end ML pipelines for:
 
 ```bash
 # Run complete ARIMA pipeline
-python -m ml.pipelines arima --segment --p 3 --d 0 --q 2
+uv run python -m ml.pipelines arima --segment --p 3 --d 0 --q 2
 
 # Run complete LSTM pipeline
-python -m ml.pipelines lstm --stops --train --epochs 20
+uv run python -m ml.pipelines lstm --stops --train --epochs 20
 
 # Load trained models for inference
-python -c "
+uv run python -c "
 from ml.deploy import load_arima, load_lstm
 arima_model = load_arima(p=3, d=0, q=2)
 lstm_models = load_lstm()
@@ -40,13 +40,13 @@ load → preprocess → segment → stops → split → train → fit
 
 ```bash
 # --segment triggers: segment + stops + split + train + fit
-python -m ml.pipelines arima --segment
+uv run python -m ml.pipelines arima --segment
 
 # --preprocess triggers: preprocess + segment + stops + split + train + fit
-python -m ml.pipelines lstm --preprocess
+uv run python -m ml.pipelines lstm --preprocess
 
 # --load triggers all stages
-python -m ml.pipelines arima --load
+uv run python -m ml.pipelines arima --load
 ```
 
 ## Architecture
@@ -303,19 +303,19 @@ logging.basicConfig(
 
 ```bash
 # Basic usage
-python -m ml.pipelines arima
+uv run python -m ml.pipelines arima
 
 # With hyperparameters
-python -m ml.pipelines arima --p 5 --d 1 --q 3
+uv run python -m ml.pipelines arima --p 5 --d 1 --q 3
 
 # Force re-segmentation (triggers segment + split + fit)
-python -m ml.pipelines arima --segment
+uv run python -m ml.pipelines arima --segment
 
 # Tune hyperparameters
-python -m ml.pipelines arima --tune-hyperparams
+uv run python -m ml.pipelines arima --tune-hyperparams
 
 # Custom parameters
-python -m ml.pipelines arima \
+uv run python -m ml.pipelines arima \
   --segment \
   --max-timedelta 15 \
   --max-distance 0.01 \
@@ -328,16 +328,16 @@ python -m ml.pipelines arima \
 
 ```bash
 # Basic usage
-python -m ml.pipelines lstm
+uv run python -m ml.pipelines lstm
 
 # Force re-training
-python -m ml.pipelines lstm --train
+uv run python -m ml.pipelines lstm --train
 
 # Force stops preprocessing (triggers stops + train)
-python -m ml.pipelines lstm --stops
+uv run python -m ml.pipelines lstm --stops
 
 # Custom parameters
-python -m ml.pipelines lstm \
+uv run python -m ml.pipelines lstm \
   --stops \
   --epochs 50 \
   --batch-size 128 \
@@ -351,13 +351,13 @@ python -m ml.pipelines lstm \
 
 ```bash
 # Run just preprocessing
-python -m ml.pipelines preprocess
+uv run python -m ml.pipelines preprocess
 
 # Run just stops pipeline
-python -m ml.pipelines stops
+uv run python -m ml.pipelines stops
 
 # Run load pipeline
-python -m ml.pipelines load
+uv run python -m ml.pipelines load
 ```
 
 ## Column Reference
