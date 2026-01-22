@@ -33,11 +33,11 @@ Shubble is a real-time shuttle tracking application for Rensselaer Polytechnic I
 - `frontend/`: React application.
 - `shared/`: Shared JSON data (routes, schedules) and Python/JS utilities used by both ends.
 - `test/`: Test environment (mock Samsara API, test client UI, example test files).
-- `alembic/`: Database migration scripts.
+- `migrations/`: Database migration scripts.
 - `ml/`: Machine learning models and pipelines for shuttle arrival prediction.
 
 ## Machine Learning
-- **Pipeline**: Run `PYTHONPATH=. python3 ml/pipelines.py` to preprocess data and generate train/test splits. Supports disk-based and in-memory DataFrame processing.
+- **Pipeline**: Run `uv run python ml/pipelines.py` to preprocess data and generate train/test splits. Supports disk-based and in-memory DataFrame processing.
 - **Cache**: Managed by `ml/cache.py`. Files are stored in `ml/cache/` (shared, arima, lstm subdirectories).
 - **Models**: 
   - LSTM models for stop-based ETA predictions (`ml/models/lstm.py`).

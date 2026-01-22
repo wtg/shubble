@@ -44,7 +44,7 @@ For each area, you have two options for running the services:
 - Can use local development tools
 
 **Disadvantages:**
-- Requires installing dependencies (Node.js, Python, PostgreSQL, Redis)
+- Requires installing dependencies (Node.js, Python, uv, PostgreSQL, Redis)
 - Potential version conflicts with other projects
 - Manual setup required
 - Environment differences between developers
@@ -107,14 +107,24 @@ docker compose down -v
 **All environments:**
 - Node.js 24+
 - Python 3.13+
+- [uv](https://docs.astral.sh/uv/) (Python package manager)
 - PostgreSQL 17+
 - Redis 7+
+
+**Install uv** (if not already installed):
+```bash
+# macOS/Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Or with Homebrew
+brew install uv
+```
 
 ### Backend Setup
 
 1. **Install Python dependencies:**
    ```bash
-   pip install -r requirements.txt
+   uv sync
    ```
 
 2. **Set up environment variables:**
@@ -286,8 +296,8 @@ cd frontend
 rm -rf node_modules package-lock.json
 npm install
 
-# Clean install for Python
-pip install --force-reinstall -r requirements.txt
+# Clean install for Python (re-sync with uv)
+uv sync --reinstall
 ```
 
 ## Next Steps
