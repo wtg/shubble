@@ -2,7 +2,8 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App'
-import { loadConfig } from './utils/config'
+import { loadConfig, getConfig } from './utils/config'
+import { prefetchVehicleData } from './utils/prefetch'
 
 // Dev tools detector
 const setupDevToolsDetector = () => {
@@ -15,7 +16,7 @@ const setupDevToolsDetector = () => {
     const orientation = widthThreshold ? 'vertical' : 'horizontal';
 
     if (!(heightThreshold && widthThreshold) &&
-        ((window.Firebug && window.Firebug.chrome && window.Firebug.chrome.isInitialized) || widthThreshold || heightThreshold)) {
+      ((window.Firebug && window.Firebug.chrome && window.Firebug.chrome.isInitialized) || widthThreshold || heightThreshold)) {
       if (!devtoolsOpen) {
         devtoolsOpen = true;
       }
@@ -40,9 +41,13 @@ setupDevToolsDetector();
 
 // Load config before rendering the app
 loadConfig().then(() => {
+  // Start prefetching vehicle data immediately, before React mounts
+  prefetchVehicleData(getConfig().apiBaseUrl);
+
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       <App />
     </StrictMode>,
   )
 })
+

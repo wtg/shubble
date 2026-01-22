@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import '../styles/MapKitMap.css';
 import ShuttleIcon from "./ShuttleIcon";
 import config from "../../utils/config";
+import { getPrefetchedVehicleData, clearPrefetchedData } from "../../utils/prefetch";
 
 import type { ShuttleRouteData } from "../../types/route";
 import type { VehicleLocationMap, VehicleVelocityMap, VehicleCombinedMap } from "../../types/vehicleLocation";
@@ -83,7 +84,16 @@ export default function LiveLocationMapKit({
       }
     }
 
-    pollLocation();
+    // Use prefetched data for first render if available
+    const prefetched = getPrefetchedVehicleData();
+    if (prefetched) {
+      prefetched
+        .then(setVehicles)
+        .catch(() => pollLocation());
+      clearPrefetchedData();
+    } else {
+      pollLocation();
+    }
 
     // refresh location every 5 seconds
     const refreshLocation = setInterval(pollLocation, 5000);
