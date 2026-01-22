@@ -8,14 +8,15 @@ Shubble is a real-time shuttle tracking application for Rensselaer Polytechnic I
 - **Cache**: Redis 7.
 - **Database**: PostgreSQL 17.
 - **GPS Data**: Samsara API (polling via background worker).
+- **Package Manager**: [uv](https://docs.astral.sh/uv/) for Python dependency management.
 
 ## Core Commands
 
 ### Backend (from root)
-- **Install**: `pip install -r backend/requirements.txt`
-- **Run API**: `uvicorn shubble:app --reload`
-- **Run Worker**: `python -m backend.worker`
-- **Migrations**: `alembic upgrade head` (from `backend/` directory)
+- **Install**: `uv sync` (or `uv sync --group ml` for ML dependencies)
+- **Run API**: `uv run uvicorn shubble:app --reload`
+- **Run Worker**: `uv run python -m backend.worker`
+- **Migrations**: `uv run alembic -c backend/alembic.ini upgrade head`
 
 ### Frontend (from `frontend/`)
 - **Install**: `npm install`
@@ -32,11 +33,11 @@ Shubble is a real-time shuttle tracking application for Rensselaer Polytechnic I
 - `frontend/`: React application.
 - `shared/`: Shared JSON data (routes, schedules) and Python/JS utilities used by both ends.
 - `test/`: Test environment (mock Samsara API, test client UI, example test files).
-- `alembic/`: Database migration scripts.
+- `migrations/`: Database migration scripts.
 - `ml/`: Machine learning models and pipelines for shuttle arrival prediction.
 
 ## Machine Learning
-- **Pipeline**: Run `PYTHONPATH=. python3 ml/pipelines.py` to preprocess data and generate train/test splits. Supports disk-based and in-memory DataFrame processing.
+- **Pipeline**: Run `uv run python ml/pipelines.py` to preprocess data and generate train/test splits. Supports disk-based and in-memory DataFrame processing.
 - **Cache**: Managed by `ml/cache.py`. Files are stored in `ml/cache/` (shared, arima, lstm subdirectories).
 - **Models**: 
   - LSTM models for stop-based ETA predictions (`ml/models/lstm.py`).

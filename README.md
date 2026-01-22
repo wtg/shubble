@@ -26,8 +26,9 @@ Shubble is a real-time shuttle tracking application for Rensselaer Polytechnic I
 ```
 shubble/
 ├── backend/              # FastAPI backend application
-│   ├── flask/            # API routes and app factory
-│   └── worker/           # Background GPS polling worker
+│   ├── fastapi/          # API routes and app factory
+│   ├── worker/           # Background GPS polling worker
+│   └── alembic/          # Database migrations
 ├── frontend/             # React + TypeScript frontend
 ├── ml/                   # Machine learning pipelines
 │   ├── models/           # ARIMA and LSTM implementations
@@ -38,11 +39,10 @@ shubble/
 │   ├── server/           # Mock Samsara API for development
 │   ├── client/           # Test UI for mock server
 │   └── files/            # Example test files
-├── docker/               # Docker configurations
-│   ├── backend/          # Backend Dockerfiles (dev/prod)
-│   ├── frontend/         # Frontend Dockerfiles (dev/prod)
-│   └── test-client/      # Test client Dockerfile
-└── alembic/              # Database migrations
+└── docker/               # Docker configurations
+    ├── backend/          # Backend Dockerfiles (dev/prod)
+    ├── frontend/         # Frontend Dockerfiles (dev/prod)
+    └── test-client/      # Test client Dockerfile
 ```
 
 ## Getting Started

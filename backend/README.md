@@ -120,13 +120,13 @@ POST /api/webhook    # Samsara geofence events
 
 ```bash
 # Create new migration
-alembic -c backend/alembic.ini revision --autogenerate -m "description"
+uv run alembic -c backend/alembic.ini revision --autogenerate -m "description"
 
 # Apply migrations
-alembic -c backend/alembic.ini upgrade head
+uv run alembic -c backend/alembic.ini upgrade head
 
 # Rollback
-alembic -c backend/alembic.ini downgrade -1
+uv run alembic -c backend/alembic.ini downgrade -1
 ```
 
 ## Configuration
@@ -161,7 +161,7 @@ The worker polls the Samsara API for GPS data and stores it in the database.
 
 ```bash
 # Run worker
-python -m backend.worker
+uv run python -m backend.worker
 
 # Worker behavior:
 # - Polls every 5 seconds
@@ -216,19 +216,15 @@ async def get_locations():
 ### Running Tests
 
 ```bash
-pytest backend/tests/
+uv run pytest backend/tests/
 ```
 
 ### Code Style
 
 ```bash
-# Format
-black backend/
-isort backend/
-
-# Lint
-flake8 backend/
-mypy backend/
+# Lint and format
+uv run ruff check backend/
+uv run ruff format backend/
 ```
 
 ### Local Development with Test Server
@@ -237,8 +233,7 @@ To develop without Samsara API access:
 
 ```bash
 # Start test server (provides mock GPS data)
-cd test/server
-uvicorn server:app --port 4000
+uv run uvicorn test.server.server:app --port 4000
 
 # Configure backend to use test server
 export API_KEY=test

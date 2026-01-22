@@ -341,15 +341,15 @@ npm run dev  # Parses schedule, copies data, runs Vite
 
 **Backend development:**
 ```bash
-pip install -r requirements.txt
-alembic upgrade head
-uvicorn shubble:app --reload
+uv sync
+uv run alembic -c backend/alembic.ini upgrade head
+uv run uvicorn shubble:app --reload
 ```
 
 **Database migrations:**
 ```bash
-alembic revision --autogenerate -m "description"
-alembic upgrade head
+uv run alembic -c backend/alembic.ini revision --autogenerate -m "description"
+uv run alembic -c backend/alembic.ini upgrade head
 ```
 
 ---
