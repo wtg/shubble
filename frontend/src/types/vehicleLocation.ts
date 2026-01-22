@@ -74,10 +74,6 @@ export type VehicleETAMap = Record<string, VehicleETAData>;
 export type VehicleVelocityMap = Record<string, VehicleVelocityData>;
 export type VehicleCombinedMap = Record<string, VehicleCombinedData>;
 
-// Legacy alias for backwards compatibility
-export type VehiclePredictionMap = Record<string, VehiclePredictionData>;
-export type VehicleInformationMap = VehicleCombinedMap;
-
 // ETAs: vehicle_id -> stop_name -> ISO 8601 datetime
 export type VehicleETAs = Record<string, Record<string, string>>;
 
