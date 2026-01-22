@@ -386,7 +386,7 @@ async def data_today(db: AsyncSession = Depends(get_db)):
 @router.get("/api/routes")
 async def get_shuttle_routes():
     """Serve routes.json file."""
-    root_dir = Path(__file__).parent.parent
+    root_dir = Path(__file__).parent.parent.parent
     routes_file = root_dir / "shared" / "routes.json"
     if routes_file.exists():
         return FileResponse(routes_file)
@@ -396,7 +396,8 @@ async def get_shuttle_routes():
 @router.get("/api/schedule")
 async def get_shuttle_schedule():
     """Serve schedule.json file."""
-    root_dir = Path(__file__).parent.parent
+    root_dir = Path(__file__).parent.parent.parent
+    print(root_dir)
     schedule_file = root_dir / "shared" / "schedule.json"
     if schedule_file.exists():
         return FileResponse(schedule_file)
