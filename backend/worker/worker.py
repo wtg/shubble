@@ -7,11 +7,9 @@ from datetime import datetime, timezone
 import httpx
 from sqlalchemy import select
 from sqlalchemy.dialects import postgresql
-from fastapi_cache import FastAPICache
-from fastapi_cache.backends.redis import RedisBackend
-from redis import asyncio as aioredis
 
 from backend.config import settings
+from backend.cache import init_cache, close_cache, clear_namespace
 from backend.database import create_async_db_engine, create_session_factory
 from backend.models import VehicleLocation, Driver, DriverVehicleAssignment
 from backend.utils import get_vehicles_in_geofence
@@ -146,8 +144,7 @@ async def update_locations(session_factory):
                             f"Updated locations for {len(current_vehicle_ids)} vehicles - {new_records_added} new records"
                         )
                         # Invalidate cache for locations
-                        await FastAPICache.clear(namespace="vehicles_in_geofence")
-                        await FastAPICache.clear(namespace="locations")
+                        await clear_namespace("locations")
                     else:
                         logger.info(
                             f"No new location data for {len(current_vehicle_ids)} vehicles"
@@ -284,6 +281,7 @@ async def update_driver_assignments(session_factory, vehicle_ids):
 
                     if assignments_updated > 0:
                         await session.commit()
+                        await clear_namespace("driver_assignments")
                         logger.info(f"Updated {assignments_updated} driver assignments")
                     else:
                         logger.info("No driver assignment changes detected")
@@ -303,14 +301,9 @@ async def run_worker():
     session_factory = create_session_factory(db_engine)
     logger.info("Database engine and session factory initialized")
 
-    # Initialize Redis cache for FastAPI cache
+    # Initialize Redis cache
     try:
-        redis = await aioredis.from_url(
-            settings.REDIS_URL,
-            encoding="utf-8",
-            decode_responses=False,
-        )
-        FastAPICache.init(RedisBackend(redis), prefix="fastapi-cache")
+        await init_cache(settings.REDIS_URL)
         logger.info("Redis cache initialized")
     except Exception as e:
         logger.error(f"Failed to initialize Redis cache: {e}")
@@ -361,6 +354,7 @@ async def run_worker():
     finally:
         # Cleanup on shutdown
         logger.info("Shutting down worker...")
+        await close_cache()
         await db_engine.dispose()
         logger.info("Database connections closed")
 

@@ -17,9 +17,9 @@ from datetime import datetime, timezone
 import pandas as pd
 from sqlalchemy import select
 from redis import asyncio as aioredis
-from fastapi_cache import FastAPICache
 
 from backend.config import settings
+from backend.cache import clear_namespace
 from backend.database import create_async_db_engine, create_session_factory
 from backend.models import VehicleLocation
 from backend.time_utils import get_campus_start_of_day
@@ -211,7 +211,7 @@ async def get_today_dataframe() -> pd.DataFrame:
             await pipe.execute()
 
         # Invalidate smart_closest_point cache since dataframe was updated
-        await FastAPICache.clear(namespace="smart_closest_point")
+        await clear_namespace("smart_closest_point")
 
         logger.info(f"Saved {today_str} processed data to Redis cache")
         return processed_df
@@ -354,7 +354,7 @@ async def update_today_dataframe(window_size: int = 5) -> pd.DataFrame:
             await pipe.execute()
 
         # Invalidate smart_closest_point cache since dataframe was updated
-        await FastAPICache.clear(namespace="smart_closest_point")
+        await clear_namespace("smart_closest_point")
 
         logger.info(f"Updated cache to {len(updated_processed_df)} processed records")
 

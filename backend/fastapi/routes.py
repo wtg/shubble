@@ -7,18 +7,25 @@ from pathlib import Path
 
 from fastapi import APIRouter, Request, Depends, HTTPException, Response
 from fastapi.responses import FileResponse, JSONResponse
-from fastapi_cache import FastAPICache
-from fastapi_cache.decorator import cache
 from sqlalchemy import func, and_, select
+
+from backend.cache import cache, clear_namespace
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects import postgresql
-from sqlalchemy.orm import selectinload
-
 from backend.database import get_db
-from backend.models import Vehicle, GeofenceEvent, VehicleLocation, DriverVehicleAssignment, ETA, PredictedLocation
+from backend.models import Vehicle, GeofenceEvent, VehicleLocation
 from backend.config import settings
 from backend.time_utils import get_campus_start_of_day
-from backend.utils import get_vehicles_in_geofence_query, smart_closest_point
+from backend.utils import (
+    get_vehicles_in_geofence,
+)
+from backend.fastapi.utils import (
+    smart_closest_point,
+    get_latest_vehicle_locations,
+    get_current_driver_assignments,
+    get_latest_etas,
+    get_latest_velocities,
+)
 from shared.stops import Stops
 # from shared.schedules import Schedule
 
@@ -27,255 +34,67 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-# Custom key builders for cache decorators
-# These exclude Response and AsyncSession objects which change per-request
-from typing import Any, Callable, Dict, Optional, Tuple
-
-
-def locations_key_builder(
-    func: Callable[..., Any],
-    namespace: str = "",
-    *,
-    request: Optional[Request] = None,
-    response: Optional[Response] = None,
-    args: Tuple[Any, ...] = (),
-    kwargs: Dict[str, Any] = None,
-) -> str:
-    """Custom key builder for /api/locations that excludes Response and db session."""
-    return f"{namespace}:{func.__name__}"
-
-
-def predictions_key_builder(
-    func: Callable[..., Any],
-    namespace: str = "",
-    *,
-    request: Optional[Request] = None,
-    response: Optional[Response] = None,
-    args: Tuple[Any, ...] = (),
-    kwargs: Dict[str, Any] = None,
-) -> str:
-    """Custom key builder for predictions that includes vehicle_ids but excludes db session."""
-    # Extract vehicle_ids from kwargs, excluding 'db'
-    vehicle_ids = kwargs.get("vehicle_ids", []) if kwargs else []
-    # Sort for consistent cache keys
-    vehicle_key = ",".join(sorted(vehicle_ids)) if vehicle_ids else "none"
-    return f"{namespace}:{func.__name__}:{vehicle_key}"
-
-
-@cache(expire=60, namespace="predictions", key_builder=predictions_key_builder)
-async def get_latest_etas_and_predicted_locations(vehicle_ids: list[str], db: AsyncSession):
-    """
-    Get the latest ETA and predicted location for each vehicle.
-
-    Args:
-        vehicle_ids: List of vehicle IDs to get predictions for
-        db: Async database session
-
-    Returns:
-        Tuple of (etas_dict, predicted_locations_dict) where:
-        - etas_dict maps vehicle_id to latest ETA data
-        - predicted_locations_dict maps vehicle_id to latest predicted location data
-    """
-    if not vehicle_ids:
-        return {}, {}
-
-    # Subquery: latest ETA per vehicle
-    latest_etas = (
-        select(
-            ETA.vehicle_id,
-            func.max(ETA.timestamp).label("latest_time"),
-        )
-        .where(ETA.vehicle_id.in_(vehicle_ids))
-        .group_by(ETA.vehicle_id)
-        .subquery()
-    )
-
-    # Join to get full ETA data
-    etas_query = (
-        select(ETA)
-        .join(
-            latest_etas,
-            and_(
-                ETA.vehicle_id == latest_etas.c.vehicle_id,
-                ETA.timestamp == latest_etas.c.latest_time,
-            ),
-        )
-    )
-
-    etas_result = await db.execute(etas_query)
-    etas = etas_result.scalars().all()
-
-    # Subquery: latest predicted location per vehicle
-    latest_predicted = (
-        select(
-            PredictedLocation.vehicle_id,
-            func.max(PredictedLocation.timestamp).label("latest_time"),
-        )
-        .where(PredictedLocation.vehicle_id.in_(vehicle_ids))
-        .group_by(PredictedLocation.vehicle_id)
-        .subquery()
-    )
-
-    # Join to get full predicted location data
-    predicted_query = (
-        select(PredictedLocation)
-        .join(
-            latest_predicted,
-            and_(
-                PredictedLocation.vehicle_id == latest_predicted.c.vehicle_id,
-                PredictedLocation.timestamp == latest_predicted.c.latest_time,
-            ),
-        )
-    )
-
-    predicted_result = await db.execute(predicted_query)
-    predicted_locations = predicted_result.scalars().all()
-
-    # Build dictionaries
-    etas_dict = {}
-    for eta in etas:
-        etas_dict[eta.vehicle_id] = {
-            "stop_times": eta.etas,
-            "timestamp": eta.timestamp.isoformat(),
-        }
-
-    predicted_dict = {}
-    for pred in predicted_locations:
-        predicted_dict[pred.vehicle_id] = {
-            "speed_kmh": pred.speed_kmh,
-            "timestamp": pred.timestamp.isoformat(),
-        }
-
-    return etas_dict, predicted_dict
-
-
 @router.get("/api/locations")
-@cache(expire=60, namespace="locations", key_builder=locations_key_builder)
-async def get_locations(response: Response, db: AsyncSession = Depends(get_db)):
+@cache(expire=15, namespace="locations")
+async def get_locations(response: Response, request: Request):
     """
     Returns the latest location for each vehicle currently inside the geofence.
     The vehicle is considered inside the geofence if its latest geofence event
     today is a 'geofenceEntry'.
+
+    This endpoint returns raw vehicle location data without ML predictions
+    or route matching. Use /api/predictions for that data.
     """
-    # Get query for vehicles in geofence and convert to subquery
-    geofence_entries = get_vehicles_in_geofence_query().subquery()
-
-    # Subquery: latest vehicle location per vehicle
-    latest_locations = (
-        select(
-            VehicleLocation.vehicle_id,
-            func.max(VehicleLocation.timestamp).label("latest_time"),
-        )
-        .where(VehicleLocation.vehicle_id.in_(select(geofence_entries.c.vehicle_id)))
-        .group_by(VehicleLocation.vehicle_id)
-        .subquery()
-    )
-
-    # Join to get full location and vehicle info for vehicles in geofence
-    query = (
-        select(VehicleLocation)
-        .join(
-            latest_locations,
-            and_(
-                VehicleLocation.vehicle_id == latest_locations.c.vehicle_id,
-                VehicleLocation.timestamp == latest_locations.c.latest_time,
-            ),
-        )
-        .options(selectinload(VehicleLocation.vehicle))
-    )
-
-    result = await db.execute(query)
-    results = result.scalars().all()
+    # Get latest locations for vehicles in geofence
+    # Uses cached function that returns dicts
+    results = await get_latest_vehicle_locations(request.app.state.session_factory)
 
     # Get current driver assignments for all vehicles in results
-    vehicle_ids = [loc.vehicle_id for loc in results]
-    current_assignments = {}
-    if vehicle_ids:
-        assignments_query = (
-            select(DriverVehicleAssignment)
-            .where(
-                DriverVehicleAssignment.vehicle_id.in_(vehicle_ids),
-                DriverVehicleAssignment.assignment_end.is_(None),
-            )
-        ).options(selectinload(DriverVehicleAssignment.driver))
-        assignments_result = await db.execute(assignments_query)
-        assignments = assignments_result.scalars().all()
-        for assignment in assignments:
-            current_assignments[assignment.vehicle_id] = assignment
-
-    # Get latest ETAs and predicted locations
-    etas_dict, predicted_dict = await get_latest_etas_and_predicted_locations(vehicle_ids, db)
-
-    # Get route matching data from cached dataframe
-    closest_points = await smart_closest_point(vehicle_ids)
+    vehicle_ids = [loc["vehicle_id"] for loc in results]
+    current_assignments = await get_current_driver_assignments(vehicle_ids, request.app.state.session_factory)
 
     # Format response
     response_data = {}
     oldest_timestamp = None
+
     for loc in results:
-        vehicle = loc.vehicle
+        vehicle = loc["vehicle"]
         # Track oldest data point for latency calculation
-        if oldest_timestamp is None or loc.timestamp < oldest_timestamp:
-            oldest_timestamp = loc.timestamp
-
-        # Get closest point result from smart_closest_point
-        closest_distance, _, closest_route_name, polyline_index, _, stop_name = closest_points.get(
-            loc.vehicle_id,
-            (None, None, None, None, None, None)
-        )
-
-        route_name = closest_route_name if closest_distance is not None and closest_distance < 0.050 else None
-
-        # Determine if vehicle is at a stop
-        is_at_stop = stop_name is not None
-        current_stop = stop_name if is_at_stop else None
+        # Timestamp is ISO string in cached dict, convert back to datetime
+        ts = datetime.fromisoformat(loc["timestamp"])
+        if oldest_timestamp is None or ts < oldest_timestamp:
+            oldest_timestamp = ts
 
         # Get current driver info
         driver_info = None
-        assignment = current_assignments.get(loc.vehicle_id)
-        if assignment and assignment.driver:
+        assignment = current_assignments.get(loc["vehicle_id"])
+        # Assignment is DriverAssignmentDict (dict)
+        if assignment and assignment.get("driver"):
+            driver_data = assignment["driver"]
             driver_info = {
-                "id": assignment.driver.id,
-                "name": assignment.driver.name,
+                "id": driver_data["id"],
+                "name": driver_data["name"],
             }
         else:
             driver_info = None
 
-        # Get stop times and predicted location for this vehicle
-        # Withhold stop times if vehicle is at Student Union
-        routes = Stops.routes_data
-        if route_name:
-            if stop_name == routes[route_name]['STOPS'][0]:
-                stop_times_data = None
-            else:
-                stop_times_data = etas_dict.get(loc.vehicle_id)
-        else:
-            stop_times_data = None
-        predicted_data = predicted_dict.get(loc.vehicle_id)
-
-        response_data[loc.vehicle_id] = {
-            "name": loc.name,
-            "latitude": loc.latitude,
-            "longitude": loc.longitude,
-            "timestamp": loc.timestamp.isoformat(),
-            "heading_degrees": loc.heading_degrees,
-            "speed_mph": loc.speed_mph,
-            "route_name": route_name,
-            "polyline_index": polyline_index,
-            "is_ecu_speed": loc.is_ecu_speed,
-            "formatted_location": loc.formatted_location,
-            "address_id": loc.address_id,
-            "address_name": loc.address_name,
-            "license_plate": vehicle.license_plate,
-            "vin": vehicle.vin,
-            "asset_type": vehicle.asset_type,
-            "gateway_model": vehicle.gateway_model,
-            "gateway_serial": vehicle.gateway_serial,
+        response_data[loc["vehicle_id"]] = {
+            "name": loc["name"],
+            "latitude": loc["latitude"],
+            "longitude": loc["longitude"],
+            "timestamp": loc["timestamp"], # Already ISO string
+            "heading_degrees": loc["heading_degrees"],
+            "speed_mph": loc["speed_mph"],
+            "is_ecu_speed": loc["is_ecu_speed"],
+            "formatted_location": loc["formatted_location"],
+            "address_id": loc["address_id"],
+            "address_name": loc["address_name"],
+            "license_plate": vehicle["license_plate"],
+            "vin": vehicle["vin"],
+            "asset_type": vehicle["asset_type"],
+            "gateway_model": vehicle["gateway_model"],
+            "gateway_serial": vehicle["gateway_serial"],
             "driver": driver_info,
-            "stop_times": stop_times_data,
-            "predicted_location": predicted_data,
-            "is_at_stop": is_at_stop,
-            "current_stop": current_stop,
         }
 
     # Add timing metadata as HTTP headers to help frontend synchronize with Samsara API
@@ -285,8 +104,74 @@ async def get_locations(response: Response, db: AsyncSession = Depends(get_db)):
     response.headers['X-Server-Time'] = now.isoformat()
     response.headers['X-Oldest-Data-Time'] = oldest_timestamp.isoformat() if oldest_timestamp else ''
     response.headers['X-Data-Age-Seconds'] = str(data_age) if data_age is not None else ''
-    # Prevent browser caching (server-side caching via fastapi-cache still works)
-    response.headers['Cache-Control'] = 'no-store'
+
+    return response_data
+
+
+@router.get("/api/etas")
+@cache(expire=15, namespace="etas")
+async def get_etas(request: Request, response: Response):
+    """
+    Returns ETA information for each vehicle currently inside the geofence.
+    """
+    # Get vehicle IDs currently in geofence using cached query
+    vehicle_ids_set = await get_vehicles_in_geofence(request.app.state.session_factory)
+    vehicle_ids = list(vehicle_ids_set)
+
+    if not vehicle_ids:
+        return {}
+
+    # Get latest ETAs
+    etas_dict = await get_latest_etas(vehicle_ids, request.app.state.session_factory)
+
+    return etas_dict
+
+
+@router.get("/api/velocities")
+@cache(expire=15, namespace="velocities")
+async def get_velocities(request: Request, response: Response):
+    """
+    Returns predicted velocity and route matching data for each vehicle currently inside the geofence.
+    """
+    # Get vehicle IDs currently in geofence using cached query
+    vehicle_ids_set = await get_vehicles_in_geofence(request.app.state.session_factory)
+    vehicle_ids = list(vehicle_ids_set)
+
+    if not vehicle_ids:
+        return {}
+
+    # Get latest velocities
+    predicted_dict = await get_latest_velocities(vehicle_ids, request.app.state.session_factory)
+
+    # Get route matching data from cached dataframe
+    closest_points = await smart_closest_point(vehicle_ids)
+
+    # Format response
+    response_data = {}
+    for vehicle_id in vehicle_ids:
+        # Get velocity data
+        velocity_data = predicted_dict.get(vehicle_id)
+
+        # Get closest point result from smart_closest_point
+        closest_distance, _, closest_route_name, polyline_index, _, stop_name = closest_points.get(
+            vehicle_id,
+            (None, None, None, None, None, None)
+        )
+
+        route_name = closest_route_name if closest_distance is not None and closest_distance < 0.050 else None
+
+        # Determine if vehicle is at a stop
+        is_at_stop = stop_name is not None
+        current_stop = stop_name if is_at_stop else None
+
+        response_data[vehicle_id] = {
+            "speed_kmh": velocity_data["speed_kmh"] if velocity_data else None,
+            "timestamp": velocity_data["timestamp"] if velocity_data else None,
+            "route_name": route_name,
+            "polyline_index": polyline_index,
+            "is_at_stop": is_at_stop,
+            "current_stop": current_stop,
+        }
 
     return response_data
 
@@ -415,7 +300,7 @@ async def webhook(request: Request, db: AsyncSession = Depends(get_db)):
         await db.commit()
 
         # Invalidate cache for vehicles in geofence
-        await FastAPICache.clear(namespace="vehicles_in_geofence")
+        await clear_namespace("vehicles_in_geofence")
 
         return {"status": "success"}
 

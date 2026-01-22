@@ -5,7 +5,7 @@ import rawAggregatedSchedule from '../shared/aggregated_schedule.json';
 import config from '../utils/config';
 import type { AggregatedDaySchedule, AggregatedScheduleType, Route } from '../types/schedule';
 import type { ShuttleRouteData, ShuttleStopData } from '../types/route';
-import type { VehicleInformationMap } from '../types/vehicleLocation';
+import type { VehicleETAMap } from '../types/vehicleLocation';
 
 const aggregatedSchedule: AggregatedScheduleType = rawAggregatedSchedule as unknown as AggregatedScheduleType;
 const routeData = rawRouteData as unknown as ShuttleRouteData;
@@ -31,21 +31,21 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
 
   const safeSelectedRoute = selectedRoute || routeNames[0];
 
-  // Fetch live ETAs from backend
+  // Fetch live ETAs from backend etas endpoint
   useEffect(() => {
     const fetchETAs = async () => {
       try {
-        const response = await fetch(`${config.apiBaseUrl}/api/locations`, { cache: 'no-store', headers: { 'Cache-Control': '' } });
+        const response = await fetch(`${config.apiBaseUrl}/api/etas`, { cache: 'no-store' });
         if (!response.ok) return;
 
-        const data: VehicleInformationMap = await response.json();
+        const data: VehicleETAMap = await response.json();
 
         // Aggregate ETAs from all vehicles - use earliest ETA for each stop
         const stopETAs: StopETAs = {};
 
-        Object.values(data).forEach((vehicle) => {
-          if (vehicle.stop_times?.stop_times) {
-            Object.entries(vehicle.stop_times.stop_times).forEach(([stopKey, isoTime]) => {
+        Object.values(data).forEach((etaData) => {
+          if (etaData.stop_times) {
+            Object.entries(etaData.stop_times).forEach(([stopKey, isoTime]) => {
               const etaDate = new Date(isoTime);
               const formattedTime = etaDate.toLocaleTimeString(undefined, {
                 hour: 'numeric',
