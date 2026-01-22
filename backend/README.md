@@ -216,19 +216,15 @@ async def get_locations():
 ### Running Tests
 
 ```bash
-pytest backend/tests/
+uv run pytest backend/tests/
 ```
 
 ### Code Style
 
 ```bash
-# Format
-black backend/
-isort backend/
-
-# Lint
-flake8 backend/
-mypy backend/
+# Lint and format
+uv run ruff check backend/
+uv run ruff format backend/
 ```
 
 ### Local Development with Test Server
