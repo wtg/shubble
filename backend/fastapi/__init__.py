@@ -3,12 +3,10 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi_cache import FastAPICache
-from fastapi_cache.backends.redis import RedisBackend
-from redis import asyncio as aioredis
 
 from backend.config import settings
 from backend.database import create_async_db_engine, create_session_factory
+from backend.cache import init_cache, close_cache
 
 
 # Configure logging for FastAPI
@@ -37,19 +35,14 @@ async def lifespan(app: FastAPI):
     logger.info("Database engine and session factory initialized")
 
     # Initialize Redis cache
-    app.state.redis = await aioredis.from_url(
-        settings.REDIS_URL,
-        encoding="utf-8",
-        decode_responses=False,
-    )
-    FastAPICache.init(RedisBackend(app.state.redis), prefix="fastapi-cache")
+    app.state.redis = await init_cache(settings.REDIS_URL)
     logger.info("Redis cache initialized")
 
     yield
 
     # Shutdown
     logger.info("Shutting down FastAPI application...")
-    await app.state.redis.close()
+    await close_cache()
     await app.state.db_engine.dispose()
     logger.info("Database connections closed")
 

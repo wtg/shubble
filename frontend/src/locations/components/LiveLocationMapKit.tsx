@@ -5,7 +5,7 @@ import ShuttleIcon from "./ShuttleIcon";
 import config from "../../utils/config";
 
 import type { ShuttleRouteData } from "../../types/route";
-import type { VehicleInformationMap } from "../../types/vehicleLocation";
+import type { VehicleLocationMap, VehicleVelocityMap, VehicleCombinedMap } from "../../types/vehicleLocation";
 import type { Coordinate } from "../../utils/mapUtils";
 
 import MapKitCanvas from "../../mapkit/MapKitCanvas";
@@ -33,21 +33,51 @@ export default function LiveLocationMapKit({
   showTrueLocation = true
 }: LiveLocationMapKitProps) {
   const [map, setMap] = useState<(mapkit.Map | null)>(null);
-  const [vehicles, setVehicles] = useState<VehicleInformationMap | null>(null);
+  const [vehicles, setVehicles] = useState<VehicleCombinedMap | null>(null);
   const [vehicleAnnotations, setVehicleAnnotations] = useState<Record<string, mapkit.Annotation>>({});
 
-  // Fetch location data on component mount and set up polling
+  // Fetch location and velocity data on component mount and set up polling
   useEffect(() => {
     if (!displayVehicles) return;
 
     const pollLocation = async () => {
       try {
-        const response = await fetch(`${config.apiBaseUrl}/api/locations`, { cache: 'no-store', headers: { 'Cache-Control': '' } });
-        if (!response.ok) {
-          throw new Error('Network response was not ok');
+        // Fetch locations and velocities in parallel
+        const [locationsResponse, velocitiesResponse] = await Promise.all([
+          fetch(`${config.apiBaseUrl}/api/locations`, { cache: 'no-store' }),
+          fetch(`${config.apiBaseUrl}/api/velocities`, { cache: 'no-store' })
+        ]);
+
+        if (!locationsResponse.ok) {
+          throw new Error('Failed to fetch locations');
         }
-        const data = await response.json();
-        setVehicles(data);
+
+        const locationsData: VehicleLocationMap = await locationsResponse.json();
+
+        // Velocities are optional - don't fail if they're unavailable
+        let velocitiesData: VehicleVelocityMap = {};
+        if (velocitiesResponse.ok) {
+          velocitiesData = await velocitiesResponse.json();
+        }
+
+        // Merge location and velocity data
+        const combined: VehicleCombinedMap = {};
+        for (const [vehicleId, location] of Object.entries(locationsData)) {
+          const velocity = velocitiesData[vehicleId];
+          combined[vehicleId] = {
+            ...location,
+            route_name: velocity?.route_name ?? null,
+            polyline_index: velocity?.polyline_index ?? null,
+            predicted_location: velocity && velocity.speed_kmh !== null && velocity.timestamp !== null ? {
+              speed_kmh: velocity.speed_kmh,
+              timestamp: velocity.timestamp
+            } : undefined,
+            is_at_stop: velocity?.is_at_stop,
+            current_stop: velocity?.current_stop,
+          };
+        }
+
+        setVehicles(combined);
       } catch (error) {
         console.error('Error fetching location:', error);
       }
