@@ -267,7 +267,7 @@ def cache(
     return decorator
 
 
-async def soft_clear_namespace(namespace: str) -> int:
+async def clear_namespace(namespace: str) -> int:
     """Clear all cache entries in a namespace (hard delete).
 
     Args:
