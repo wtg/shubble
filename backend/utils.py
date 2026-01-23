@@ -43,7 +43,7 @@ def get_vehicles_in_geofence_query():
     return query
 
 
-@cache(expire=900, namespace="vehicles_in_geofence")
+@cache(soft_ttl=900, hard_ttl=3600, namespace="vehicles_in_geofence")
 async def get_vehicles_in_geofence(session_factory):
     """
     Returns a cached set of vehicle_ids where the latest geofence event from today

@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects import postgresql
 
 from backend.config import settings
-from backend.cache import init_cache, close_cache, clear_namespace
+from backend.cache import init_cache, close_cache, soft_clear_namespace
 from backend.database import create_async_db_engine, create_session_factory
 from backend.models import VehicleLocation, Driver, DriverVehicleAssignment
 from backend.utils import get_vehicles_in_geofence
@@ -144,7 +144,7 @@ async def update_locations(session_factory):
                             f"Updated locations for {len(current_vehicle_ids)} vehicles - {new_records_added} new records"
                         )
                         # Invalidate cache for locations
-                        await clear_namespace("locations")
+                        await soft_clear_namespace("locations")
                     else:
                         logger.info(
                             f"No new location data for {len(current_vehicle_ids)} vehicles"
@@ -281,7 +281,7 @@ async def update_driver_assignments(session_factory, vehicle_ids):
 
                     if assignments_updated > 0:
                         await session.commit()
-                        await clear_namespace("driver_assignments")
+                        await soft_clear_namespace("driver_assignments")
                         logger.info(f"Updated {assignments_updated} driver assignments")
                     else:
                         logger.info("No driver assignment changes detected")

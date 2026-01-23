@@ -3,28 +3,42 @@
 This module provides a simple, async-first caching system using Redis.
 It replaces fastapi-cache2 with a more lightweight implementation.
 
+Supports soft/hard TTL:
+    - soft_ttl: After this time, value is stale but still returned (logs STALE)
+    - hard_ttl: After this time, value is deleted from Redis (cache miss)
+
 Usage:
-    from backend.cache import cache, clear_namespace, init_cache
+    from backend.cache import cache, soft_clear_namespace, init_cache
 
     # Initialize at startup
     await init_cache(redis_url)
 
-    # Use as decorator
-    @cache(expire=60, namespace="locations")
+    # Use as decorator with soft/hard TTL
+    @cache(soft_ttl=15, hard_ttl=300, namespace="locations")
     async def get_locations():
         ...
 
     # Clear a namespace
-    await clear_namespace("locations")
+    await soft_clear_namespace("locations")
 """
+import asyncio
 import functools
 import logging
 import pickle
+import time
+from dataclasses import dataclass
 from typing import Any, Callable, Optional, TypeVar, ParamSpec
 
 from redis import asyncio as aioredis
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class CachedValue:
+    """Wrapper for cached values with soft TTL tracking."""
+    value: Any
+    soft_expiry: float  # Unix timestamp when soft TTL expires
 
 # Global Redis client
 _redis_client: Optional[aioredis.Redis] = None
@@ -130,20 +144,29 @@ def _is_serializable(obj: Any) -> bool:
 
 
 def cache(
-    expire: int = 60,
+    soft_ttl: int = 60,
+    hard_ttl: int = 300,
     namespace: str = "default",
+    lock_timeout: float = 10.0,
+    poll_interval: float = 0.1,
 ) -> Callable[[Callable[P, T]], Callable[P, T]]:
-    """Decorator to cache async function results in Redis.
+    """Decorator to cache async function results in Redis with soft/hard TTL.
+
+    Includes stampede protection: when soft TTL expires, only one caller
+    recomputes the value while others wait or return stale data.
 
     Args:
-        expire: Cache TTL in seconds (default: 60)
-        namespace: Cache namespace for grouping related keys
+        soft_ttl: Soft TTL in seconds. After this, value is stale but still returned.
+        hard_ttl: Hard TTL in seconds. After this, value is deleted from Redis.
+        namespace: Cache namespace for grouping related keys.
+        lock_timeout: Max seconds to wait for another caller to refresh the cache.
+        poll_interval: Seconds between cache checks while waiting.
 
     Returns:
         Decorated function
 
     Example:
-        @cache(expire=300, namespace="locations")
+        @cache(soft_ttl=15, hard_ttl=300, namespace="locations")
         async def get_locations(vehicle_ids: list[str]):
             ...
     """
@@ -157,37 +180,95 @@ def cache(
                 logger.warning(f"Cache not initialized, calling {func.__name__} directly")
                 return await func(*args, **kwargs)
 
-            # Generate cache key
+            # Generate cache key and lock key
             cache_key = _make_key(namespace, func.__name__, args, kwargs)
+            lock_key = f"{cache_key}:lock"
 
             # Try to get from cache
+            cached_data = None
+            cached_value: Optional[CachedValue] = None
             try:
                 cached_data = await redis.get(cache_key)
                 if cached_data is not None:
-                    logger.info(f"Cache HIT: {cache_key}")
-                    return pickle.loads(cached_data)
+                    cached_value = pickle.loads(cached_data)
             except Exception as e:
                 logger.warning(f"Cache read error for {cache_key}: {e}")
 
-            # Cache miss - call function
-            logger.info(f"Cache MISS: {cache_key}")
-            result = await func(*args, **kwargs)
+            now = time.time()
 
-            # Store in cache
-            try:
-                pickled = pickle.dumps(result)
-                await redis.set(cache_key, pickled, ex=expire)
-            except Exception as e:
-                logger.warning(f"Cache write error for {cache_key}: {e}")
+            # Case 1: Fresh value - return immediately
+            if cached_value is not None and now < cached_value.soft_expiry:
+                logger.info(f"Cache HIT: {cache_key}")
+                return cached_value.value
 
-            return result
+            # Case 2: Stale value or miss - need to refresh with stampede protection
+            stale_value = cached_value.value if cached_value else None
+            is_stale = cached_value is not None
+
+            if is_stale:
+                stale_seconds = int(now - cached_value.soft_expiry)
+                logger.info(f"Cache STALE ({stale_seconds}s): {cache_key}")
+            else:
+                logger.info(f"Cache MISS: {cache_key}")
+
+            # Try to acquire lock (SET NX with expiry)
+            lock_acquired = await redis.set(
+                lock_key, "1", nx=True, ex=int(lock_timeout) + 1
+            )
+
+            if lock_acquired:
+                # We got the lock - recompute the value
+                logger.info(f"Lock acquired, refreshing: {cache_key}")
+                try:
+                    result = await func(*args, **kwargs)
+
+                    # Store in cache with soft expiry timestamp
+                    new_cached = CachedValue(
+                        value=result,
+                        soft_expiry=time.time() + soft_ttl
+                    )
+                    pickled = pickle.dumps(new_cached)
+                    await redis.set(cache_key, pickled, ex=hard_ttl)
+
+                    return result
+                finally:
+                    # Release lock
+                    await redis.delete(lock_key)
+            else:
+                # Another caller is refreshing - wait for fresh value or timeout
+                logger.info(f"Lock held by another, waiting: {cache_key}")
+                wait_start = time.time()
+
+                while time.time() - wait_start < lock_timeout:
+                    await asyncio.sleep(poll_interval)
+
+                    # Check if fresh value is now available
+                    try:
+                        new_data = await redis.get(cache_key)
+                        if new_data is not None:
+                            new_cached = pickle.loads(new_data)
+                            if new_cached.soft_expiry > now:
+                                # Fresh value available
+                                logger.info(f"Fresh value ready: {cache_key}")
+                                return new_cached.value
+                    except Exception:
+                        pass
+
+                # Timeout - return stale value if available, else compute
+                if stale_value is not None:
+                    logger.info(f"Lock timeout, returning stale: {cache_key}")
+                    return stale_value
+                else:
+                    # No stale value and timeout - compute anyway
+                    logger.info(f"Lock timeout, computing fallback: {cache_key}")
+                    return await func(*args, **kwargs)
 
         return wrapper
     return decorator
 
 
-async def clear_namespace(namespace: str) -> int:
-    """Clear all cache entries in a namespace.
+async def soft_clear_namespace(namespace: str) -> int:
+    """Clear all cache entries in a namespace (hard delete).
 
     Args:
         namespace: Namespace to clear
@@ -214,6 +295,56 @@ async def clear_namespace(namespace: str) -> int:
         return deleted
     except Exception as e:
         logger.error(f"Error clearing namespace '{namespace}': {e}")
+        return 0
+
+
+async def soft_clear_namespace(namespace: str) -> int:
+    """Soft-clear all cache entries in a namespace by expiring their soft TTL.
+
+    This marks all entries as stale without deleting them. The next request
+    will log STALE but still return the cached value until the hard TTL expires.
+
+    Args:
+        namespace: Namespace to soft-clear
+
+    Returns:
+        Number of keys soft-cleared
+    """
+    redis = get_redis()
+    if redis is None:
+        logger.warning("Cache not initialized, cannot soft-clear namespace")
+        return 0
+
+    pattern = f"{_prefix}:{namespace}:*"
+    now = time.time()
+
+    try:
+        cleared = 0
+        async for key in redis.scan_iter(match=pattern):
+            # Get current value and remaining TTL
+            cached_data = await redis.get(key)
+            remaining_ttl = await redis.ttl(key)
+
+            if cached_data is None or remaining_ttl <= 0:
+                continue
+
+            try:
+                cached: CachedValue = pickle.loads(cached_data)
+                # Set soft_expiry to now (marking as stale)
+                cached.soft_expiry = now
+                # Save back with the same remaining hard TTL
+                pickled = pickle.dumps(cached)
+                await redis.set(key, pickled, ex=remaining_ttl)
+                cleared += 1
+            except Exception:
+                # Skip malformed entries
+                continue
+
+        if cleared > 0:
+            logger.info(f"Soft-cleared {cleared} keys in namespace '{namespace}'")
+        return cleared
+    except Exception as e:
+        logger.error(f"Error soft-clearing namespace '{namespace}': {e}")
         return 0
 
 
@@ -264,7 +395,8 @@ async def get_cached(namespace: str, func_name: str, *args, **kwargs) -> Optiona
     try:
         cached_data = await redis.get(cache_key)
         if cached_data is not None:
-            return pickle.loads(cached_data)
+            cached: CachedValue = pickle.loads(cached_data)
+            return cached.value
     except Exception as e:
         logger.warning(f"Error getting cached value for {cache_key}: {e}")
 
@@ -275,7 +407,8 @@ async def set_cached(
     namespace: str,
     func_name: str,
     value: Any,
-    expire: int = 60,
+    soft_ttl: int = 60,
+    hard_ttl: int = 300,
     *args,
     **kwargs
 ) -> bool:
@@ -285,7 +418,8 @@ async def set_cached(
         namespace: Cache namespace
         func_name: Function name
         value: Value to cache
-        expire: TTL in seconds
+        soft_ttl: Soft TTL in seconds
+        hard_ttl: Hard TTL in seconds (Redis expiry)
         *args: Function arguments for key generation
         **kwargs: Function keyword arguments
 
@@ -299,8 +433,12 @@ async def set_cached(
     cache_key = _make_key(namespace, func_name, args, kwargs)
 
     try:
-        pickled = pickle.dumps(value)
-        await redis.set(cache_key, pickled, ex=expire)
+        cached_value = CachedValue(
+            value=value,
+            soft_expiry=time.time() + soft_ttl
+        )
+        pickled = pickle.dumps(cached_value)
+        await redis.set(cache_key, pickled, ex=hard_ttl)
         return True
     except Exception as e:
         logger.error(f"Error setting cached value for {cache_key}: {e}")

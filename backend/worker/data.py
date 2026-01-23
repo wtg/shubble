@@ -12,7 +12,7 @@ from ml.training.train import fit_arima
 from backend.models import ETA, PredictedLocation
 from backend.database import create_async_db_engine, create_session_factory
 from backend.config import settings
-from backend.cache import cache, clear_namespace
+from backend.cache import cache, soft_clear_namespace
 from ml.cache import get_polyline_dir
 from shared.stops import Stops
 import asyncio
@@ -26,7 +26,7 @@ Q = 2
 # Cache for loaded models: (route_name, polyline_idx) -> LSTMModel
 _MODEL_CACHE: Dict[Tuple[str, int], Any] = {}
 
-@cache(expire=300, namespace="average_travel_time")
+@cache(soft_ttl=300, hard_ttl=3600, namespace="average_travel_time")
 async def load_average_travel_time(route: str, polyline_idx: int) -> Optional[float]:
     """Load average travel time for a polyline from CSV.
 
@@ -399,8 +399,8 @@ async def save_predictions(etas: Dict[str, List[Tuple[str, datetime]]], next_sta
             session.add(new_loc)
 
         await session.commit()
-        await clear_namespace("etas")
-        await clear_namespace("velocities")
+        await soft_clear_namespace("etas")
+        await soft_clear_namespace("velocities")
 
     await engine.dispose()
 
