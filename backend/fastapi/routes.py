@@ -9,7 +9,7 @@ from fastapi import APIRouter, Request, Depends, HTTPException, Response
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import func, and_, select
 
-from backend.cache import cache, clear_namespace
+from backend.cache import cache, soft_clear_namespace
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects import postgresql
 from backend.database import get_db
@@ -35,7 +35,7 @@ router = APIRouter()
 
 
 @router.get("/api/locations")
-@cache(expire=15, namespace="locations")
+@cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0,namespace="locations")
 async def get_locations(response: Response, request: Request):
     """
     Returns the latest location for each vehicle currently inside the geofence.
@@ -109,7 +109,7 @@ async def get_locations(response: Response, request: Request):
 
 
 @router.get("/api/etas")
-@cache(expire=15, namespace="etas")
+@cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="etas")
 async def get_etas(request: Request, response: Response):
     """
     Returns ETA information for each vehicle currently inside the geofence.
@@ -128,7 +128,7 @@ async def get_etas(request: Request, response: Response):
 
 
 @router.get("/api/velocities")
-@cache(expire=15, namespace="velocities")
+@cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="velocities")
 async def get_velocities(request: Request, response: Response):
     """
     Returns predicted velocity and route matching data for each vehicle currently inside the geofence.
@@ -300,7 +300,7 @@ async def webhook(request: Request, db: AsyncSession = Depends(get_db)):
         await db.commit()
 
         # Invalidate cache for vehicles in geofence
-        await clear_namespace("vehicles_in_geofence")
+        await soft_clear_namespace("vehicles_in_geofence")
 
         return {"status": "success"}
 
@@ -415,7 +415,7 @@ async def get_aggregated_shuttle_schedule():
 
 
 @router.get("/api/matched-schedules")
-@cache(expire=3600, namespace="matched_schedules")
+@cache(soft_ttl=3600, hard_ttl=86400, namespace="matched_schedules")
 async def get_matched_shuttle_schedules(force_recompute: bool = False):
     """
     Return cached matched schedules unless force_recompute=true,
