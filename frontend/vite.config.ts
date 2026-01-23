@@ -40,7 +40,11 @@ export default defineConfig({
   ],
   build: {
     outDir: 'dist',
-    emptyOutDir: true
+    emptyOutDir: true,
+    // Enable modulepreload for faster module loading
+    modulePreload: {
+      polyfill: true  // Adds polyfill for browsers that don't support modulepreload
+    }
   },
   define: {
     'import.meta.env.GIT_REV': JSON.stringify(process.env.GIT_REV || 'unknown')
