@@ -1,19 +1,26 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-    <title>Shubble</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
-    <script type="module" src="/src/main.jsx"></script>
-    <!-- https://developer.apple.com/documentation/mapkitjs/loading-the-latest-version-of-mapkit-js -->
-    <script src="https://cdn.apple-mapkit.com/mk/5.x.x/mapkit.core.js"
-      crossorigin async
-      data-callback="initMapKit"
-      data-libraries="map,annotations,overlays,services,user-location">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Shubble</title>
+
+  <!-- Preconnect to API origin -->
+  <link rel="preconnect" href="https://api-shuttles.rpi.edu" crossorigin />
+
+  <!-- Preload MapKit JS - start downloading immediately -->
+  <link rel="preload" href="https://cdn.apple-mapkit.com/mk/5.x.x/mapkit.core.js" as="script" crossorigin />
+</head>
+
+<body>
+  <div id="root"></div>
+  <noscript>You need to enable JavaScript to run this app.</noscript>
+  <script type="module" src="/src/main.jsx"></script>
+  <!-- https://developer.apple.com/documentation/mapkitjs/loading-the-latest-version-of-mapkit-js -->
+  <script src="https://cdn.apple-mapkit.com/mk/5.x.x/mapkit.core.js" crossorigin async data-callback="initMapKit"
+    data-libraries="map,annotations,overlays,services,user-location">
     </script>
-  </body>
+</body>
+
 </html>
