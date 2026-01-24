@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     ML_LOG_LEVEL: Optional[str] = None  # ML pipeline logging (falls back to LOG_LEVEL)
 
     # CORS settings
-    FRONTEND_URL: str = "http://localhost:3000"
+    FRONTEND_URLS: str = "http://localhost:3000"
     TEST_FRONTEND_URL: str = "http://localhost:5174"
 
     # Database settings

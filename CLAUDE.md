@@ -301,7 +301,7 @@ shuttletracker-new/
 
 ```bash
 # Service URLs
-FRONTEND_URL=http://localhost:3000
+FRONTEND_URLS=http://localhost:3000
 BACKEND_URL=http://localhost:8000
 
 # Database

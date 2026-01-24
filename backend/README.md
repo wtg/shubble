@@ -141,7 +141,9 @@ DATABASE_URL=postgresql://shubble:shubble@localhost:5432/shubble
 REDIS_URL=redis://localhost:6379/0
 
 # CORS
-FRONTEND_URL=http://localhost:3000
+# Every unique domain should be comma-separated
+FRONTEND_URLS=http://localhost:3000
+FRONTEND_URLS=http://localhost:3000,http://localhost:5173
 
 # Samsara API
 API_KEY=sms_live_...

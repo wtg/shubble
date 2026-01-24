@@ -64,7 +64,7 @@ Copy `.env.example` to `.env` and configure:
 # Required
 DATABASE_URL=postgresql://shubble:shubble@localhost:5432/shubble
 REDIS_URL=redis://localhost:6379/0
-FRONTEND_URL=http://localhost:3000
+FRONTEND_URLS=http://localhost:3000
 
 # Samsara API (not needed with test-server)
 API_KEY=sms_live_...
