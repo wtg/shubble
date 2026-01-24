@@ -15,6 +15,7 @@ import type { ShuttleRouteData } from './types/route';
 import Navigation from './components/Navigation';
 import ErrorBoundary from './components/ErrorBoundary';
 import config from "./utils/config";
+import NotFound from './components/NotFound';
 
 function App() {
   const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
@@ -50,6 +51,7 @@ function App() {
             <Route path='/about' element={<About />} />
             <Route path='/data' element={<Data />} />
             <Route path='/generate-static-routes' element={<LiveLocationMapKit routeData={routeData} displayVehicles={true} generateRoutes={true} />} />
+            <Route path='*' element={<NotFound />} />
           </Route>
 
           {/* without header and footer */}
