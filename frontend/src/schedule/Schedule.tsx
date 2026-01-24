@@ -38,7 +38,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
         const response = await fetch(`${config.apiBaseUrl}/api/etas`, { cache: 'no-store' });
         if (!response.ok) return;
 
-        const data: VehicleETAMap = await response.json();
+        const data: VehicleETAMap = await response.json() as VehicleETAMap;
 
         // Aggregate ETAs from all vehicles - use earliest ETA for each stop
         const stopETAs: StopETAs = {};
@@ -80,7 +80,8 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
     if (!selectedRoute || !(selectedRoute in aggregatedSchedule[selectedDay])) {
       setSelectedRoute(firstRoute);
     }
-  }, [selectedDay, selectedRoute, setSelectedRoute]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDay]);
 
   const handleDayChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedDay(parseInt(e.target.value));
@@ -142,6 +143,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
       // Position the current loop at the top of the container
       timelineContainer.scrollTop = Math.max(0, targetOffsetInContainer);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRoute, selectedDay, schedule]);
 
   const daysOfTheWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -164,7 +166,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
             </select>
           </div>
           <div className="control-group">
-            <label>Route:</label>
+            <label htmlFor='route-toggle'>Route:</label>
             <div className="route-toggle">
               {routeNames.map((routeName, index) => (
                 <button

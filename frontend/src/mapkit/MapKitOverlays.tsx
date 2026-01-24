@@ -62,18 +62,18 @@ export default function MapKitOverlays({ map, overlays, onAnnotationsReady }: Ma
     const overlaysToAdd: mapkit.Annotation[] = [];
 
     keysToAdd.forEach(key => {
-      const props = newOverlaysMap.get(key);
-      if (props) {
-        // Create new annotation from props
+      const overlay = newOverlaysMap.get(key);
+      if (overlay) {
+        // Create new annotation from overlay
         const annotationOptions: mapkit.ImageAnnotationConstructorOptions = {
-          title: props.title,
-          subtitle: props.subtitle,
-          url: props.url,
-          size: props.size,
-          anchorOffset: props.anchorOffset,
-          appearanceAnimation: props.appearanceAnimation || 'none',
+          title: overlay.title,
+          subtitle: overlay.subtitle,
+          url: overlay.url ?? { 1: '' },
+          size: overlay.size,
+          anchorOffset: overlay.anchorOffset,
+          appearanceAnimation: overlay.appearanceAnimation || 'none',
         };
-        const annotation = new window.mapkit.ImageAnnotation(props.coordinate, annotationOptions) as mapkit.ShuttleAnnotation;
+        const annotation = new window.mapkit.ImageAnnotation(overlay.coordinate, annotationOptions) as mapkit.ShuttleAnnotation;
         overlaysToAdd.push(annotation);
         renderedOverlaysByKey.current.set(key, annotation);
       }
@@ -87,24 +87,24 @@ export default function MapKitOverlays({ map, overlays, onAnnotationsReady }: Ma
     const keysToUpdate = Array.from(newOverlayKeys).filter(key => currentOverlayKeys.has(key));
     keysToUpdate.forEach(key => {
       const annotation = renderedOverlaysByKey.current.get(key) as mapkit.ShuttleAnnotation;
-      const props = newOverlaysMap.get(key);
-      if (annotation && props) {
+      const overlay = newOverlaysMap.get(key);
+      if (annotation && overlay) {
         // Update properties in place
-        annotation.coordinate = props.coordinate;
-        annotation.title = props.title;
-        annotation.subtitle = props.subtitle;
+        annotation.coordinate = overlay.coordinate;
+        annotation.title = overlay.title;
+        annotation.subtitle = overlay.subtitle;
 
-        if (props.url) {
-          annotation.url = props.url;
+        if (overlay.url) {
+          annotation.url = overlay.url;
         }
-        if (props.size) {
-          annotation.size = props.size;
+        if (overlay.size) {
+          annotation.size = overlay.size;
         }
-        if (props.anchorOffset) {
-          annotation.anchorOffset = props.anchorOffset;
+        if (overlay.anchorOffset) {
+          annotation.anchorOffset = overlay.anchorOffset;
         }
-        if (props.appearanceAnimation) {
-          (annotation as any).appearanceAnimation = props.appearanceAnimation;
+        if (overlay.appearanceAnimation) {
+          annotation.appearanceAnimation = overlay.appearanceAnimation;
         }
       }
     });
@@ -118,11 +118,12 @@ export default function MapKitOverlays({ map, overlays, onAnnotationsReady }: Ma
     }
 
     // Cleanup on unmount
+    const currentOverlays = renderedOverlaysByKey.current;
     return () => {
       // We don't necessarily want to remove annotations on every render,
       // but if the component unmounts fully, we might.
       // Current logic in original file did this, so we keep it.
-      if (renderedOverlaysByKey.current.size > 0 && !map) {
+      if (currentOverlays.size > 0 && !map) {
         // Logic check: if map is gone, we can't remove.
       }
     };
@@ -130,11 +131,12 @@ export default function MapKitOverlays({ map, overlays, onAnnotationsReady }: Ma
 
   // Handle unmount cleanup separately to avoid stale map reference issues
   useEffect(() => {
+    const currentOverlays = renderedOverlaysByKey.current;
     return () => {
-      if (map && renderedOverlaysByKey.current.size > 0) {
-        const allOverlays = Array.from(renderedOverlaysByKey.current.values());
+      if (map && currentOverlays.size > 0) {
+        const allOverlays = Array.from(currentOverlays.values());
         map.removeAnnotations(allOverlays);
-        renderedOverlaysByKey.current.clear();
+        currentOverlays.clear();
       }
     }
   }, [map]);

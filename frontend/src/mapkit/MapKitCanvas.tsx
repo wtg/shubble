@@ -293,6 +293,7 @@ export default function MapKitCanvas({ routeData, generateRoutes = false, select
         map._hoverCleanup();
       }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapLoaded]);
 
   // add fixed details to the map
@@ -355,7 +356,7 @@ export default function MapKitCanvas({ routeData, generateRoutes = false, select
 
     if (generateRoutes) {
       // generate polylines for routes
-      const routeDataCopy = JSON.parse(JSON.stringify(routeData)); // deep copy to avoid mutating original
+      const routeDataCopy = JSON.parse(JSON.stringify(routeData)) as ShuttleRouteData; // deep copy to avoid mutating original
       generateRoutePolylines(routeDataCopy).then((updatedRouteData) => {
         displayRouteOverlays(updatedRouteData);
         map.addOverlays(overlays);
@@ -366,6 +367,7 @@ export default function MapKitCanvas({ routeData, generateRoutes = false, select
       map.addOverlays(overlays);
     }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, routeData]);
 
   return (
