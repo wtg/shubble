@@ -1,11 +1,11 @@
-name: Client Build Check
+name: Frontend Build and Lint
 
 on:
   push:
 
 jobs:
-  build-client:
-    name: Build Client
+  build-frontend:
+    name: Run Lint and Build Frontend
     runs-on: ubuntu-latest
 
     steps:
@@ -20,6 +20,10 @@ jobs:
       - name: Install dependencies
         working-directory: frontend
         run: npm install
+
+      - name: Run lint
+        working-directory: frontend
+        run: npm run lint -- --max-warnings=0
 
       - name: Run build
         working-directory: frontend
