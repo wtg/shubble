@@ -58,7 +58,7 @@ class VelocityDict(TypedDict):
     timestamp: str
 
 
-@cache(expire=15, namespace="smart_closest_point")
+@cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="smart_closest_point")
 async def smart_closest_point(
     vehicle_ids: List[str]
 ) -> Dict[str, Tuple[Optional[float], Optional[Tuple[float, float]], Optional[str], Optional[int], Optional[int], Optional[str]]]:
@@ -150,7 +150,7 @@ async def smart_closest_point(
     return results
 
 
-@cache(expire=15, namespace="locations")
+@cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="locations")
 async def get_latest_vehicle_locations(session_factory) -> List[VehicleLocationDict]:
     """
     Get the latest location for each vehicle currently inside the geofence.
@@ -223,7 +223,7 @@ async def get_latest_vehicle_locations(session_factory) -> List[VehicleLocationD
         return location_dicts
 
 
-@cache(expire=900, namespace="driver_assignments")
+@cache(soft_ttl=900, hard_ttl=3600, namespace="driver_assignments")
 async def get_current_driver_assignments(
     vehicle_ids: List[str], session_factory
 ) -> Dict[str, DriverAssignmentDict]:
@@ -269,7 +269,7 @@ async def get_current_driver_assignments(
         return result_dict
 
 
-@cache(expire=15, namespace="etas")
+@cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="etas")
 async def get_latest_etas(vehicle_ids: List[str], session_factory) -> Dict[str, ETADict]:
     """
     Get the latest ETA for each vehicle.
@@ -321,7 +321,7 @@ async def get_latest_etas(vehicle_ids: List[str], session_factory) -> Dict[str, 
         return etas_dict
 
 
-@cache(expire=15, namespace="velocities")
+@cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="velocities")
 async def get_latest_velocities(vehicle_ids: List[str], session_factory) -> Dict[str, VelocityDict]:
     """
     Get the latest predicted velocity for each vehicle.
