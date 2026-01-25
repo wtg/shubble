@@ -1,11 +1,18 @@
 {
     "announcements": [
         {
-            "id": "chasen-weekday-hours",
-            "message": "Chasen stop is only available M-F 7am-5:30pm. [View RPI Shuttle Info](https://administration.rpi.edu/parking-transportation/rensselaer-shuttle)",
+            "id": "chasan-weekday-hours",
+            "message": "Chasan stop is only available M-F 7am-5:30pm. [View RPI Shuttle Info](https://administration.rpi.edu/parking-transportation/rensselaer-shuttle)",
             "type": "info",
             "active": true,
             "expiresAt": "2026-12-31T23:59:59"
+        },
+        {
+            "id": "snow-days",
+            "message": "Shuttles will not run or run with limited capacity until the weather improves",
+            "type": "warning",
+            "active": true,
+            "expiresAt": "2026-1-28T23:59:59"
         }
     ]
 }
