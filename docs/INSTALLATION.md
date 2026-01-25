@@ -246,7 +246,7 @@ docker compose --profile frontend up
 Key environment variables (see `.env.example` for full list):
 
 ### Service URLs
-- `FRONTEND_URL` - Main frontend URL
+- `FRONTEND_URLS` - Main frontend URLs, separated by a comma
 - `BACKEND_URL` - Backend API URL for frontend (Docker deployment)
 - `TEST_FRONTEND_URL` - Test client URL
 - `TEST_BACKEND_URL` - Test server API URL for test client (Docker deployment)

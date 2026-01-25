@@ -43,7 +43,7 @@ services:
     extra_hosts:
       - "localhost:host-gateway"
     environment:
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      FRONTEND_URLS: ${FRONTEND_URLS:-http://localhost:3000}
       DATABASE_URL: ${DATABASE_URL:-postgresql://shubble:shubble@postgres:5432/shubble}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       DEBUG: ${DEBUG:-true}
