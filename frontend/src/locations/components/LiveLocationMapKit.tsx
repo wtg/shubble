@@ -52,12 +52,12 @@ export default function LiveLocationMapKit({
           throw new Error('Failed to fetch locations');
         }
 
-        const locationsData: VehicleLocationMap = await locationsResponse.json();
+        const locationsData: VehicleLocationMap = await locationsResponse.json() as VehicleLocationMap;
 
         // Velocities are optional - don't fail if they're unavailable
         let velocitiesData: VehicleVelocityMap = {};
         if (velocitiesResponse.ok) {
-          velocitiesData = await velocitiesResponse.json();
+          velocitiesData = await velocitiesResponse.json() as VehicleVelocityMap;
         }
 
         // Merge location and velocity data
@@ -92,6 +92,7 @@ export default function LiveLocationMapKit({
       clearInterval(refreshLocation);
     }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
 

@@ -15,6 +15,10 @@ declare global {
             _hoverCleanup?: () => void;
         }
         const loadedLibraries: string[];
+        interface ShuttleAnnotation extends ImageAnnotation {
+            lockedRoute?: string | null;
+            url: Record<number, string>;
+        }
     }
     interface Window {
         initMapKit?: (value?: unknown) => void;

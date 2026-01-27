@@ -5,6 +5,12 @@ interface Config {
     mapkitKey: string;
 }
 
+type ConfigJSON = {
+    deployMode?: string;
+    apiBaseUrl?: string;
+    mapkitKey?: string;
+}
+
 let config: Config | null = null;
 
 export async function loadConfig(): Promise<Config> {
@@ -14,7 +20,7 @@ export async function loadConfig(): Promise<Config> {
 
     try {
         const response = await fetch('/config.json');
-        const json = await response.json();
+        const json = await response.json() as ConfigJSON;
 
         const isStaging = json.deployMode !== 'production';
 
@@ -30,7 +36,7 @@ export async function loadConfig(): Promise<Config> {
             isStaging: true,
             isDev: true,
             apiBaseUrl: 'http://localhost:8000',
-            mapkitKey: import.meta.env.VITE_MAPKIT_KEY || ''
+            mapkitKey: import.meta.env.VITE_MAPKIT_KEY as string || ''
         };
     }
 

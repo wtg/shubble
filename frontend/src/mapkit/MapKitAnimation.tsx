@@ -235,6 +235,7 @@ export default function MapKitAnimation({
     return () => {
       if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [annotations, vehicleAnnotations]); // re-bind animate if annotations list changes significantly?
   // Note: relying on `annotations` in the effect dependency might reset the loop often if annotations changes every 5s.
   // Ideally `animate` closes over a ref to `annotations` or `annotations` is a stable object.

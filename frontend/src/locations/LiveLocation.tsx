@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 import LiveLocationMapKit from './components/LiveLocationMapKit';
 import Schedule from '../schedule/Schedule';
@@ -6,20 +6,16 @@ import "./styles/LiveLocation.css";
 import routeData from '../shared/routes.json';
 import type { ShuttleRouteData } from '../types/route';
 import aggregatedSchedule from '../shared/aggregated_schedule.json';
+import type { AggregatedScheduleType } from '../types/schedule';
 
 export default function LiveLocation() {
-  const [filteredRouteData, setFilteredRouteData] = useState<ShuttleRouteData | null>(null);
-  const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
-
   // Filter routeData to only include routes present in aggregatedSchedule
-  useEffect(() => {
-    // TODO: figure out how to make this type correct...
-    setFilteredRouteData(
-      Object.fromEntries(
-        Object.entries(routeData).filter(([routeName]) => aggregatedSchedule.some(daySchedule => routeName in daySchedule))
-      ) as unknown as ShuttleRouteData
-    );
-  }, []);
+  // TODO: figure out how to make this type correct...
+  const rawAggregatedSchedule = aggregatedSchedule as unknown as AggregatedScheduleType;
+  const filteredRouteData = Object.fromEntries(
+      Object.entries(routeData).filter(([routeName]) => rawAggregatedSchedule.some(daySchedule => routeName in daySchedule))
+    ) as unknown as ShuttleRouteData;
+  const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
 
   return (
     <div className="live-location-div">
