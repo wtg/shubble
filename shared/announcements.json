@@ -12,7 +12,14 @@
             "message": "Shuttles will not run or run with limited capacity until the weather improves",
             "type": "warning",
             "active": true,
-            "expiresAt": "2026-1-28T23:59:59"
+            "expiresAt": "2026-1-27T23:59:59"
+        },
+        {
+            "id": "snow-delay",
+            "message": "Due to snowy roads, expect delays on West route shuttles",
+            "type": "warning",
+            "active": false,
+            "expiresAt": "2026-1-31T23:59:59"
         }
     ]
 }
