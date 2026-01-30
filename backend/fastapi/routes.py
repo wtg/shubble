@@ -407,7 +407,7 @@ async def get_shuttle_schedule():
 @router.get("/api/aggregated-schedule")
 async def get_aggregated_shuttle_schedule():
     """Serve aggregated_schedule.json file."""
-    root_dir = Path(__file__).parent.parent
+    root_dir = Path(__file__).parent.parent.parent
     aggregated_file = root_dir / "shared" / "aggregated_schedule.json"
     if aggregated_file.exists():
         return FileResponse(aggregated_file)
