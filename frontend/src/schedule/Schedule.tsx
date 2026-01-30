@@ -80,7 +80,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
     if (!selectedRoute || !(selectedRoute in aggregatedSchedule[selectedDay])) {
       setSelectedRoute(firstRoute);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDay]);
 
   const handleDayChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -143,7 +143,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
       // Position the current loop at the top of the container
       timelineContainer.scrollTop = Math.max(0, targetOffsetInContainer);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRoute, selectedDay, schedule]);
 
   const daysOfTheWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
