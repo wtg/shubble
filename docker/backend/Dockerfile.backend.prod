@@ -1,4 +1,13 @@
 # Production Backend Dockerfile for Shubble FastAPI
+
+# Node.js stage: Generate aggregated_schedule.json using Node.js
+FROM node:24-alpine AS shared
+
+WORKDIR /app
+COPY shared/ ./shared/
+RUN node shared/parseSchedule.js
+
+# Python backend
 FROM python:3.13-slim
 
 # Install uv for fast dependency management
@@ -18,7 +27,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # Copy application code
 COPY backend/ ./backend/
-COPY shared/ ./shared/
+COPY --from=shared /app/shared/ ./shared/
 COPY ml/ ./ml/
 COPY pyproject.toml uv.lock shubble.py ./
 
