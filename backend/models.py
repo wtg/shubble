@@ -19,11 +19,11 @@ class Vehicle(Base):
     gateway_serial: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     # Relationships
-    geofence_events: Mapped[list["GeofenceEvent"]] = relationship(back_populates="vehicle", lazy="selectin")
-    locations: Mapped[list["VehicleLocation"]] = relationship(back_populates="vehicle", lazy="selectin")
-    driver_assignments: Mapped[list["DriverVehicleAssignment"]] = relationship(back_populates="vehicle", lazy="selectin")
-    etas: Mapped[list["ETA"]] = relationship(back_populates="vehicle", lazy="selectin")
-    predicted_locations: Mapped[list["PredictedLocation"]] = relationship(back_populates="vehicle", lazy="selectin")
+    geofence_events: Mapped[list["GeofenceEvent"]] = relationship(back_populates="vehicle", lazy="select")
+    locations: Mapped[list["VehicleLocation"]] = relationship(back_populates="vehicle", lazy="select")
+    driver_assignments: Mapped[list["DriverVehicleAssignment"]] = relationship(back_populates="vehicle", lazy="select")
+    etas: Mapped[list["ETA"]] = relationship(back_populates="vehicle", lazy="select")
+    predicted_locations: Mapped[list["PredictedLocation"]] = relationship(back_populates="vehicle", lazy="select")
 
     def __repr__(self):
         return f"<Vehicle {self.id} - {self.name}>"
