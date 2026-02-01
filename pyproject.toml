@@ -20,6 +20,7 @@ dependencies = [
     # Data processing (used by worker for DataFrame caching)
     "numpy",
     "pandas>=2.0.0,<3.0.0",
+    "sqladmin>=0.21.0"
 ]
 
 [dependency-groups]
