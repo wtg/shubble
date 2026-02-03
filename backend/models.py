@@ -148,3 +148,68 @@ class PredictedLocation(Base):
 
     def __repr__(self):
         return f"<PredictedLocation {self.vehicle_id} @ {self.timestamp} - {self.speed_kmh} km/h>"
+    
+class Stop(Base):
+    __tablename__ = "stops"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key = True, autoincrement = True )
+    stop_name = Mapped[str] = mapped_column(String, nullable = False )
+    latitude: Mapped[float] = mapped_column(Float, nullable=False)
+    longitude: Mapped[float] = mapped_column(Float, nullable=False)
+
+    def __repr__(self):
+        return f"<Stop {self.id} - {self.stop_name}>"
+
+class Schedule(Base):
+    __tablename__ = "schedules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key = True, autoincrement = True )
+    bus_name = Mapped[str] = mapped_column(String, nullable=False)
+    route_name = Mapped[str] = mapped_column(String, nullable=False)
+    schedule = Mapped[list] = mapped_column(list, nullable=False )
+
+    def __repr__(self):
+        return f"<Schedule {self.id} - {self.route_name} - {self.bus_name}>"
+
+
+class DateSchedule(Base):
+    __tablename__ = "date_schedule"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key = True, autoincrement = True )
+    name = Mapped[str] = mapped_column(String, nullable = False) 
+    schedule_id = Mapped[str] = mapped_column(String, ForeignKey("schedules.id"), nullable=False)
+    route_id = Mapped[str] = mapped_column(String, ForeignKey("route.id"), nullable=False)
+
+    def __repr__(self):
+        return f"<DateSchedule {self.name} - {self.schedule_id}>"
+
+
+class Route(Base):
+    __tablename__ = "routes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key = True, autoincrement = True )
+    name = Mapped[str] = mapped_column(String, nullable = False )
+    route_color = Mapped[hex] = mapped_column(hex, nullable=False)
+    stops = Mapped[list["Stop"]] = mapped_column(list["Stop"], nullable=False)
+
+    # Relationships
+    stop: Mapped["Stop"] = relationship(back_populates="routes")
+
+    def __repr__(self):
+        return f"<Route {self.id} - {self.name}>"
+    
+class Polyline(Base):
+    __tablename__ = "polylines"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key = True, autoincrement = True )
+    route_id = Mapped[str] = mapped_column(String, ForeignKey("routes.id"), nullable=False)
+    departure_stop = Mapped[Stop] = mapped_column(Stop, nullable=False)
+    arrival_stop = Mapped[Stop] = mapped_column(Stop, nullable = False)
+    coordinates = Mapped[list[tuple]] = mapped_column(list[tuple], nullable=False)
+
+    # Relationships
+    stop: Mapped["Stop"] = relationship(back_populates="polylines")
+    route: Mapped["Route"] = relationship(back_populates = "polylines")
+
+    def __repr__(self):
+        return f"<Polyline {self.id} - {self.route_id} From: {self.departure_stop} - {self.arrival_stop}>"
