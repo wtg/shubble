@@ -56,7 +56,7 @@ class LSTMModel:
         output_size: int = 1,
         dropout: float = 0.0,
         learning_rate: float = 0.001,
-        weight_decay: float =1e-5,
+        weight_decay: float = 0.0,
         batch_size: int = 32,
         epochs: int = 100,
         device: str = "cpu"
@@ -86,7 +86,7 @@ class LSTMModel:
         self.device = torch.device(device if torch.cuda.is_available() and device == "cuda" else "cpu")
         
         self.model = LSTMNet(input_size, hidden_size, num_layers, output_size, dropout).to(self.device)
-        self.criterion = nn.HuberLoss(delta=1.0)
+        self.criterion = nn.MSELoss()
         self.optimizer = optim.Adam(self.model.parameters(), lr=learning_rate, weight_decay=weight_decay)
         self.history = []
         self.scaler: Optional[Any] = None

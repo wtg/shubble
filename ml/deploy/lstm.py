@@ -17,7 +17,7 @@ def load_lstm(
     output_columns: list[str] = ['eta_seconds'],
     hidden_size: int = 50,
     num_layers: int = 2,
-    dropout: float = 0.1
+    dropout: float = 0.0
 ) -> dict[tuple[str, int], LSTMModel]:
     """
     Load all trained LSTM models from cache.
@@ -131,7 +131,7 @@ def load_lstm_for_route(
     output_columns: list[str] = ['eta_seconds'],
     hidden_size: int = 50,
     num_layers: int = 2,
-    dropout: float = 0.1
+    dropout: float = 0.0
 ) -> 'LSTMModel':
     """
     Load a single LSTM model for a specific route and polyline segment.

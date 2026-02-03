@@ -226,7 +226,7 @@ def train_lstm(
     num_layers: int = 1,
     dropout: float = 0.0,
     learning_rate: float = 0.001,
-    weight_decay: float =1e-5,
+    weight_decay: float = 0.0,
     batch_size: int = 32,
     epochs: int = 100,
     device: str = "cpu",

@@ -663,7 +663,7 @@ def lstm_pipeline(
     sequence_length: int = 10,
     hidden_size: int = 50,
     num_layers: int = 2,
-    dropout: float = 0.1,
+    dropout: float = 0.0,
     epochs: int = 20,
     batch_size: int = 64,
     test_ratio: float = 0.2,
