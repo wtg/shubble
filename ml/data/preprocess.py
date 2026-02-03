@@ -253,6 +253,54 @@ def add_stops(
         for output_col in output_columns.values():
             df[output_col] = result_df[output_col]
 
+def clean_stops(
+    df: pd.DataFrame,
+    route_column: str,
+    polyline_index_column: str,
+    stop_column: str,
+    distance_column: str
+) -> None:
+    """
+    Rectifies unrecorded stops by identifying jumps in polyline indices without stop records.
+
+    Essentially, if a shuttle were to pass a stop, but this instance was not recorded in the data,
+    the data would only show the before and after positions, with a jump in polyline index. Consider
+    which point is closer to the actual stop, and use that data point to record that the shuttle has
+    visisted said stop.
+    """
+    # Import here to avoid circular imports
+    from shared.stops import stops
+
+    df['prev_route'] = df[route_column].shift(1)
+    df['prev_polyline_index'] = df[polyline_index_column].shift(1)
+    df['prev_stop'] = df[stop_column].shift(1)
+    df['prev_distance'] = df[distance_column].shift(1)
+
+    # Identify any jumps
+    jumps_mask = (
+        (df[route_column] == df['prev_route']) & # Same route?
+        (df[polyline_index_column].notna()) & # Current index valid?
+        (df['prev_polyline_index'].notna()) & # Previous index valid?
+        (df[polyline_index_column] > df['prev_polyline_index']) # Polyline index increased?
+    )
+
+    # Filter for only unidentified stops with jumps
+    unrecorded_mask = (
+        jumps_mask &
+        (df[stop_column].isna()) & # No current stop
+        (df['prev_stop'].isna()) # No previous stop
+    )
+
+    unrecorded_jumps = df[unrecorded_mask]
+
+    # Clean data frame
+    if len(unrecorded_jumps) == 0:
+        print("   No unrecorded stop jumps found")
+        df.drop(columns=['prev_route', 'prev_polyline_index', 'prev_stop', 'prev_distance'], inplace=True)
+        return
+    
+    print(f"   Found {len(unrecorded_jumps)} unrecorded stop jumps")
+
 
 def add_polyline_distances(
     df: pd.DataFrame,
