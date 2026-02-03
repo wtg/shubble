@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
-from typing import Optional, Tuple, List, Union
+from typing import Optional, Tuple, List, Union, Any
 from tqdm import tqdm
 
 
@@ -24,6 +24,8 @@ class LSTMNet(nn.Module):
             dropout=dropout if num_layers > 1 else 0.0
         )
         
+        self.dropout_layer = nn.Dropout(dropout)
+        
         self.fc = nn.Linear(hidden_size, output_size)
         
     def forward(self, x):
@@ -35,7 +37,9 @@ class LSTMNet(nn.Module):
         out, _ = self.lstm(x, (h0, c0))
         
         # Decode the hidden state of the last time step
-        out = self.fc(out[:, -1, :])
+        out = out[:, -1, :]       
+        out = self.dropout_layer(out) 
+        out = self.fc(out)            
         return out
 
 
@@ -52,6 +56,7 @@ class LSTMModel:
         output_size: int = 1,
         dropout: float = 0.0,
         learning_rate: float = 0.001,
+        weight_decay: float =1e-5,
         batch_size: int = 32,
         epochs: int = 100,
         device: str = "cpu"
@@ -81,9 +86,11 @@ class LSTMModel:
         self.device = torch.device(device if torch.cuda.is_available() and device == "cuda" else "cpu")
         
         self.model = LSTMNet(input_size, hidden_size, num_layers, output_size, dropout).to(self.device)
-        self.criterion = nn.MSELoss()
-        self.optimizer = optim.Adam(self.model.parameters(), lr=learning_rate)
+        self.criterion = nn.HuberLoss(delta=1.0)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=learning_rate, weight_decay=weight_decay)
         self.history = []
+        self.scaler: Optional[Any] = None
+        self.grad_clip_max_norm = 1.0
 
     def fit(self, X: np.ndarray, y: np.ndarray, verbose: bool = False):
         """
@@ -123,6 +130,7 @@ class LSTMModel:
                 outputs = self.model(batch_X)
                 loss = self.criterion(outputs, batch_y)
                 loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.grad_clip_max_norm)
                 self.optimizer.step()
                 epoch_loss += loss.item()
             
@@ -133,6 +141,20 @@ class LSTMModel:
                 epoch_iterator.set_postfix(loss=f"{avg_loss:.6f}")
                 
         return self
+
+    def set_scaler(self, scaler: Any) -> "LSTMModel":
+        """Set the input StandardScaler used for normalization at train and predict time."""
+        self.scaler = scaler
+        return self
+
+    def _apply_scaler(self, X: np.ndarray) -> np.ndarray:
+        """Apply scaler to X (n_samples, seq_len, n_features). Reshape, transform, reshape back."""
+        if self.scaler is None:
+            return X
+        n_samples, seq_len, n_features = X.shape
+        X_2d = X.reshape(-1, n_features)
+        X_scaled = self.scaler.transform(X_2d)
+        return X_scaled.reshape(n_samples, seq_len, n_features)
 
     def predict(self, X: np.ndarray):
         """
@@ -146,6 +168,9 @@ class LSTMModel:
         """
         if X.ndim == 2:
             X = X.reshape(X.shape[0], X.shape[1], 1)
+
+        if self.scaler is not None:
+            X = self._apply_scaler(X.astype(np.float64)).astype(np.float32)
             
         X_tensor = torch.tensor(X, dtype=torch.float32).to(self.device)
         
@@ -155,10 +180,20 @@ class LSTMModel:
             
         return predictions.cpu().numpy()
 
-    def save(self, path: str):
-        """Save model state dict."""
+    def save(self, path: str, scaler_path: Optional[str] = None):
+        """Save model state dict. If scaler_path is set and model has a scaler, save scaler too."""
         torch.save(self.model.state_dict(), path)
+        if scaler_path is not None and self.scaler is not None:
+            import pickle
+            with open(scaler_path, "wb") as f:
+                pickle.dump(self.scaler, f)
 
-    def load(self, path: str):
-        """Load model state dict."""
+    def load(self, path: str, scaler_path: Optional[str] = None):
+        """Load model state dict. If scaler_path is set and file exists, load scaler and set on model."""
         self.model.load_state_dict(torch.load(path, map_location=self.device))
+        if scaler_path is not None:
+            from pathlib import Path
+            if Path(scaler_path).exists():
+                import pickle
+                with open(scaler_path, "rb") as f:
+                    self.scaler = pickle.load(f)

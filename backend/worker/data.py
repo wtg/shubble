@@ -287,8 +287,6 @@ async def get_all_stop_times(vehicle_ids: List[str]) -> Dict[str, List[Tuple[str
         if stop_times:
             results[vehicle_id] = stop_times
 
-    print(results)
-
     return results
 
 async def predict_next_state(vehicle_ids: List[str]) -> Dict[str, Dict]:

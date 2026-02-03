@@ -765,6 +765,7 @@ def lstm_pipeline(
         train_path = polyline_dir / "train.csv"
         test_path = polyline_dir / "test.csv"
         model_path = polyline_dir / "model.pth"
+        scaler_path = polyline_dir / "scaler.pkl"
 
         # Save polyline data
         logger.info(f"\nSaving polyline data to {polyline_dir}/")
@@ -826,7 +827,7 @@ def lstm_pipeline(
                 )
 
                 logger.info(f"\n  Saving model to {model_path}...")
-                model.save(model_path)
+                model.save(model_path, scaler_path=str(scaler_path))
                 logger.info("  ✓ Model trained and saved")
             except Exception as e:
                 logger.info(f"  ✗ Training failed: {e}")
@@ -844,7 +845,7 @@ def lstm_pipeline(
                 output_size=output_size,
                 dropout=dropout
             )
-            model.load(model_path)
+            model.load(model_path, scaler_path=str(scaler_path))
             logger.info(f"  ✓ Loaded LSTM model")
 
         # 4. Evaluate
