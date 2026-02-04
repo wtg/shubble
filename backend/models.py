@@ -180,6 +180,10 @@ class DateSchedule(Base):
     schedule_id = Mapped[str] = mapped_column(String, ForeignKey("schedules.id"), nullable=False)
     route_id = Mapped[str] = mapped_column(String, ForeignKey("route.id"), nullable=False)
 
+    #Relationships
+    schedule: Mapped["Schedule"] = relationship(back_populates="date_schedule")
+    route: Mapped["Route"] = relationship(back_populates = "date_schedule")
+
     def __repr__(self):
         return f"<DateSchedule {self.name} - {self.schedule_id}>"
 
