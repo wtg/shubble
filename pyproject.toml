@@ -15,10 +15,10 @@ dependencies = [
     "pydantic>=2.10.0",
     "pydantic-settings>=2.7.0",
     "python-dotenv>=1.1.1",
-    "redis",
+    "redis>=4.6.0",
     "fastapi-cache2[redis]>=0.2.2",
     # Data processing (used by worker for DataFrame caching)
-    "numpy",
+    "numpy>=2.4.1",
     "pandas>=2.0.0,<3.0.0",
 ]
 
