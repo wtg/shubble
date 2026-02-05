@@ -269,7 +269,7 @@ def clean_stops(
     visisted said stop.
     """
     # Import here to avoid circular imports
-    from shared.stops import stops
+    from shared.stops import Stops
 
     df['prev_route'] = df[route_column].shift(1)
     df['prev_polyline_index'] = df[polyline_index_column].shift(1)
