@@ -153,7 +153,7 @@ class Stop(Base):
     __tablename__ = "stops"
 
     id: Mapped[int] = mapped_column(Integer, primary_key = True, autoincrement = True )
-    stop_name = Mapped[str] = mapped_column(String, nullable = False )
+    name = Mapped[str] = mapped_column(String, nullable = False )
     latitude: Mapped[float] = mapped_column(Float, nullable=False)
     longitude: Mapped[float] = mapped_column(Float, nullable=False)
 
@@ -189,7 +189,7 @@ class DateSchedule(Base):
         return f"<DateSchedule {self.name} - {self.schedule_id}>"
 
 
-class Route(Base): 
+class Route(Base):
     __tablename__ = "routes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key = True, autoincrement = True )

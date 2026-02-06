@@ -17,51 +17,73 @@ For item in d[weekday]:
 do same thing above for sat and sunday
 """
 
+def make_schedules_table():
+    with open('shared/schedule.json') as f:
+        d = json.load(f)
+        
 
-with open('shared/schedule.json') as f:
-    d = json.load(f)
-    
+    schedule_table = {"bus_name": [], "route_name": [], "day_type": [], "schedule": []}
+    for item in d['weekday']:
 
-schedule_table = {"bus_name": [], "route_name": [], "day_type": [], "schedule": []}
-for item in d['weekday']:
+        schedule_table['day_type'].append('weekday')
+        schedule_table['bus_name'].append(item)
+        if 'WEST' in item:
+            schedule_table['route_name'].append('WEST')
+        else: 
+            schedule_table['route_name'].append('NORTH')
+        
+        times = list()
+        for item in d['weekday'][item]:
+            times.append(item[0])
+        schedule_table['schedule'].append(times)
 
-    schedule_table['day_type'].append('weekday')
-    schedule_table['bus_name'].append(item)
-    if 'WEST' in item:
-        schedule_table['route_name'].append('WEST')
-    else: 
-        schedule_table['route_name'].append('NORTH')
-    
-    times = list()
-    for item in d['weekday'][item]:
-        times.append(item[0])
-    schedule_table['schedule'].append(times)
+    for item in d['saturday']:
+        schedule_table['day_type'].append('saturday')
+        schedule_table['bus_name'].append(item)
+        if 'WEST' in item:
+            schedule_table['route_name'].append('WEST')
+        else: 
+            schedule_table['route_name'].append('NORTH')
+        
+        times = list()
+        for item in d['saturday'][item]:
+            times.append(item[0])
+        schedule_table['schedule'].append(times)
 
-for item in d['saturday']:
-    schedule_table['day_type'].append('saturday')
-    schedule_table['bus_name'].append(item)
-    if 'WEST' in item:
-         schedule_table['route_name'].append('WEST')
-    else: 
-       schedule_table['route_name'].append('NORTH')
-    
-    times = list()
-    for item in d['saturday'][item]:
-        times.append(item[0])
-    schedule_table['schedule'].append(times)
+    for item in d['sunday']:
+        schedule_table['day_type'].append('sunday')
+        schedule_table['bus_name'].append(item)
+        if 'WEST' in item:
+            schedule_table['route_name'].append('WEST')
+        else: 
+            schedule_table['route_name'].append('NORTH')
+        times = list()
+        for item in d['sunday'][item]:
+            times.append(item[0])
+        schedule_table['schedule'].append(times)
 
-for item in d['sunday']:
-    schedule_table['day_type'].append('sunday')
-    schedule_table['bus_name'].append(item)
-    if 'WEST' in item:
-         schedule_table['route_name'].append('WEST')
-    else: 
-        schedule_table['route_name'].append('NORTH')
-    times = list()
-    for item in d['sunday'][item]:
-        times.append(item[0])
-    schedule_table['schedule'].append(times)
+    return pd.DataFrame.from_dict(schedule_table)
 
-schedules = pd.DataFrame.from_dict(schedule_table)
 
-print(schedules)
+def make_stops():
+    with open('shared/routes.json') as f:
+        d = json.load(f)
+    stops_table = {"name": [], "latitude": [], "longitude": [] }
+    for item in d['NORTH']:
+        if item != 'COLOR' and item != 'STOPS' and item != 'POLYLINE_STOPS' and item != 'ROUTES':
+            stops_table['name'].append(item)
+            stops_table['latitude'].append(d['NORTH'][item]['COORDINATES'][0])
+            stops_table['longitude'].append(d['NORTH'][item]['COORDINATES'][1])
+    for item in d['WEST']:
+        if item != 'COLOR' and item != 'STOPS' and item != 'POLYLINE_STOPS' and item != 'ROUTES':
+            stops_table['name'].append(item)
+            stops_table['latitude'].append(d['WEST'][item]['COORDINATES'][0])
+            stops_table['longitude'].append(d['WEST'][item]['COORDINATES'][1])
+                
+    return pd.DataFrame.from_dict(stops_table)
+if __name__ == "__main__":
+    schedules = make_schedules_table()
+    stops = make_stops()
+    print("Schedules table:\n", schedules)
+    print()
+    print("Stops table:\n", stops)
