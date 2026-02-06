@@ -166,6 +166,7 @@ class Schedule(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key = True, autoincrement = True )
     bus_name = Mapped[str] = mapped_column(String, nullable=False)
     route_name = Mapped[str] = mapped_column(String, nullable=False)
+    day_type = Mapped[str] = mapped_column(String, nullable = False)
     schedule = Mapped[list] = mapped_column(list, nullable=False )
 
     def __repr__(self):
@@ -188,7 +189,7 @@ class DateSchedule(Base):
         return f"<DateSchedule {self.name} - {self.schedule_id}>"
 
 
-class Route(Base):
+class Route(Base): 
     __tablename__ = "routes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key = True, autoincrement = True )
