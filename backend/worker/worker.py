@@ -345,10 +345,8 @@ async def run_worker():
                     logger.info(f"Triggering ML cache update for {len(updated_vehicles)} vehicles")
                     await update_today_dataframe()
 
-                    # Generate predictions for all vehicles in geofence so ETAs stay fresh
-                    # for every shuttle (not only those that had new GPS this cycle)
-                    if current_vehicle_ids:
-                        await generate_and_save_predictions(list(current_vehicle_ids))
+                    # Generate predictions
+                    await generate_and_save_predictions(updated_vehicles)
 
             except Exception as e:
                 logger.exception(f"Error in worker loop: {e}")
