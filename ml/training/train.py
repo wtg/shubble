@@ -307,7 +307,7 @@ def train_lstm(
 
 if __name__ == "__main__":
     from ml.pipelines import preprocess_pipeline
-    from ml.data.preprocess import segment_by_consecutive
+    from ml.data.segment import segment_by_consecutive
 
     print("="*70)
     print("Training Data Splitter Demo")
