@@ -1,0 +1,31 @@
+Privacy Policy
+Effective Date: 10-03-2025
+
+Shubble (“the App”) respects your privacy. This Privacy Policy explains how we handle your information.
+
+Information We Collect
+The App may access your device location in order to:
+
+Show you the closest shuttle stop.
+Calculate how far you are from that stop.
+
+We do not collect, store, or transmit your location data or any other personal information. All processing happens locally on your device.
+
+Use of Information
+Location data is used only in real time to display shuttle stop information.
+
+Your location data is never stored, logged, or sent to our servers.
+
+Sharing of Information
+We do not share your location or any other personal information with third parties.
+
+Children’s Privacy
+Shubble does not knowingly collect, store, or share personal information from children.
+
+Changes to This Policy
+If we make changes to this Privacy Policy, we will update it here and revise the “Effective Date” above.
+
+Contact Us
+If you have any questions or concerns about this Privacy Policy, you can contact us at:
+Joel McCandless
+mail@joelmccandless.com
