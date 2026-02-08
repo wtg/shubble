@@ -3,9 +3,11 @@ import numpy as np
 import pandas as pd
 import random
 import warnings
-from tqdm import tqdm
-from typing import Tuple, Optional
 from pathlib import Path
+from typing import Tuple, Optional
+
+from sklearn.preprocessing import StandardScaler
+from tqdm import tqdm
 
 
 def filter_segmented(
@@ -286,7 +288,6 @@ def train_lstm(
     y = np.array(y_list)
 
     # Fit StandardScaler on input features (per-feature mean/std across all samples and time steps)
-    from sklearn.preprocessing import StandardScaler
     n_samples, seq_len, n_features = X.shape
     scaler = StandardScaler()
     scaler.fit(X.reshape(-1, n_features))
