@@ -1,4 +1,7 @@
 """LSTM model for time series forecasting."""
+import pickle
+from pathlib import Path
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -184,7 +187,6 @@ class LSTMModel:
         """Save model state dict. If scaler_path is set and model has a scaler, save scaler too."""
         torch.save(self.model.state_dict(), path)
         if scaler_path is not None and self.scaler is not None:
-            import pickle
             with open(scaler_path, "wb") as f:
                 pickle.dump(self.scaler, f)
 
@@ -192,8 +194,6 @@ class LSTMModel:
         """Load model state dict. If scaler_path is set and file exists, load scaler and set on model."""
         self.model.load_state_dict(torch.load(path, map_location=self.device))
         if scaler_path is not None:
-            from pathlib import Path
             if Path(scaler_path).exists():
-                import pickle
                 with open(scaler_path, "rb") as f:
                     self.scaler = pickle.load(f)
