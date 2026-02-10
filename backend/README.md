@@ -246,7 +246,7 @@ export SAMSARA_API_URL=http://localhost:4000
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  FastAPI Backend                                         │
+│  FastAPI Backend                                        │
 │  - Async request handling                               │
 │  - Redis caching layer                                  │
 │  - SQLAlchemy ORM                                       │
