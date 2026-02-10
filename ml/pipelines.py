@@ -658,7 +658,7 @@ def split_by_polyline_pipeline(df: pd.DataFrame = None, **kwargs) -> dict[tuple[
 # ============================================================================
 
 def lstm_pipeline(
-    input_columns: list[str] = ['latitude', 'longitude', 'speed_kmh'],
+    input_columns: list[str] = ['latitude', 'longitude', 'speed_kmh', 'dist_to_end'],
     output_columns: list[str] = ['eta_seconds'],
     sequence_length: int = 10,
     hidden_size: int = 50,
