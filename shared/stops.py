@@ -385,6 +385,11 @@ class Stops:
         # Total distance from start of polyline
         distance_from_start = dist_at_segment_start + partial_dist
 
+        # Clamp to [0, total_length]: closest point is computed by linear interpolation
+        # in (lat, lon) space, so partial_dist can exceed the segment's haversine length
+        # and make distance_from_start > total_length (and dist_to_end negative).
+        distance_from_start = max(0.0, min(distance_from_start, total_length))
+
         # Distance to end of polyline
         distance_to_end = total_length - distance_from_start
 
