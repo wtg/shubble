@@ -21,6 +21,7 @@ type LiveLocationMapKitProps = {
   setSelectedRoute?: (route: string | null) => void;
   isFullscreen?: boolean;
   showTrueLocation?: boolean;
+  shuttleIconSize?: number;
 };
 
 export default function LiveLocationMapKit({
@@ -30,7 +31,8 @@ export default function LiveLocationMapKit({
   selectedRoute,
   setSelectedRoute,
   isFullscreen = false,
-  showTrueLocation = true
+  showTrueLocation = true,
+  shuttleIconSize = 25,
 }: LiveLocationMapKitProps) {
   const [map, setMap] = useState<(mapkit.Map | null)>(null);
   const [vehicles, setVehicles] = useState<VehicleCombinedMap | null>(null);
@@ -137,7 +139,7 @@ export default function LiveLocationMapKit({
       })();
 
       // Render ShuttleIcon JSX to a static SVG string
-      const svgString = renderToStaticMarkup(<ShuttleIcon color={routeColor} size={25} />);
+      const svgString = renderToStaticMarkup(<ShuttleIcon color={routeColor} size={shuttleIconSize} />);
       const svgShuttle = `data:image/svg+xml;base64,${btoa(svgString)}`;
 
       // Use predicted speed if available, otherwise fall back to reported speed

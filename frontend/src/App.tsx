@@ -56,7 +56,7 @@ function App() {
 
           {/* without header and footer */}
           <Route>
-            <Route path='/map' element={<LiveLocationMapKit routeData={routeData} generateRoutes={false} selectedRoute={selectedRoute} setSelectedRoute={setSelectedRoute} isFullscreen={true} />} />
+            <Route path='/map' element={<LiveLocationMapKit routeData={routeData} generateRoutes={false} selectedRoute={selectedRoute} setSelectedRoute={setSelectedRoute} isFullscreen={true} shuttleIconSize={50} />} />
           </Route>
         </Routes>
       </Router>
