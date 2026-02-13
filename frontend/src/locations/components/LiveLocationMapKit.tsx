@@ -175,7 +175,7 @@ export default function LiveLocationMapKit({
     });
 
     return list;
-  }, [vehicles, routeData, showTrueLocation, flattenedRoutes, map]);
+  }, [vehicles, routeData, map, shuttleIconSize, showTrueLocation, flattenedRoutes]);
 
   return (
     <>
