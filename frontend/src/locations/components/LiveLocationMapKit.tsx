@@ -162,7 +162,7 @@ export default function LiveLocationMapKit({
         title: vehicle.name,
         subtitle: `${displaySpeed.toFixed(1)} mph`,
         url: { 1: svgShuttle },
-        size: { width: 25, height: 25 },
+        size: { width: shuttleIconSize, height: shuttleIconSize },
         anchorOffset: new DOMPoint(0, -13),
 
         // AnimatedAnnotation specific
