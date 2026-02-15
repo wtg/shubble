@@ -414,12 +414,63 @@ def clean_stops(
     distance_column: str,
 ) -> None:
     """
-    Rectifies unrecorded stops by identifying jumps in polyline indices without stop records.
+    Rectify unrecorded stops by identifying jumps in polyline indices without stop records.
 
-    Essentially, if a shuttle were to pass a stop, but this instance was not recorded in the data,
-    the data would only show the before and after positions, with a jump in polyline index. Consider
-    which point is closer to the actual stop, and use that data point to record that the shuttle has
-    visisted said stop.
+    When a shuttle passes a stop but the event is not recorded in the data, there will be
+    a jump in polyline indices between consecutive rows without any stop being logged.
+    This function detects these gaps and assigns the missing stop to either the previous
+    or current data point based on which GPS position is closer to the actual stop location.
+
+    The function examines consecutive rows within the same route and looks for cases where:
+    1. The polyline index increases between rows
+    2. Neither row has a stop recorded
+    3. A stop should exist between the two polyline indices
+
+    For each detected gap, it determines which GPS point (previous or current) is closer
+    to the unrecorded stop and assigns that stop accordingly.
+
+    Modifies the dataframe in place by populating the stop_column where stops were missing.
+
+    Args:
+        df: Pandas DataFrame to modify
+        route_column: Name of the column containing route names
+        polyline_index_column: Name of the column containing polyline indices
+        stop_column: Name of the column containing stop names (will be populated)
+        lat_column: Name of the latitude column
+        lon_column: Name of the longitude column
+        distance_column: Name of the column containing distance to closest point on route
+
+    Raises:
+        None
+
+    Example:
+        >>> # Before clean_stops: polyline_idx jumps from 0 to 1 without any stops for either point
+        >>> df = pd.DataFrame({
+        ...     'route': ['North Route', 'North Route', 'North Route'],
+        ...     'polyline_idx': [0, 1, 2],
+        ...     'stop': [None, None, 'Georgian'],
+        ...     'latitude': [42.7284, 42.7295, 42.7300],
+        ...     'longitude': [-73.6788, -73.6799, -73.6805],
+        ...     'distance_to_route': [0.015, 0.003, 0.001]
+        ... })
+        >>> clean_stops(
+        ...     df, 'route', 'polyline_idx', 'stop',
+        ...     'latitude', 'longitude', 'distance_to_route'
+        ... )
+        >>> # After clean_stops: the middle point (index 1) is closer to the stop 
+        >>> # location than the previous point (index 0), so the stop is assigned to index 1
+        >>> df = pd.DataFrame({
+        ...     'route': ['North Route', 'North Route', 'North Route'],
+        ...     'polyline_idx': [0, 1, 2],
+        ...     'stop': [None, 'Colonie', 'Georgian'],
+        ...     'latitude': [42.7284, 42.7295, 42.7300],
+        ...     'longitude': [-73.6788, -73.6799, -73.6805],
+        ...     'distance_to_route': [0.015, 0.003, 0.001]
+        ... })
+        >>> clean_stops(
+        ...     df, 'route', 'polyline_idx', 'stop',
+        ...     'latitude', 'longitude', 'distance_to_route'
+        ... )
     """
     # Import here to avoid circular imports
     from shared.stops import Stops
@@ -472,9 +523,8 @@ def clean_stops(
         polyline_stops = route_data.get('POLYLINE_STOPS', [])
         
         # Find stops that fall between before and after indices
-        for stop_poly_idx, stop_name in enumerate(polyline_stops):
-            if stop_name is not None and before_idx < stop_poly_idx <= after_idx:
-                return stop_name
+        if after_idx < len(polyline_stops):
+            return polyline_stops[after_idx]
         
         return None
     
