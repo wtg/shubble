@@ -487,7 +487,7 @@ def clean_stops(
         (df[route_column] == df['prev_route']) & # Same route?
         (df[polyline_index_column].notna()) & # Current index valid?
         (df['prev_polyline_index'].notna()) & # Previous index valid?
-        (df[polyline_index_column] > df['prev_polyline_index']) # Polyline index increased?
+        (df[polyline_index_column] == df['prev_polyline_index'] + 1) # Polyline index increased?
     )
 
     # Filter for only unidentified stops with jumps
@@ -508,13 +508,15 @@ def clean_stops(
     print(f"   Found {len(unrecorded_jumps)} unrecorded stop jumps")
 
     # Vectorized function to find matching stops
-    def find_stop_between_indices(row):
+    def find_stop(row):
         """
-        Find the stop name that falls between before and after polyline indices.
+        Find the stop name at the current polyline index.
+        Uses the route's POLYLINE_STOPS list, where each index maps directly
+        to a stop name. Returns the stop at idx (the current polyline
+        index for this row).
         """
         route_name = row[route_column]
-        before_idx = int(row['prev_polyline_index'])
-        after_idx = int(row[polyline_index_column])
+        idx = int(row[polyline_index_column])
         
         if route_name not in Stops.routes_data:
             return None
@@ -523,13 +525,13 @@ def clean_stops(
         polyline_stops = route_data.get('POLYLINE_STOPS', [])
         
         # Find stops that fall between before and after indices
-        if after_idx < len(polyline_stops):
-            return polyline_stops[after_idx]
+        if idx < len(polyline_stops):
+            return polyline_stops[idx]
         
         return None
     
     df.loc[unrecorded_mask, 'matched_stop'] = df[unrecorded_mask].apply(
-        find_stop_between_indices, axis=1
+        find_stop, axis=1
     )
 
     valid_comparison = (
