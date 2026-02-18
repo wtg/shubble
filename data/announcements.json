@@ -9,7 +9,7 @@
         },
         {
             "id": "old",
-            "message": "This is an older, stable, production version of Shubble that needed to deploy due to the newer version having a lot of slowdowns/server issues. Please visit/ask the Shuttle Tracker [discord](https://discord.com/invite/crpCNZkUwE) if there are any issues with this version.",
+            "message": "This is an older, stable, production version of Shubble that needed to deploy due to the newer version having a lot of slowdowns/server issues. Please visit/ask the Shuttle Tracker [discord](https://discord.com/invite/crpCNZkUwE) if there are any questions/issues with this version.",
             "type": "info",
             "active": true,
             "expiresAt": "2026-12-31T23:59:59"
