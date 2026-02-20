@@ -343,7 +343,7 @@ def stops_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
         DataFrame with added columns: 'stop_name', 'stop_route',
         'dist_from_start', 'dist_to_end', 'polyline_length'
     """
-    from ml.data.stops import add_stops, add_polyline_distances
+    from ml.data.preprocess import add_stops, add_polyline_distances, clean_stops
 
     stops = kwargs.get('stops', False)
     cache = kwargs.get('cache', True)
@@ -387,14 +387,14 @@ def stops_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
         df = segment_pipeline(**segment_kwargs)
 
     # Step 2: Add stops
-    logger.info("Step 1/2: Adding stop information...")
+    logger.info("Step 1/3: Adding stop information...")
     add_stops(df, 'latitude', 'longitude', {
         'route_name': 'stop_route',
         'stop_name': 'stop_name'
     })
 
     # Step 3: Add polyline distances
-    logger.info("Step 2/2: Calculating polyline distances...")
+    logger.info("Step 2/3: Calculating polyline distances...")
     add_polyline_distances(
         df, 'latitude', 'longitude',
         {
@@ -410,6 +410,17 @@ def stops_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
         segment_index_column='segment_idx'
     )
     logger.info(f"  ✓ Calculated polyline distances for {len(df)} points")
+
+    # Step 4: Clean stops
+    logger.info("Step 3/3: Cleaning unrecorded stop jumps...")
+    clean_stops(df,
+                route_column='route',
+                polyline_index_column='polyline_idx',
+                stop_column='stop_name',
+                lat_column='latitude',
+                lon_column='longitude',
+                distance_column='dist_to_route'
+            )
 
     # Save to cache if caching is enabled
     if cache:
