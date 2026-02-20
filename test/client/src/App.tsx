@@ -133,13 +133,6 @@ function App() {
                             >
                                 Import Test File
                             </button>
-                            <button
-                                className="dropdown-item"
-                                onClick={handleOpenImportModal}
-                            >
-                                beepbop files
-                            </button>
-                            {/* Export testing */}
                             <button 
                                 className="dropdown-item"
                                 onClick={() => setIsExportOpen(true)}

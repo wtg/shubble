@@ -21,6 +21,8 @@ export interface ParseResult {
     data?: TestData;
 }
 
+/* export interface for confirming export is successfull?*/
+
 /**
  * Parse a test file from text content.
  */

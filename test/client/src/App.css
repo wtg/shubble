@@ -808,4 +808,27 @@
   font-size: 0.875rem;
 }
 
+.export-shuttle-box {
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: grab;
+  user-select: none;
+  border: 2px solid #ccc;
+  background: #f5f5f5;
+  color: #000000;
+  transition: transform 250ms cubic-bezier(.2,.8,.2,1),
+    background 150ms ease,
+    border 150ms ease;
+}
 
+.export-shuttle-box.selected {
+  border: 2px solid #0542c5;
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.export-shuttle-description  {
+  margin-top: 2rem;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
