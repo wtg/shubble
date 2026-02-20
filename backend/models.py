@@ -148,3 +148,18 @@ class PredictedLocation(Base):
 
     def __repr__(self):
         return f"<PredictedLocation {self.vehicle_id} @ {self.timestamp} - {self.speed_kmh} km/h>"
+
+class Announcement(Base):
+    __tablename__ = "announcements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    message: Mapped[str] = mapped_column(String, nullable=False)
+    type: Mapped[str] = mapped_column(String, nullable=False) # 'info' | 'warning' | 'error'
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    expiresAt: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    # No Relationships
+
+    def __repr__(self):
+        return f"<Announcement {self.id} - {self.message}>"

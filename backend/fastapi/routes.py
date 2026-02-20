@@ -439,3 +439,14 @@ async def get_matched_shuttle_schedules(force_recompute: bool = False):
         return JSONResponse(
             {"status": "error", "message": str(e)}, status_code=500
         )
+
+@router.get("/api/announcements")
+async def get_announcements(): 
+    """Serve announcements.json file."""
+    root_dir = Path(__file__).parent.parent.parent
+    """make sure I did it right"""
+    print(root_dir) 
+    announcements_file = root_dir / "shared" / "announcements.json"
+    if announcements_file.exists():
+        return FileResponse(announcements_file)
+    raise HTTPException(status_code=404, detail="Announcements file not found")
