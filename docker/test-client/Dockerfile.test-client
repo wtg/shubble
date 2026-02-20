@@ -25,6 +25,8 @@ COPY --from=builder /app/test/client/dist /usr/share/nginx/html
 # Copy config template and entrypoint for runtime env substitution
 COPY test/client/config.template.json /usr/share/nginx/html/config.template.json
 COPY docker/test-client/entrypoint.sh /entrypoint.sh
+# Fix Windows line endings (CRLF → LF)
+RUN sed -i 's/\r$//' /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # Copy nginx configuration
