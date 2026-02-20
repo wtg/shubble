@@ -502,7 +502,7 @@ def clean_stops(
     # Clean data frame if no unrecorded jumps found
     if len(unrecorded_jumps) == 0:
         print("   No unrecorded stop jumps found")
-        df.drop(columns=['prev_route', 'prev_polyline_index', 'prev_stop', 'prev_lat', 'prev_lon' 'prev_distance'], inplace=True)
+        df.drop(columns=['prev_route', 'prev_polyline_index', 'prev_stop', 'prev_lat', 'prev_lon', 'prev_distance'], inplace=True)
         return
     
     print(f"   Found {len(unrecorded_jumps)} unrecorded stop jumps")
