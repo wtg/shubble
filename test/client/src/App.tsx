@@ -9,6 +9,7 @@ import {
 import { fetchEventCounts, deleteEvents } from './api/events.ts';
 import Shuttle from './components/Shuttle.tsx';
 import ImportTestFileModal from './components/ImportTestFileModal.tsx';
+import ExportTestFileModal from './components/ExportTestFileModal.tsx';
 import "./App.css";
 
 function App() {
@@ -19,6 +20,8 @@ function App() {
     const [routes, setRoutes] = useState<string[]>([]);
     const [menuOpen, setMenuOpen] = useState(false);
     const [importModalOpen, setImportModalOpen] = useState(false);
+    const [isExportOpen, setIsExportOpen] = useState(false);
+
 
     // Fetch shuttles from API
     const updateShuttles = useCallback(async () => {
@@ -130,6 +133,21 @@ function App() {
                             >
                                 Import Test File
                             </button>
+                            <button
+                                className="dropdown-item"
+                                onClick={handleOpenImportModal}
+                            >
+                                beepbop files
+                            </button>
+                            {/* Export testing */}
+                            <button 
+                                className="dropdown-item"
+                                onClick={() => setIsExportOpen(true)}
+                                >
+                                Export Test File
+                            </button>
+                            
+
                             <div className="dropdown-divider" />
                             <button
                                 className="dropdown-item"
@@ -159,6 +177,17 @@ function App() {
                 onClose={() => setImportModalOpen(false)}
                 onImportComplete={handleImportComplete}
             />
+
+                    
+            {/* Export Test File Modal */}
+            
+            <ExportTestFileModal
+                isOpen={isExportOpen}
+                onClose={() => setIsExportOpen(false)}
+                shuttles={shuttles}
+            />
+            
+
 
             {/* Tabs */}
             <div className="tabs">

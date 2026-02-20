@@ -188,3 +188,12 @@ export async function importTestData(data: TestData): Promise<void> {
         await addToQueueApi(shuttleId, actions);
     }
 }
+
+/*
+export async function buildTestFile(){
+//accepts a list of QueuedActions
+// see test/client/types.ts
+// and builds a json test file from the actions
+}
+
+*/
