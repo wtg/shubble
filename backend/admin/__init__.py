@@ -1,0 +1,1 @@
+"""SQLAlchemy Admin FastAPI integration."""
