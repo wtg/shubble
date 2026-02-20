@@ -1,7 +1,7 @@
 """SQLAlchemy models for async database operations."""
 from datetime import datetime, timezone
 from typing import Optional
-from sqlalchemy import String, Integer, Float, Boolean, DateTime, ForeignKey, Index, UniqueConstraint, JSON
+from sqlalchemy import String, Integer, Float, Boolean, DateTime, ForeignKey, Index, UniqueConstraint, TIMESTAMP, ARRAY, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.database import Base
 
@@ -155,7 +155,7 @@ class RouteToBusSchedule(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key = True, autoincrement = True )
     route_id: Mapped[int] = mapped_column(Integer, ForeignKey("routes.id"), nullable=False)
     bus_schedule_id: Mapped[int] = mapped_column( Integer, ForeignKey("bus_schedules.id"), nullable=False)
-    timestamp: Mapped[datetime] = mapped_column(TIMESTAMPZ, nullable=False) 
+    timestamp: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False) 
     
     #Relationships
     route: Mapped["Route"] = relationship(back_populates="route_to_bus_schedules")
