@@ -1,5 +1,6 @@
 {
   "apiBaseUrl": "${BACKEND_URL}",
   "deployMode": "${DEPLOY_MODE}",
-  "mapkitKey": "${MAPKIT_KEY}"
+  "mapkitKey": "${MAPKIT_KEY}",
+  "staticETAs": "${STATIC_ETAS}"
 }

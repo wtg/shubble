@@ -226,23 +226,33 @@ model = lstm_models[('East Route', 0)]
 prediction = model.predict(input_sequence)
 ```
 
-### `ml/data/preprocess.py` - Preprocessing Functions
+### `ml/data/` - Preprocessing Functions
 
-All functions modify DataFrames in-place:
+Functions are organized by pipeline stage. All functions modify DataFrames in-place:
 
 ```python
-from ml.data.preprocess import (
-    to_epoch_seconds,        # Convert timestamps
-    add_closest_points,      # Route matching
-    distance_delta,          # Haversine distance
-    speed,                   # Calculate speed
-    segment_by_consecutive,  # Create segments
-    filter_segments_by_length, # Filter short segments
-    add_stops,               # Detect stops
-    add_eta,                 # Calculate ETAs
-    add_polyline_distances,  # Distance along route
-    clean_closest_route,     # Clean NaN routes with windowing
+# Basic preprocessing
+from ml.data.preprocess import to_epoch_seconds, add_closest_points
+
+# Speed calculations
+from ml.data.speed import distance_delta, speed
+
+# Segmentation
+from ml.data.segment import (
+    segment_by_consecutive,
+    filter_segments_by_length,
+    clean_closest_route,
+    add_closest_points_educated
 )
+
+# Stop detection
+from ml.data.stops import add_stops, add_polyline_distances
+
+# ETA calculations
+from ml.data.eta import filter_rows_after_stop, add_eta
+
+# Data splitting
+from ml.data.split import split_by_route_polyline_index
 
 # Example: Manual preprocessing
 df = load_pipeline()

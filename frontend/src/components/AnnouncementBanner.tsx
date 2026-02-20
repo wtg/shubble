@@ -90,9 +90,10 @@ function getActiveAnnouncements(data: AnnouncementsData): Announcement[] {
         // Skip inactive announcements
         if (!announcement.active) return false;
 
-        // Skip expired announcements
+        // Skip expired announcements and invalid dates
         if (announcement.expiresAt) {
             const expirationDate = new Date(announcement.expiresAt);
+            if (isNaN(expirationDate.getTime())) return false;
             if (expirationDate < now) return false;
         }
 

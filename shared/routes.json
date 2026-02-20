@@ -110,7 +110,7 @@
         42.730711,
         -73.676737
       ],
-      "OFFSET": 16,
+      "OFFSET": 15,
       "NAME": "Student Union (Return)"
     },
     "ROUTES": [
@@ -687,7 +687,7 @@
         42.727985,
         -73.678
       ],
-      "OFFSET": 3,
+      "OFFSET": 2,
       "NAME": "Academy Hall"
     },
     "POLYTECHNIC": {
@@ -695,7 +695,7 @@
         42.722903,
         -73.679567
       ],
-      "OFFSET": 5,
+      "OFFSET": 3,
       "NAME": "Polytechnic"
     },
     "GHOST_STOP_1": {
@@ -703,7 +703,7 @@
         42.72778967727594,
         -73.68846611973184
       ],
-      "OFFSET": 8,
+      "OFFSET": 5,
       "NAME": "5th Ave & Ferry St"
     },
     "CITY_STATION": {
@@ -711,7 +711,7 @@
         42.727673,
         -73.687228
       ],
-      "OFFSET": 9,
+      "OFFSET": 7,
       "NAME": "City Station"
     },
     "BLITMAN": {
@@ -719,7 +719,7 @@
         42.730733889768935,
         -73.68654871130366
       ],
-      "OFFSET": 11,
+      "OFFSET": 8,
       "NAME": "Blitman"
     },
     "CHASAN": {
@@ -727,7 +727,7 @@
         42.73113007261683,
         -73.68883082757004
       ],
-      "OFFSET": 13,
+      "OFFSET": 9,
       "NAME": "Chasan Building"
     },
     "FEDERAL_6TH": {
@@ -735,7 +735,7 @@
         42.73358721710756,
         -73.68574634740555
       ],
-      "OFFSET": 14,
+      "OFFSET": 11,
       "NAME": "Federal & 6th"
     },
     "GHOST_STOP_2": {
@@ -743,7 +743,7 @@
         42.732217914196276,
         -73.68715498765913
       ],
-      "OFFSET": 15,
+      "OFFSET": 13,
       "NAME": "Fulton St"
     },
     "WEST_HALL": {
@@ -751,7 +751,7 @@
         42.73155332161482,
         -73.68135702064839
       ],
-      "OFFSET": 15,
+      "OFFSET": 13,
       "NAME": "West Hall"
     },
     "STUDENT_UNION_RETURN": {
@@ -759,7 +759,7 @@
         42.73030957936359,
         -73.67653679162925
       ],
-      "OFFSET": 17,
+      "OFFSET": 15,
       "NAME": "Student Union (Return)"
     },
     "ROUTES": [

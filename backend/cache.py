@@ -148,7 +148,7 @@ def cache(
     hard_ttl: int = 300,
     namespace: str = "default",
     lock_timeout: float = 10.0,
-    poll_interval: float = 0.1,
+    poll_interval: float = 0.5,
 ) -> Callable[[Callable[P, T]], Callable[P, T]]:
     """Decorator to cache async function results in Redis with soft/hard TTL.
 

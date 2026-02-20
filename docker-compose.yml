@@ -101,6 +101,7 @@ services:
       BACKEND_URL: ${BACKEND_URL:-http://localhost:8000}
       DEPLOY_MODE: ${DEPLOY_MODE:-development}
       MAPKIT_KEY: ${MAPKIT_KEY:-}
+      STATIC_ETAS: ${STATIC_ETAS:-false}
     restart: unless-stopped
     volumes:
       - ./frontend:/app/frontend

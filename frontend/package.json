@@ -4,8 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node ../shared/parseSchedule.js && shx cp -r ../shared/ src/ && vite",
-    "build": "node ../shared/parseSchedule.js && shx cp -r ../shared/ src/ && vite build",
+    "dev": "node scripts/generate-config.js && node ../shared/parseSchedule.js && shx cp -r ../shared/ src/ && vite",
+    "build": "node scripts/generate-config.js && node ../shared/parseSchedule.js && shx cp -r ../shared/ src/ && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },

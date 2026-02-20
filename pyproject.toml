@@ -16,7 +16,6 @@ dependencies = [
     "pydantic-settings>=2.7.0",
     "python-dotenv>=1.1.1",
     "redis",
-    "fastapi-cache2[redis]>=0.2.2",
     # Data processing (used by worker for DataFrame caching)
     "numpy",
     "pandas>=2.0.0,<3.0.0",
@@ -36,4 +35,6 @@ dev = [
     "pytest",
     "pytest-asyncio",
     "ruff",
+    "requests",
+    "greenlet"
 ]

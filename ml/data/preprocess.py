@@ -1,4 +1,4 @@
-"""Preprocessing functions for vehicle location data."""
+"""Basic preprocessing functions for vehicle location data."""
 from datetime import datetime, timezone
 import pandas as pd
 import numpy as np

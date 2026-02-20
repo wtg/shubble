@@ -3,9 +3,11 @@ import numpy as np
 import pandas as pd
 import random
 import warnings
-from tqdm import tqdm
-from typing import Tuple, Optional
 from pathlib import Path
+from typing import Tuple, Optional
+
+from sklearn.preprocessing import StandardScaler
+from tqdm import tqdm
 
 
 def filter_segmented(
@@ -226,6 +228,7 @@ def train_lstm(
     num_layers: int = 1,
     dropout: float = 0.0,
     learning_rate: float = 0.001,
+    weight_decay: float = 0.0,
     batch_size: int = 32,
     epochs: int = 100,
     device: str = "cpu",
@@ -284,10 +287,16 @@ def train_lstm(
     X = np.array(X_list)
     y = np.array(y_list)
 
+    # Fit StandardScaler on input features (per-feature mean/std across all samples and time steps)
+    n_samples, seq_len, n_features = X.shape
+    scaler = StandardScaler()
+    scaler.fit(X.reshape(-1, n_features))
+    X_scaled = scaler.transform(X.reshape(-1, n_features)).reshape(X.shape).astype(np.float32)
+
     # Initialize model
     input_size = len(input_columns)
     output_size = len(output_columns)
-    
+
     model = LSTMModel(
         input_size=input_size,
         hidden_size=hidden_size,
@@ -295,19 +304,21 @@ def train_lstm(
         output_size=output_size,
         dropout=dropout,
         learning_rate=learning_rate,
+        weight_decay=weight_decay,
         batch_size=batch_size,
         epochs=epochs,
         device=device
     )
+    model.set_scaler(scaler)
 
-    # Fit model
-    model.fit(X, y, verbose=verbose)
+    # Fit model on scaled inputs
+    model.fit(X_scaled, y, verbose=verbose)
 
     return model
 
 if __name__ == "__main__":
     from ml.pipelines import preprocess_pipeline
-    from ml.data.preprocess import segment_by_consecutive
+    from ml.data.segment import segment_by_consecutive
 
     print("="*70)
     print("Training Data Splitter Demo")
