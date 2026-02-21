@@ -21,6 +21,12 @@ export interface ParseResult {
     data?: TestData;
 }
 
+export interface BuildResult {
+    success: boolean;
+    error?: string;
+    data?: TestData;
+}
+
 /* export interface for confirming export is successfull?*/
 
 /**
@@ -199,3 +205,47 @@ export async function buildTestFile(){
 }
 
 */
+
+/*
+ * Export all shuttles and their queue of actions
+ * Exports a JSON file
+*/
+export async function stringy(data: TestData): Promise<void> {
+    let json = JSON.stringify(data, null, 2);
+    // Must be updated if there are new shuttle actions
+    json = json.replace(
+      /{\n\s+"type":\s+"([^"]+)"(,\n\s+"(route|duration)":\s+("[^"]+"|\d+))?\n\s+}/g,
+      (match) => {
+        return match
+          .replace(/\n\s+/g, ' ')
+          .replace(/\s+/g, ' ')
+          .replace(/\s+}/, ' }');
+      }
+    );
+
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'shuttle_export.json';
+    link.click();
+
+    URL.revokeObjectURL(url);
+}
+
+
+/**
+ * Builds a test file from shuttle actions
+ */
+export function buildTestFile(text: string): BuildResult {
+    try {
+        const data = JSON.parse(text) as TestData;
+        return { success: true, data };
+    } catch (err) {
+        return {
+            success: false,
+            error: err instanceof Error ? err.message : 'Invalid JSON'
+        };
+    }
+}

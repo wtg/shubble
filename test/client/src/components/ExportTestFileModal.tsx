@@ -1,12 +1,58 @@
 import { useState, useEffect } from 'react';
 import type { ShuttlesState, TestData, TestShuttle } from '../types';
 import Modal from './Modal.tsx';
+import {
+  // Things that can live in utils/testfiles.ts
+  // may be used in other files
+  // add a checker for exporting files to see if the data is correct no mistakes or spell?
+  stringy
+
+} from '../utils/testFiles.ts';
+
+
+
+
 
 interface ExportTestFileModalProps {
   isOpen: boolean;
   onClose: () => void;
   shuttles: ShuttlesState;
 }
+
+// break down export test file modal so that it is called buildTestFile, accepts queued actions and builds a json test file
+// handle export should be stringy?
+// build test file function should include everything else?
+// drag feature?
+
+// run parse test file and validate after it is built and report status back
+// display a status before exporting?
+// at the bottom hav ebutton that triggers download.
+
+// There are 5 shuttles with varying actions
+// click export
+// export modal appears
+// how to sort the shuttles? drag?
+
+// Show visual order of the shuttles and everything, when user clicks export
+// export calls buildtest file
+
+
+// Begin: buildTestFile (QueuedAction){
+// Builds a test file, do we move everything?
+// }
+
+
+
+
+// bottom: handle export 
+// run stringy, do not download
+// run parse test file and validate test data on the data
+// once user download, download with a on click stuff
+
+
+
+
+
 
 export default function ExportTestFileModal({
   isOpen,
@@ -15,9 +61,7 @@ export default function ExportTestFileModal({
 }: ExportTestFileModalProps) {
 
   // order shuttles drag shuttle4 to be first
-  const [orderedShuttles, setOrderedShuttles] = useState<string[]>(
-    Object.keys(shuttles)
-  );
+  const [orderedShuttles, setOrderedShuttles] = useState<string[]>(Object.keys(shuttles));
 
   // tracks which shuttles are selected shuttles 2, 6, 9
   const [selectedShuttles, setSelectedShuttles] = useState<string[]>([]);
@@ -80,6 +124,8 @@ export default function ExportTestFileModal({
   };
   
 
+  // here we do not use handle export 
+
   const handleExport = () => { 
     // If nothing selected then export all in the dragged order
     const shuttlesToExport =
@@ -122,6 +168,8 @@ export default function ExportTestFileModal({
       shuttles: shuttleArray
     };
 
+    stringy(exportData);
+    /*
     // Convert into JSON
     let json = JSON.stringify(exportData, null, 2);
 
@@ -145,6 +193,7 @@ export default function ExportTestFileModal({
     link.click();
 
     URL.revokeObjectURL(url);
+    */
     onClose();
   };
 
