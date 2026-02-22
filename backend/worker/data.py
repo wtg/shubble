@@ -54,6 +54,32 @@ async def load_average_travel_time(route: str, polyline_idx: int) -> Optional[fl
         logger.warning(f"Failed to load average travel time for {route} polyline {polyline_idx}: {e}")
         return None
 
+@cache(soft_ttl=300, hard_ttl=3600, namespace="average_stop_time")
+async def load_average_stop_time(route: str, polyline_idx: int, stop_name: str) -> Optional[float]:
+    """
+    Load average dwell time at a stop for a given polyline.
+    """
+    polyline_dir = get_polyline_dir(route, polyline_idx)
+    csv_path = polyline_dir / "average_stop_time.csv"
+
+    if not csv_path.exists():
+        return None
+
+    try:
+        df = pd.read_csv(csv_path)
+        if df.empty:
+            return None
+
+        # Filter for this stop
+        row = df[df["stop_name"] == stop_name]
+        if row.empty:
+            return None
+
+        return float(row.iloc[0]["avg_stop_time_seconds"])
+    except Exception as e:
+        logger.warning(f"Failed to load average stop time for {route} polyline {polyline_idx} stop {stop_name}: {e}")
+        return None
+
 async def _get_vehicle_data(vehicle_ids: List[str]) -> pd.DataFrame:
     """Helper to get and filter vehicle data."""
     try:
@@ -264,25 +290,36 @@ async def get_all_stop_times(vehicle_ids: List[str]) -> Dict[str, List[Tuple[str
         next_stop_key = stops[next_stop_idx]
         stop_times.append((next_stop_key, next_stop_eta))
 
-        # 3. Calculate ETAs for subsequent stops using average travel times
+        # 3. Calculate ETAs for subsequent stops using average travel + dwell times
         cumulative_eta = next_stop_eta
+
+        # Add dwell time at the NEXT stop first (arrival stop)
+        dwell_time = await load_average_stop_time(route, current_polyline_idx, next_stop_key)
+        if dwell_time:
+            cumulative_eta = cumulative_eta + timedelta(seconds=dwell_time)
 
         for i in range(next_stop_idx + 1, len(stops)):
             curr_stop_key = stops[i]
-            # Polyline index for transition TO this stop (from previous stop)
             polyline_idx_for_transition = i - 1
 
             # Load average travel time for this transition
             avg_time = await load_average_travel_time(route, polyline_idx_for_transition)
 
             if avg_time is None:
-                logger.warning(f"Missing average travel time for {route} polyline {polyline_idx_for_transition}")
-                # Skip remaining stops if we don't have complete data
+                logger.warning(
+                    f"Missing average travel time for {route} polyline {polyline_idx_for_transition}"
+                )
                 break
 
-            # Calculate ETA for this stop
+            # Arrival at stop
             cumulative_eta = cumulative_eta + timedelta(seconds=avg_time)
             stop_times.append((curr_stop_key, cumulative_eta))
+
+            # Add dwell time at this stop before continuing
+            dwell_time = await load_average_stop_time(route, polyline_idx_for_transition, curr_stop_key)
+            if dwell_time:
+                cumulative_eta = cumulative_eta + timedelta(seconds=dwell_time)
+
 
         if stop_times:
             results[vehicle_id] = stop_times
