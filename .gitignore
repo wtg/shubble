@@ -10,4 +10,3 @@ frontend/dist
 
 .venv/
 venv/
-seed_db.py
