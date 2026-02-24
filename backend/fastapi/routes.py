@@ -1,4 +1,5 @@
 """FastAPI routes for the Shubble API."""
+import asyncio
 import logging
 import hmac
 from hashlib import sha256
@@ -45,13 +46,13 @@ async def get_locations(response: Response, request: Request):
     This endpoint returns raw vehicle location data without ML predictions
     or route matching. Use /api/predictions for that data.
     """
-    # Get latest locations for vehicles in geofence
-    # Uses cached function that returns dicts
-    results = await get_latest_vehicle_locations(request.app.state.session_factory)
-
-    # Get current driver assignments for all vehicles in results
-    vehicle_ids = [loc["vehicle_id"] for loc in results]
-    current_assignments = await get_current_driver_assignments(vehicle_ids, request.app.state.session_factory)
+    # fetch locations and driver assignments in parallel (both cached)
+    vehicle_ids_set = await get_vehicles_in_geofence(request.app.state.session_factory)
+    vehicle_ids = list(vehicle_ids_set)
+    results, current_assignments = await asyncio.gather(
+        get_latest_vehicle_locations(request.app.state.session_factory),
+        get_current_driver_assignments(vehicle_ids, request.app.state.session_factory),
+    )
 
     # Format response
     response_data = {}
