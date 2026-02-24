@@ -19,7 +19,7 @@ from sqlalchemy import select
 from redis import asyncio as aioredis
 
 from backend.config import settings
-from backend.cache import soft_clear_namespace
+from backend.cache import soft_clear_namespace, get_redis
 from backend.database import create_async_db_engine, create_session_factory
 from backend.models import VehicleLocation
 from backend.time_utils import get_campus_start_of_day
@@ -181,43 +181,44 @@ async def get_today_dataframe() -> pd.DataFrame:
     today_str = get_campus_start_of_day().strftime('%Y-%m-%d')
     cache_key, timestamp_key = get_cache_and_timestamp_key(today_str)
 
-    # Connect to Redis
-    redis = await aioredis.from_url(settings.REDIS_URL)
+    # use shared redis when available (e.g. worker/fastapi), else create our own for scripts
+    redis = get_redis()
+    own_redis = False
+    if redis is None:
+        redis = await aioredis.from_url(settings.REDIS_URL)
+        own_redis = True
 
     try:
-        # Try to load from cache
+        # try to load from cache
         cached_data = await redis.get(cache_key)
         if cached_data:
             logger.info(f"Loaded {today_str} processed data from Redis cache")
             return pickle.loads(cached_data)
 
-        # Load raw from database
+        # load raw from database
         logger.info(f"Loading {today_str} raw data from database")
         raw_df = await load_today_dataframe()
 
-        # Process data in thread pool to avoid blocking the event loop
+        # process data in thread pool to avoid blocking the event loop
         logger.info(f"Processing {len(raw_df)} records through ML pipeline...")
         processed_df = await asyncio.to_thread(process_raw_dataframe, raw_df)
 
-        # Save to cache
-        # Serialize with pickle
+        # save to cache
         pickled_df = pickle.dumps(processed_df)
-
-        # Store data and timestamp (expire in 24 hours)
         async with redis.pipeline() as pipe:
-            # Set data and timestamp
             pipe.set(cache_key, pickled_df, ex=86400)
             pipe.set(timestamp_key, datetime.now(timezone.utc).isoformat(), ex=86400)
             await pipe.execute()
 
-        # Invalidate smart_closest_point cache since dataframe was updated
+        # invalidate smart_closest_point cache since dataframe was updated
         await soft_clear_namespace("smart_closest_point")
 
         logger.info(f"Saved {today_str} processed data to Redis cache")
         return processed_df
 
     finally:
-        await redis.close()
+        if own_redis:
+            await redis.close()
 
 
 async def update_today_dataframe(window_size: int = 5) -> pd.DataFrame:
@@ -248,16 +249,22 @@ async def update_today_dataframe(window_size: int = 5) -> pd.DataFrame:
     today_str = get_campus_start_of_day().strftime('%Y-%m-%d')
     cache_key, timestamp_key = get_cache_and_timestamp_key(today_str)
 
-    redis = await aioredis.from_url(settings.REDIS_URL)
+    # use shared redis when available, else create our own
+    redis = get_redis()
+    own_redis = False
+    if redis is None:
+        redis = await aioredis.from_url(settings.REDIS_URL)
+        own_redis = True
 
     try:
-        # Check if cache exists
+        # check if cache exists
         cached_data = await redis.get(cache_key)
         last_updated_bytes = await redis.get(timestamp_key)
 
         if not cached_data or not last_updated_bytes:
             logger.info(f"No cache found for {today_str}, loading fresh data")
-            await redis.close()
+            if own_redis:
+                await redis.close()
             return await get_today_dataframe()
 
         # Cache exists, perform incremental update
@@ -281,7 +288,8 @@ async def update_today_dataframe(window_size: int = 5) -> pd.DataFrame:
         raw_cols = ['vehicle_id', 'latitude', 'longitude', 'timestamp']
         if not all(col in current_processed_df.columns for col in raw_cols):
             logger.warning("Cached dataframe missing raw columns. Triggering full reload.")
-            await redis.close()
+            if own_redis:
+                await redis.close()
             return await get_today_dataframe()
 
         # Get rows that need recomputation (new rows + context)
@@ -361,4 +369,5 @@ async def update_today_dataframe(window_size: int = 5) -> pd.DataFrame:
         return updated_processed_df
 
     finally:
-        await redis.close()
+        if own_redis:
+            await redis.close()
