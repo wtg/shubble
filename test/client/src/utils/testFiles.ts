@@ -1,5 +1,5 @@
 // Test file loading - parses test JSON files and queues actions
-import type { TestData, ShuttleAction } from '../types.ts';
+import type { TestData, ShuttleAction, QueuedAction} from '../types.ts';
 import { ACTIONS } from '../types.ts';
 import { addShuttleToApi, addToQueueApi } from './shuttles.ts';
 
@@ -198,15 +198,6 @@ export async function importTestData(data: TestData): Promise<void> {
 }
 
 /*
-export async function buildTestFile(){
-//accepts a list of QueuedActions
-// see test/client/types.ts
-// and builds a json test file from the actions
-}
-
-*/
-
-/*
  * Export all shuttles and their queue of actions
  * Exports a JSON file
 */
@@ -214,12 +205,12 @@ export async function stringy(data: TestData): Promise<void> {
     let json = JSON.stringify(data, null, 2);
     // Must be updated if there are new shuttle actions
     json = json.replace(
-      /{\n\s+"type":\s+"([^"]+)"(,\n\s+"(route|duration)":\s+("[^"]+"|\d+))?\n\s+}/g,
-      (match) => {
+        /{\n\s+"type":\s+"([^"]+)"(,\n\s+"(route|duration)":\s+("[^"]+"|\d+))?\n\s+}/g,
+        (match) => {
         return match
-          .replace(/\n\s+/g, ' ')
-          .replace(/\s+/g, ' ')
-          .replace(/\s+}/, ' }');
+            .replace(/\n\s+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .replace(/\s+}/, ' }');
       }
     );
 
@@ -237,15 +228,29 @@ export async function stringy(data: TestData): Promise<void> {
 
 /**
  * Builds a test file from shuttle actions
+ * Accept a list of queued actions and handle the building of the json here
  */
-export function buildTestFile(text: string): BuildResult {
-    try {
-        const data = JSON.parse(text) as TestData;
-        return { success: true, data };
-    } catch (err) {
-        return {
-            success: false,
-            error: err instanceof Error ? err.message : 'Invalid JSON'
-        };
-    }
+export function buildTestFile(actions: QueuedAction[]): string {
+    const data: TestData = {
+        shuttles: [
+            {
+                events: actions.map(action => {
+                    const event: any = {
+                        type: action.action
+                    };
+
+                    if (action.action === ACTIONS.LOOPING && action.route) {
+                        event.route = action.route;
+                    }
+
+                    if (action.action === ACTIONS.ON_BREAK && action.duration !== undefined) {
+                        event.duration = action.duration;
+                    }
+
+                    return event;
+                })
+            }
+        ]
+    };
+    return JSON.stringify(data, null, 2);
 }

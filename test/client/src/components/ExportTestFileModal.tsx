@@ -1,17 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { ShuttlesState, TestData, TestShuttle } from '../types';
 import Modal from './Modal.tsx';
-import {
-  // Things that can live in utils/testfiles.ts
-  // may be used in other files
-  // add a checker for exporting files to see if the data is correct no mistakes or spell?
-  stringy
-
-} from '../utils/testFiles.ts';
-
-
-
-
+import { buildTestFile, parseTestFile, validateTestData, stringy } from '../utils/testFiles.ts';
 
 interface ExportTestFileModalProps {
   isOpen: boolean;
@@ -19,68 +9,33 @@ interface ExportTestFileModalProps {
   shuttles: ShuttlesState;
 }
 
-// break down export test file modal so that it is called buildTestFile, accepts queued actions and builds a json test file
-// handle export should be stringy?
-// build test file function should include everything else?
-// drag feature?
-
-// run parse test file and validate after it is built and report status back
-// display a status before exporting?
-// at the bottom hav ebutton that triggers download.
-
-// There are 5 shuttles with varying actions
-// click export
-// export modal appears
-// how to sort the shuttles? drag?
-
-// Show visual order of the shuttles and everything, when user clicks export
-// export calls buildtest file
-
-
-// Begin: buildTestFile (QueuedAction){
-// Builds a test file, do we move everything?
-// }
-
-
-
-
-// bottom: handle export 
-// run stringy, do not download
-// run parse test file and validate test data on the data
-// once user download, download with a on click stuff
-
-
-
-
-
-
 export default function ExportTestFileModal({
   isOpen,
   onClose,
   shuttles
 }: ExportTestFileModalProps) {
 
-  // order shuttles drag shuttle4 to be first
+  // Order Shuttles With Drag
   const [orderedShuttles, setOrderedShuttles] = useState<string[]>(Object.keys(shuttles));
 
-  // tracks which shuttles are selected shuttles 2, 6, 9
+  // Tracks which shuttles are selected shuttles 2, 6, 9
   const [selectedShuttles, setSelectedShuttles] = useState<string[]>([]);
 
-  // sync orderedShuttles when new shuttles are added or removed
+  // Sync orderedShuttles when new shuttles are added or removed
   useEffect(() => {
     const ids = Object.keys(shuttles);
 
     setOrderedShuttles((prev) => {
-      // keep existing order for shuttles that still exist
+      // Keep existing order for shuttles that still exist
       const existing = prev.filter((id) => ids.includes(id));
 
-      // add newly created shuttles to the end
+      // Add newly created shuttles to the end
       const newOnes = ids.filter((id) => !prev.includes(id));
 
       return [...existing, ...newOnes];
     });
 
-    // sync selectedShuttles in future change delete selected shuttle
+    // Sync selectedShuttles in future change delete selected shuttle
     setSelectedShuttles((prev) =>
     prev.filter((id) => ids.includes(id)));
 
@@ -92,7 +47,7 @@ export default function ExportTestFileModal({
     onClose();
   };
 
-  // toggle selection when clicked
+  // Toggle selection when clicked
   const toggleSelection = (id: string) => {
     setSelectedShuttles((prev) =>
       prev.includes(id)
@@ -101,9 +56,8 @@ export default function ExportTestFileModal({
     );
   };
 
-  // drag logic
+  // Drag Shuttle Logic
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>, index: number) => {
-    // remove the default faded image
     e.dataTransfer.setDragImage(new Image(), 0, 0);
     e.dataTransfer.setData('text/plain', index.toString());
   };
@@ -124,7 +78,7 @@ export default function ExportTestFileModal({
   };
   
 
-  // here we do not use handle export 
+
 
   const handleExport = () => { 
     // If nothing selected then export all in the dragged order
@@ -133,67 +87,43 @@ export default function ExportTestFileModal({
         ? orderedShuttles
         : orderedShuttles.filter((id) => selectedShuttles.includes(id));
 
-    const shuttleArray: TestShuttle[] = shuttlesToExport.map(
-      (id) => {
-        const shuttle = shuttles[id];
-        
-        return {
-          //Create array, and for each array there is event object that takeks shuttle action, optional parameter for route and duration
-          events: shuttle.queue.map((action) => {
-            const event: {
-              type: typeof action.action;
-              route?: string;
-              duration?: number;
-            } = {
-              type: action.action
-            };
 
-            // Looping and on_break special because of their .route and .duration parameters
-            // entering/exiting has no additional action type
-            if (action.action === 'looping' && action.route) {
-              event.route = action.route;
-            }
+    // For each shuttle, build invidual test file and validate each one
+    // before adding shuttles to a list to be exported.
+    // If shuttle fails validation, stop export and alert user with error message.
+    const builtShuttles: TestShuttle[] = [];
+    for (const id of shuttlesToExport) {
+      const shuttle = shuttles[id];
 
-            if (action.action === 'on_break' && action.duration !== undefined) {
-              event.duration = action.duration;
-            }
+      const text = buildTestFile(shuttle.queue);
 
-            return event;
-          })
-        };
+      // Parse shuttle data
+      const parseResult = parseTestFile(text);
+      if (!parseResult.success || !parseResult.data) {
+        alert(parseResult.error);
+      return;
       }
-    );
 
-    const exportData: TestData = {
-      shuttles: shuttleArray
-    };
-
-    stringy(exportData);
-    /*
-    // Convert into JSON
-    let json = JSON.stringify(exportData, null, 2);
-
-    // magic regex clean up
-    json = json.replace(
-      /{\n\s+"type":\s+"([^"]+)"(,\n\s+"(route|duration)":\s+("[^"]+"|\d+))?\n\s+}/g,
-      (match) => {
-        return match
-          .replace(/\n\s+/g, ' ')
-          .replace(/\s+/g, ' ')
-          .replace(/\s+}/, ' }');
+      //  Validate
+      const validation = validateTestData(parseResult.data);
+      if (!validation.valid || !validation.data) {
+        alert(validation.errors[0]?.message);
+        return;
       }
-    );
 
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
+      //alerts are displyed in modal
+      //grey out the shuttles no events
+      // 'No events defined'
+      
 
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'shuttle_export.json';
-    link.click();
 
-    URL.revokeObjectURL(url);
-    */
+      // No alerts, add to export list
+      builtShuttles.push(validation.data.shuttles[0]);
+    }
+
+    const finalData: TestData = {shuttles: builtShuttles};
+    
+    stringy(finalData);
     onClose();
   };
 
