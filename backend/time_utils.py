@@ -10,7 +10,8 @@ def get_campus_start_of_day():
     converted to UTC.
 
     Returns:
-        datetime: Midnight in campus timezone, converted to UTC
+        datetime: Start of the current day in campus timezone at the configured
+            DAY_START time, converted to UTC.
     """
     now = datetime.now(settings.CAMPUS_TZ)
     
