@@ -46,7 +46,9 @@ async def get_locations(response: Response, request: Request):
     This endpoint returns raw vehicle location data without ML predictions
     or route matching. Use /api/predictions for that data.
     """
-    # fetch locations and driver assignments in parallel (both cached)
+    # Get latest locations for vehicles in geofence
+    # Uses cached function that returns dicts
+    # Get current driver assignments for all vehicles in results
     vehicle_ids_set = await get_vehicles_in_geofence(request.app.state.session_factory)
     vehicle_ids = list(vehicle_ids_set)
     results, current_assignments = await asyncio.gather(

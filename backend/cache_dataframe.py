@@ -149,21 +149,25 @@ async def load_today_dataframe(since: datetime | None = None) -> pd.DataFrame:
     start_of_day = get_campus_start_of_day()
 
     async with session_factory() as session:
+        # Query vehicle locations from today
         stmt = select(
             VehicleLocation.vehicle_id,
             VehicleLocation.latitude,
             VehicleLocation.longitude,
             VehicleLocation.timestamp
         )
+
+        # Apply time filter based on whether 'since' is provided
         if since is not None:
             stmt = stmt.where(VehicleLocation.timestamp > since)
         else:
             stmt = stmt.where(VehicleLocation.timestamp >= start_of_day)
+
         stmt = stmt.order_by(VehicleLocation.timestamp)
         result = await session.execute(stmt)
         rows = result.fetchall()
 
-    # convert to dataframe
+    # Convert to DataFrame
     df = pd.DataFrame(
         rows,
         columns=['vehicle_id', 'latitude', 'longitude', 'timestamp']
@@ -183,7 +187,7 @@ async def get_today_dataframe() -> pd.DataFrame:
     today_str = get_campus_start_of_day().strftime('%Y-%m-%d')
     cache_key, timestamp_key = get_cache_and_timestamp_key(today_str)
 
-    # use shared redis when available (e.g. worker/fastapi), else create our own for scripts
+    # Connect to Redis
     redis = get_redis()
     own_redis = False
     if redis is None:
@@ -191,28 +195,29 @@ async def get_today_dataframe() -> pd.DataFrame:
         own_redis = True
 
     try:
-        # try to load from cache
+        # Try to load from cache
         cached_data = await redis.get(cache_key)
         if cached_data:
             logger.info(f"Loaded {today_str} processed data from Redis cache")
             return pickle.loads(cached_data)
 
-        # load raw from database
+        # Load raw from database
         logger.info(f"Loading {today_str} raw data from database")
         raw_df = await load_today_dataframe()
 
-        # process data in thread pool to avoid blocking the event loop
+        # Process data in thread pool to avoid blocking the event loop
         logger.info(f"Processing {len(raw_df)} records through ML pipeline...")
         processed_df = await asyncio.to_thread(process_raw_dataframe, raw_df)
 
-        # save to cache
+        # Save to cache
+        # Serialize with pickle
         pickled_df = pickle.dumps(processed_df)
         async with redis.pipeline() as pipe:
             pipe.set(cache_key, pickled_df, ex=86400)
             pipe.set(timestamp_key, datetime.now(timezone.utc).isoformat(), ex=86400)
             await pipe.execute()
 
-        # invalidate smart_closest_point cache since dataframe was updated
+        # Invalidate smart_closest_point cache since dataframe was updated
         await soft_clear_namespace("smart_closest_point")
 
         logger.info(f"Saved {today_str} processed data to Redis cache")
@@ -251,7 +256,7 @@ async def update_today_dataframe(window_size: int = 5) -> pd.DataFrame:
     today_str = get_campus_start_of_day().strftime('%Y-%m-%d')
     cache_key, timestamp_key = get_cache_and_timestamp_key(today_str)
 
-    # use shared redis when available, else create our own
+    # Connect to Redis
     redis = get_redis()
     own_redis = False
     if redis is None:
@@ -259,7 +264,7 @@ async def update_today_dataframe(window_size: int = 5) -> pd.DataFrame:
         own_redis = True
 
     try:
-        # check if cache exists
+        # Check if cache exists
         cached_data = await redis.get(cache_key)
         last_updated_bytes = await redis.get(timestamp_key)
 
