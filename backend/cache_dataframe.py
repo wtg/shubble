@@ -27,6 +27,19 @@ from ml.pipelines import preprocess_pipeline, segment_pipeline, stops_pipeline
 
 logger = logging.getLogger(__name__)
 
+# reused across calls to avoid connection churn (worker hits this every ~5s when data updates)
+_engine = None
+_session_factory = None
+
+
+def _get_session_factory():
+    """lazy init - reuse engine/session_factory within process."""
+    global _engine, _session_factory
+    if _session_factory is None:
+        _engine = create_async_db_engine(settings.DATABASE_URL, echo=False)
+        _session_factory = create_session_factory(_engine)
+    return _session_factory
+
 
 def get_cache_and_timestamp_key(date_str: str) -> tuple[str, str]:
     """Get Redis cache keys for data and timestamp."""
@@ -132,36 +145,25 @@ async def load_today_dataframe(since: datetime | None = None) -> pd.DataFrame:
     Returns:
         DataFrame with columns: vehicle_id, latitude, longitude, timestamp
     """
-    # Create database engine and session factory
-    engine = create_async_db_engine(settings.DATABASE_URL, echo=False)
-    session_factory = create_session_factory(engine)
-
+    session_factory = _get_session_factory()
     start_of_day = get_campus_start_of_day()
 
     async with session_factory() as session:
-        # Query vehicle locations from today
         stmt = select(
             VehicleLocation.vehicle_id,
             VehicleLocation.latitude,
             VehicleLocation.longitude,
             VehicleLocation.timestamp
         )
-
-        # Apply time filter based on whether 'since' is provided
         if since is not None:
             stmt = stmt.where(VehicleLocation.timestamp > since)
         else:
             stmt = stmt.where(VehicleLocation.timestamp >= start_of_day)
-
         stmt = stmt.order_by(VehicleLocation.timestamp)
-
         result = await session.execute(stmt)
         rows = result.fetchall()
 
-    # Close engine
-    await engine.dispose()
-
-    # Convert to DataFrame
+    # convert to dataframe
     df = pd.DataFrame(
         rows,
         columns=['vehicle_id', 'latitude', 'longitude', 'timestamp']
