@@ -13,6 +13,9 @@ def get_campus_start_of_day():
         datetime: Midnight in campus timezone, converted to UTC
     """
     now = datetime.now(settings.CAMPUS_TZ)
-    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # timestamp parse DAY_START
+    day_start_time = datetime.strptime(settings.DAY_START, "%H:%M:%S").time()
+    midnight = now.replace(hour=day_start_time.hour, minute=day_start_time.minute, second=day_start_time.second, microsecond=0)
 
     return midnight.astimezone(timezone.utc)
