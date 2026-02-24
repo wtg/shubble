@@ -116,6 +116,44 @@ POST /api/webhook    # Samsara geofence events
    - `driver_id` (FK), `vehicle_id` (FK)
    - `assignment_start`, `assignment_end`
 
+6. **etas** - Vehicle ETA mapping
+   - `id` (PK) - Auto-increment
+   - `vehicle_id` (FK), `etas`, `timestamp`
+   - `created_at`
+
+7. **predicted__locations** - Vehicle Location Prediction
+   - `id` (PK) - Auto-increment
+   - `vehicle_id` (FK), `speed_kmh`, `timestamp`
+   - `created_at`
+
+8. **route_to_bus_schedules** - Route to Bus Schedule mapping
+   - `id` (PK) - Auto-increment
+   - `route_id` (FK), `bus_schedule_id` (FK), `timestamp`
+
+9. **date_to_day_schedules** - Date to Schedule for Day mapping
+   - `id` (PK) - Auto-increment
+   - `day_schedule_id` (FK)
+
+10. **bus_schedules_to_day_schedules** Bus Schedule to Day Schedule mapping
+   - `id` (PK) - Auto-increment
+   - `bus_schedule_id` (FK), `day_schedule_id` (FK)
+
+11. **bus_schedule** Bus Schedule Data
+   - `id` (PK) - Auto-increment
+   - `name`
+
+12. **routes** Route Data
+   - `id` (PK) - Auto-increment
+   - `name`, `route_color`
+
+13. **stop** Stop Data
+   - `id` (PK) - Auto-increment
+   - `name`, `latitude`, `longitude`
+
+14. **polylines** Polyline Data
+   - `id` (PK) - Auto-increment
+   - `departure_stop_id` (FK), `arrival_stop_id` (FK), `coordinates`
+
 ### Migrations
 
 ```bash
