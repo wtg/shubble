@@ -1,7 +1,7 @@
 """SQLAlchemy models for async database operations."""
 from datetime import datetime, timezone
 from typing import Optional
-from sqlalchemy import String, Integer, Float, Boolean, DateTime, ForeignKey, Index, UniqueConstraint, TIMESTAMP, ARRAY, JSON
+from sqlalchemy import String, Integer, Float, Boolean, DateTime, ForeignKey, Index, UniqueConstraint, TIME, ARRAY, JSON, DATE
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.database import Base
 
@@ -153,12 +153,13 @@ class RouteToBusSchedule(Base):
     __tablename__ =  "route_to_bus_schedules"
     __table_args__ = (
         Index("route_id", "timestamp"),
+        UniqueConstraint("bus_schedule_id", "timestamp", name="uq_route_to_bus_schedules_bus_schedule_id_timestamp"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key = True, autoincrement = True )
     route_id: Mapped[int] = mapped_column(Integer, ForeignKey("routes.id"), nullable=False)
     bus_schedule_id: Mapped[int] = mapped_column( Integer, ForeignKey("bus_schedules.id"), nullable=False)
-    timestamp: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False) 
+    timestamp: Mapped[datetime] = mapped_column(TIME(timezone=True), nullable=False) 
     
     #Relationships
     route: Mapped["Route"] = relationship(back_populates="route_to_bus_schedules")
@@ -176,6 +177,7 @@ class DateToDaySchedule(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key = True, autoincrement = True )
     day_schedule_id: Mapped[int] = mapped_column(Integer, ForeignKey("day_schedules.id"), nullable=False)
+    date: Mapped[datetime] = mapped_column(DATE, nullable=False)
 
     #Relationships
     day_schedule: Mapped["DaySchedule"] = relationship(back_populates="date_to_day_schedule")
@@ -233,6 +235,7 @@ class Route(Base):
     route_color: Mapped[str] = mapped_column(String, nullable=False)
     
     #Relationships
+    stops: Mapped[list["Stop"]] = relationship(back_populates="route", lazy="selectin")
     route_to_bus_schedules: Mapped[list["RouteToBusSchedule"]] = relationship(back_populates="route")
 
     def __repr__(self):
@@ -246,10 +249,12 @@ class Stop(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key = True, autoincrement = True )
     name: Mapped[str] = mapped_column(String, nullable = False )
+    route_id: Mapped[int] = mapped_column(Integer, ForeignKey("routes.id"), nullable=False)
     latitude: Mapped[float] = mapped_column(Float, nullable=False)
     longitude: Mapped[float] = mapped_column(Float, nullable=False)
   
     # Relationships
+    route: Mapped["Route"] = relationship(back_populates="stops", lazy="selectin")
     arrival_polyline: Mapped[list["Polyline"]] = relationship(back_populates="arrival_stop", foreign_keys="Polyline.arrival_stop_id", lazy="selectin")
     departure_polyline: Mapped[list["Polyline"]] = relationship(back_populates="departure_stop", foreign_keys="Polyline.departure_stop_id", lazy="selectin")
 
@@ -260,6 +265,7 @@ class Polyline(Base):
     __tablename__ = "polylines"
     __table_args__ = (
         Index("arrival_stop_id", "departure_stop_id"),
+        UniqueConstraint("arrival_stop_id", "departure_stop_id", name="uq_polylines_arrival_departure_stops"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key = True, autoincrement = True )
