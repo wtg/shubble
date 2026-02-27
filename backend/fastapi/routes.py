@@ -13,7 +13,7 @@ from backend.cache import cache, soft_clear_namespace
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects import postgresql
 from backend.database import get_db
-from backend.models import Vehicle, GeofenceEvent, VehicleLocation
+from backend.models import Vehicle, GeofenceEvent, VehicleLocation, Announcement
 from backend.config import settings
 from backend.time_utils import get_campus_start_of_day
 from backend.utils import (
@@ -441,12 +441,22 @@ async def get_matched_shuttle_schedules(force_recompute: bool = False):
         )
 
 @router.get("/api/announcements")
-async def get_announcements(): 
-    """Serve announcements.json file."""
-    root_dir = Path(__file__).parent.parent.parent
-    """make sure I did it right"""
-    print(root_dir) 
-    announcements_file = root_dir / "shared" / "announcements.json"
-    if announcements_file.exists():
-        return FileResponse(announcements_file)
-    raise HTTPException(status_code=404, detail="Announcements file not found")
+@cache(soft_ttl=900, hard_ttl=3600, namespace="announcements")
+async def data_announcement(db: AsyncSession = Depends(get_db)):
+
+    # Query announcements that are active and not expired
+    now = datetime.now(timezone.utc)
+    announcements_query = (
+        select(Announcement)
+        .where(
+            and_(
+                Announcement.active == True,
+                Announcement.expires_at >= now,
+            )
+        )
+        # Order by most recent first
+        .order_by(Announcement.created_at.desc())
+    )
+    announcements_result = await db.execute(announcements_query)
+    announcements = announcements_result.scalars().all()
+    return announcements
