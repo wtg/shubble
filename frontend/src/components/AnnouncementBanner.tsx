@@ -1,7 +1,11 @@
 import './styles/AnnouncementBanner.css';
-import announcementsData from '../shared/announcements.json';
-import type { Announcement, AnnouncementsData } from '../types/announcement';
-import type { ReactNode } from 'react';
+import type { Announcement} from '../types/announcement';
+import { 
+    useState, 
+    useEffect,
+    type ReactNode 
+} from 'react';
+import config from '../utils/config';
 
 type BannerType = 'info' | 'warning' | 'error';
 
@@ -83,22 +87,18 @@ export function Banner({ message, type, showReload = false }: BannerProps) {
 /**
  * Filters announcements to only return active, non-expired ones.
  */
-function getActiveAnnouncements(data: AnnouncementsData): Announcement[] {
-    const now = new Date();
-
-    return data.announcements.filter((announcement) => {
-        // Skip inactive announcements
-        if (!announcement.active) return false;
-
-        // Skip expired announcements and invalid dates
-        if (announcement.expiresAt) {
-            const expirationDate = new Date(announcement.expiresAt);
-            if (isNaN(expirationDate.getTime())) return false;
-            if (expirationDate < now) return false;
+async function getActiveAnnouncements(): Promise<Announcement[]> {
+    try{
+        const response = await fetch(`${config.apiBaseUrl}/api/announcements`);
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
         }
-
-        return true;
-    });
+        const data = await response.json() as Announcement[];
+        return data
+    } catch (error) {
+        console.error('Error fetching announcements:', error);
+        return [];
+    }
 }
 
 /**
@@ -106,15 +106,23 @@ function getActiveAnnouncements(data: AnnouncementsData): Announcement[] {
  * Only shows active, non-expired announcements.
  */
 export default function AnnouncementBanner() {
-    const activeAnnouncements = getActiveAnnouncements(announcementsData as AnnouncementsData);
+    const [activeAnnouncements, setAnnouncements] = useState<Announcement[] | null>(null);
 
-    if (activeAnnouncements.length === 0) {
-        return null;
+    const fetchAnnouncements = async () => {
+        try {
+            setAnnouncements(await getActiveAnnouncements());
+        } catch (error) {
+            console.error('Error fetching announcements:', error);
+        }
     }
+    
+    useEffect(() => {
+        fetchAnnouncements();
+    }, []);
 
     return (
         <>
-            {activeAnnouncements.map((announcement) => (
+            {activeAnnouncements?.map((announcement) => (
                 <Banner
                     key={announcement.id}
                     message={announcement.message}
