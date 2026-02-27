@@ -5,6 +5,7 @@ from typing import Dict, Tuple, Optional, List, TypedDict, Any
 import pandas as pd
 
 from backend.cache import cache
+from backend.function_timer import timed
 
 from backend.models import VehicleLocation, DriverVehicleAssignment, ETA, PredictedLocation
 from backend.cache_dataframe import get_today_dataframe
@@ -58,6 +59,7 @@ class VelocityDict(TypedDict):
     timestamp: str
 
 
+@timed
 @cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="smart_closest_point")
 async def smart_closest_point(
     vehicle_ids: List[str]
@@ -147,6 +149,7 @@ async def smart_closest_point(
     return results
 
 
+@timed
 @cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="locations")
 async def get_latest_vehicle_locations(session_factory) -> List[VehicleLocationDict]:
     """
@@ -220,6 +223,7 @@ async def get_latest_vehicle_locations(session_factory) -> List[VehicleLocationD
         return location_dicts
 
 
+@timed
 @cache(soft_ttl=900, hard_ttl=3600, namespace="driver_assignments")
 async def get_current_driver_assignments(
     vehicle_ids: List[str], session_factory
@@ -266,6 +270,7 @@ async def get_current_driver_assignments(
         return result_dict
 
 
+@timed
 @cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="etas")
 async def get_latest_etas(vehicle_ids: List[str], session_factory) -> Dict[str, ETADict]:
     """
@@ -318,6 +323,7 @@ async def get_latest_etas(vehicle_ids: List[str], session_factory) -> Dict[str, 
         return etas_dict
 
 
+@timed
 @cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="velocities")
 async def get_latest_velocities(vehicle_ids: List[str], session_factory) -> Dict[str, VelocityDict]:
     """

@@ -13,6 +13,7 @@ from backend.cache import init_cache, close_cache, soft_clear_namespace
 from backend.database import create_async_db_engine, create_session_factory
 from backend.models import VehicleLocation, Driver, DriverVehicleAssignment
 from backend.utils import get_vehicles_in_geofence
+from backend.function_timer import timed
 from backend.worker.data import generate_and_save_predictions
 from backend.cache_dataframe import update_today_dataframe
 
@@ -27,6 +28,7 @@ logger = logging.getLogger(__name__)
 logger.info(f"Worker logging level: {worker_log_level}")
 
 
+@timed
 async def update_locations(session_factory):
     """
     Fetches and updates vehicle locations for vehicles currently in the geofence.
@@ -160,6 +162,7 @@ async def update_locations(session_factory):
         return []
 
 
+@timed
 async def update_driver_assignments(session_factory, vehicle_ids):
     """
     Fetches and updates driver-vehicle assignments for vehicles currently in the geofence.
