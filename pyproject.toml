@@ -23,6 +23,9 @@ dependencies = [
 ]
 
 [dependency-groups]
+admin = [
+    "sqladmin>=0.21.0",
+]
 ml = [
     "torch",
     "scikit-learn",
@@ -37,3 +40,4 @@ dev = [
     "pytest-asyncio",
     "ruff",
 ]
+
