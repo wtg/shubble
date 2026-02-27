@@ -1,5 +1,7 @@
 """Data prediction utilities for worker."""
+import asyncio
 import logging
+from contextlib import aclosing
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional, Tuple, Any
@@ -10,12 +12,11 @@ from ml.deploy.lstm import load_lstm_for_route
 from ml.deploy.arima import load_arima
 from ml.training.train import fit_arima
 from backend.models import ETA, PredictedLocation
-from backend.database import create_async_db_engine, create_session_factory
+from backend.database import get_db
 from backend.config import settings
 from backend.cache import cache, soft_clear_namespace
 from ml.cache import get_polyline_dir
 from shared.stops import Stops
-import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -371,10 +372,8 @@ async def save_predictions(etas: Dict[str, List[Tuple[str, datetime]]], next_sta
     if not etas and not next_states:
         return
 
-    engine = create_async_db_engine(settings.DATABASE_URL, echo=False)
-    session_factory = create_session_factory(engine)
-
-    async with session_factory() as session:
+    async with aclosing(get_db()) as gen:
+        session = await anext(gen)
         # Save ETAs (as ISO format strings for JSON storage)
         for vid, stop_etas in etas.items():
             # Convert list of (stop_key, datetime) tuples to dict
@@ -399,8 +398,6 @@ async def save_predictions(etas: Dict[str, List[Tuple[str, datetime]]], next_sta
         await session.commit()
         await soft_clear_namespace("etas")
         await soft_clear_namespace("velocities")
-
-    await engine.dispose()
 
 async def generate_and_save_predictions(vehicle_ids: List[str]):
     """Generate ETAs and next states, then save to DB."""

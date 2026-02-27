@@ -88,20 +88,17 @@ async def smart_closest_point(
                 results[vehicle_id] = (None, None, None, None, None, None)
             return results
 
-        # Ensure vehicle_id is string type for comparison
         df['vehicle_id'] = df['vehicle_id'].astype(str)
+        grouped = df.groupby('vehicle_id')
 
         # Get the latest row for each vehicle
         for vehicle_id in vehicle_ids:
-            vehicle_data = df[df['vehicle_id'] == str(vehicle_id)]
-
-            if vehicle_data.empty:
-                # No data for this vehicle
+            vid_str = str(vehicle_id)
+            if vid_str not in grouped.groups:
                 results[vehicle_id] = (None, None, None, None, None, None)
                 continue
 
-            # Get the latest row (dataframe is sorted by timestamp)
-            latest = vehicle_data.iloc[-1]
+            latest = grouped.get_group(vid_str).iloc[-1]
 
             # Extract closest point data from the preprocessed columns
             # These columns are added by ml/data/preprocess.py pipeline
