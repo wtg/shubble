@@ -165,27 +165,16 @@ async def get_latest_vehicle_locations(session_factory) -> List[VehicleLocationD
         # Get query for vehicles in geofence and convert to subquery
         geofence_entries = get_vehicles_in_geofence_query().subquery()
 
-        # Subquery: latest vehicle location per vehicle
-        latest_locations = (
-            select(
-                VehicleLocation.vehicle_id,
-                func.max(VehicleLocation.timestamp).label("latest_time"),
-            )
-            .where(VehicleLocation.vehicle_id.in_(select(geofence_entries.c.vehicle_id)))
-            .group_by(VehicleLocation.vehicle_id)
-            .subquery()
-        )
-
-        # Join to get full location and vehicle info for vehicles in geofence
         query = (
             select(VehicleLocation)
-            .join(
-                latest_locations,
-                and_(
-                    VehicleLocation.vehicle_id == latest_locations.c.vehicle_id,
-                    VehicleLocation.timestamp == latest_locations.c.latest_time,
-                ),
+            .where(
+                VehicleLocation.vehicle_id.in_(select(geofence_entries.c.vehicle_id))
             )
+            .order_by(
+                VehicleLocation.vehicle_id,
+                VehicleLocation.timestamp.desc()
+            )
+            .distinct(VehicleLocation.vehicle_id)
             .options(selectinload(VehicleLocation.vehicle))
         )
 
