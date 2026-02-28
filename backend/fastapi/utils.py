@@ -10,6 +10,7 @@ from backend.function_timer import timed
 from backend.models import VehicleLocation, DriverVehicleAssignment, ETA, PredictedLocation
 from backend.cache_dataframe import get_today_dataframe
 from backend.utils import get_vehicles_in_geofence_query
+from backend.time_utils import get_campus_start_of_day
 
 import logging
 
@@ -168,7 +169,8 @@ async def get_latest_vehicle_locations(session_factory) -> List[VehicleLocationD
         query = (
             select(VehicleLocation)
             .where(
-                VehicleLocation.vehicle_id.in_(select(geofence_entries.c.vehicle_id))
+                VehicleLocation.vehicle_id.in_(select(geofence_entries.c.vehicle_id)),
+                VehicleLocation.timestamp >= get_campus_start_of_day(),
             )
             .order_by(
                 VehicleLocation.vehicle_id,
