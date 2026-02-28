@@ -151,7 +151,7 @@ async def smart_closest_point(
 
 
 @timed
-@cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="locations")
+@cache(soft_ttl=15, hard_ttl=300, lock_timeout=0.0, namespace="locations")
 async def get_latest_vehicle_locations(session_factory) -> List[VehicleLocationDict]:
     """
     Get the latest location for each vehicle currently inside the geofence.
