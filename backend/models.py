@@ -149,6 +149,18 @@ class PredictedLocation(Base):
     def __repr__(self):
         return f"<PredictedLocation {self.vehicle_id} @ {self.timestamp} - {self.speed_kmh} km/h>"
 
+class SuggestedAnnouncement(Base):
+    __tablename__ = "suggested_announcements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    suggestion: Mapped[str] = mapped_column(String, nullable=False)
+    created_by_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    def __repr__(self):
+        return f"<SuggestedAnnouncement {self.id} (admin={self.created_by_admin})>"
+
+
 class Announcement(Base):
     __tablename__ = "announcements"
 
