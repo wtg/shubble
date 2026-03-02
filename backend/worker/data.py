@@ -48,6 +48,7 @@ async def load_average_travel_time(route: str, polyline_idx: int) -> Optional[fl
     try:
         df = pd.read_csv(csv_path)
         if len(df) == 0:
+            logger.info(f"No file")
             return None
         return float(df.iloc[0]['avg_travel_time_seconds'])
     except Exception as e:
