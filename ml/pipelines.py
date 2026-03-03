@@ -343,8 +343,7 @@ def stops_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
         DataFrame with added columns: 'stop_name', 'stop_route',
         'dist_from_start', 'dist_to_end', 'polyline_length'
     """
-    from ml.data.stops import add_stops, add_polyline_distances
-    from ml.data.preprocess import clean_stops
+    from ml.data.stops import add_stops, add_polyline_distances, clean_stops
 
     stops = kwargs.get('stops', False)
     cache = kwargs.get('cache', True)
