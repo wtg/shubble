@@ -16,7 +16,10 @@ def timed(func):
                 return await func(*args, **kwargs)
             finally:
                 elapsed = time.perf_counter() - start
-                logger.info("%.3fs %s.%s", elapsed, func.__module__, func.__qualname__)
+                if elapsed >= 3:
+                    logger.warning("%.3fs %s.%s", elapsed, func.__module__, func.__qualname__)
+                else:
+                    logger.info("%.3fs %s.%s", elapsed, func.__module__, func.__qualname__)
         return async_wrapper
     else:
         @functools.wraps(func)
@@ -26,5 +29,8 @@ def timed(func):
                 return func(*args, **kwargs)
             finally:
                 elapsed = time.perf_counter() - start
-                logger.info("%.3fs %s.%s", elapsed, func.__module__, func.__qualname__)
+                if elapsed >= 3:
+                    logger.warning("%.3fs %s.%s", elapsed, func.__module__, func.__qualname__)
+                else:
+                    logger.info("%.3fs %s.%s", elapsed, func.__module__, func.__qualname__)
         return sync_wrapper
