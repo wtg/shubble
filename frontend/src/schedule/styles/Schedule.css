@@ -157,7 +157,8 @@
 .timeline-dot {
   position: absolute;
   left: -35px;
-  top: 8px;
+  top: 50%;
+  transform: translateY(-50%);
   width: 12px;
   height: 12px;
   background: #578FCA;
