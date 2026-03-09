@@ -7,6 +7,8 @@ from pathlib import Path
 
 from fastapi import APIRouter, Request, Depends, HTTPException, Response
 from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel
+from typing import Literal
 from sqlalchemy import func, and_, select
 
 from backend.cache import cache, soft_clear_namespace
@@ -460,3 +462,46 @@ async def data_announcement(db: AsyncSession = Depends(get_db)):
     announcements_result = await db.execute(announcements_query)
     announcements = announcements_result.scalars().all()
     return announcements
+
+
+class VoteRequest(BaseModel):
+    direction: Literal["up", "down"] | None
+    previous_direction: Literal["up", "down"] | None = None
+
+
+_BUBBLE_VOTES_CHANNEL = "bubble:votes"
+
+
+@router.post("/api/announcements/{announcement_id}/vote")
+async def vote_announcement(
+    announcement_id: int,
+    body: VoteRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    ann = await db.get(Announcement, announcement_id)
+    if ann is None:
+        raise HTTPException(status_code=404, detail="Announcement not found")
+
+    if body.previous_direction == "up":
+        ann.upvotes = max(0, ann.upvotes - 1)
+    elif body.previous_direction == "down":
+        ann.downvotes = max(0, ann.downvotes - 1)
+
+    if body.direction == "up":
+        ann.upvotes += 1
+    elif body.direction == "down":
+        ann.downvotes += 1
+
+    await db.commit()
+    await soft_clear_namespace("announcements")
+
+    # Notify Bubble so it can react to accumulated votes
+    try:
+        await request.app.state.redis.publish(_BUBBLE_VOTES_CHANNEL, str(announcement_id))
+    except Exception:
+        logger.warning("Failed to publish vote event to Redis", exc_info=True)
+
+    return {"upvotes": ann.upvotes, "downvotes": ann.downvotes}
+
+

@@ -17,6 +17,9 @@ class BubbleSettings(BaseSettings):
     # Google Gemini API key
     GEMINI_API_KEY: str
 
+    # Base URL of the Shubble backend API (used to fetch live shuttle data)
+    BACKEND_URL: str = "http://localhost:8000"
+
     # Comma-separated list of URLs to fetch as context for announcement generation
     BUBBLE_SOURCES: str = ""
 
@@ -25,6 +28,15 @@ class BubbleSettings(BaseSettings):
 
     # How often to regenerate announcements (seconds); default 1 hour
     BUBBLE_INTERVAL: int = 3600
+
+    # Number of votes required to trigger an immediate Bubble rerun
+    BUBBLE_VOTE_THRESHOLD: int = 3
+
+    # Minimum seconds between vote-triggered reruns (cooldown)
+    BUBBLE_VOTE_COOLDOWN: int = 60
+
+    # Number of past run exchanges to include in the prompt as memory context
+    BUBBLE_MEMORY_EXCHANGES: int = 5
 
     # Logging
     LOG_LEVEL: str = "info"

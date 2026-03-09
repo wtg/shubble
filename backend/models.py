@@ -154,12 +154,10 @@ class SuggestedAnnouncement(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     suggestion: Mapped[str] = mapped_column(String, nullable=False)
-    created_by_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     def __repr__(self):
-        return f"<SuggestedAnnouncement {self.id} (admin={self.created_by_admin})>"
-
+        return f"<SuggestedAnnouncement {self.id}>"
 
 class Announcement(Base):
     __tablename__ = "announcements"
@@ -170,6 +168,8 @@ class Announcement(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    upvotes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    downvotes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     # No Relationships
 

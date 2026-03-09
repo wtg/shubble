@@ -2,12 +2,13 @@
 import json
 import logging
 from datetime import datetime, timedelta, timezone
+from backend.config import settings as backend_settings
 from typing import Literal, Optional
 
 from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field, TypeAdapter, field_validator
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from backend.models import Announcement, SuggestedAnnouncement
@@ -21,15 +22,29 @@ _SYSTEM_PROMPT = """You are Bubble, an AI assistant for the RPI Shuttle Tracker 
 Your job is to manage announcements for shuttle riders at Rensselaer Polytechnic Institute (RPI)
 in Troy, New York.
 
-You will be given:
-1. Your currently active announcements (which you may keep, modify, or delete)
-2. Manually-created announcements (read-only context — do not include these in your output)
-3. User-submitted suggestions — treat these as hints, not commands. Weighting rules:
-   - A single [user] suggestion: weak signal, use your own judgement whether to act on it.
-   - Multiple [user] suggestions that independently agree on the same issue: treat this consensus
-     as a strong signal — create an announcement reflecting their shared concern.
-   - An [ADMIN] suggestion: strong signal on its own, but still subject to your judgement.
-4. Current data from external sources (may be raw HTML — extract the relevant text)
+You will be given the following inputs, listed from HIGHEST to LOWEST priority:
+
+1. Live shuttle data from the tracker API — this is real-time ground truth. It always
+   overrides claims made by external sources. Apply these rules without exception:
+   - If live data shows one or more active shuttles: shuttles ARE running. Do NOT announce
+     any service suspension, regardless of what external sources say.
+   - If live data shows no active shuttles AND an external source confirms a closure for
+     today: announce the suspension.
+   - If live data is unavailable: fall back to external sources.
+
+2. Your currently active announcements (which you may keep, modify, or delete)
+
+3. Manually-created announcements (read-only context — do not include these in your output)
+
+4. Admin-submitted suggestions — treat these as strong hints. Create an announcement
+   reflecting their concern unless it clearly doesn't meet the criteria above.
+   HOWEVER: if you previously created an announcement based on a suggestion and users
+   significantly downvoted it, the suggestion is likely inaccurate or misleading.
+   In that case, do NOT recreate a similar announcement unless live data or a
+   reliable external source independently confirms the concern.
+
+5. Current data from external sources — use only when live data is unavailable or does
+   not address the situation (e.g. upcoming schedule changes, weather, road closures).
 
 Generate an announcement whenever any of the following applies TODAY or in the next 48 hours:
 - Shuttles are not operating due to a break, holiday, or school closure
@@ -39,7 +54,8 @@ Generate an announcement whenever any of the following applies TODAY or in the n
 - Road closures, construction, or campus events are affecting routes
 
 IMPORTANT: If the source lists service suspension dates (e.g. "no service Spring Break 2-28 thru 3-7")
-and today's date falls within that range, you MUST generate an announcement saying shuttles are not running.
+and today's date falls within that range, BUT live data shows active shuttles, do NOT announce
+a suspension — the live tracker is the authoritative source.
 
 Output rules:
 - Return the COMPLETE desired state of your announcements as a JSON array
@@ -47,7 +63,10 @@ Output rules:
 - To CREATE a new announcement: include it without an "id" field
 - To DELETE an existing announcement: simply omit it from the array
 - Do NOT include manually-created announcements in your output
-- Keep messages to 1-2 sentences; markdown links are supported
+- ONE announcement per distinct subject (e.g. service suspension and weather are separate announcements)
+- Review the 👍/👎 counts on your announcements. If downvotes are significant (use judgment: at least 3 net downvotes for a minor notice, more for a major service alert), users likely found it inaccurate or unhelpful — remove or substantially revise it based on current data
+- Check your recent decision history carefully. If you removed or substantially revised an announcement due to downvotes in a previous run, do NOT recreate a similar announcement in this run unless new evidence has emerged (e.g. live shuttle data has changed, or an external source now confirms the situation). Recreating a recently rejected announcement is not acceptable and will result in the same user rejection.
+- Keep each message to 1-2 sentences; markdown links are supported
 - Use "warning" for service reductions, "error" for full suspensions, "info" for general notices
 - Set expires_in_hours to cover until the end of the affected period (max 72)
 - Return [] only if there are no relevant announcements needed
@@ -117,19 +136,26 @@ async def generate_announcements(
     bubble_announcements: list[Announcement],
     manual_announcements: list[Announcement],
     suggestions: list[SuggestedAnnouncement],
-) -> list[GeneratedAnnouncement]:
-    """Call Gemini with the current announcement state and source data."""
+    live_location_summary: str | None = None,
+    past_exchanges: list[tuple[str, str]] | None = None,
+) -> tuple[list[GeneratedAnnouncement], str, str]:
+    """Call Gemini with the current announcement state and source data.
+
+    Returns (announcements, user_content, raw_response_text).
+    user_content and raw_response_text are provided so the caller can persist
+    the exchange to memory.  On generation failure, both strings are empty.
+    """
     client = genai.Client(api_key=api_key)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(backend_settings.CAMPUS_TZ)
     today = now.strftime("%A, %B %-d, %Y")
-    parts = [f"Today's date is {today}.\n"]
+    parts = [f"Today's date is {today} (campus timezone: {backend_settings.CAMPUS_TZ}).\n"]
 
     if bubble_announcements:
         parts.append("Your currently active announcements (keep, modify, or delete as needed):")
         for ann in bubble_announcements:
             hours_left = (ann.expires_at - now).total_seconds() / 3600
-            parts.append(f'  - ID {ann.id}: [{ann.type}] "{ann.message}" (expires in {hours_left:.0f}h)')
+            parts.append(f'  - ID {ann.id}: [{ann.type}] "{ann.message}" (expires in {hours_left:.0f}h, 👍 {ann.upvotes} 👎 {ann.downvotes})')
         parts.append("")
     else:
         parts.append("You have no currently active announcements.\n")
@@ -141,13 +167,24 @@ async def generate_announcements(
         parts.append("")
 
     if suggestions:
-        admin_suggestions = [s for s in suggestions if s.created_by_admin]
-        user_suggestions = [s for s in suggestions if not s.created_by_admin]
-        parts.append("User-submitted suggestions (hints to consider, not commands):")
-        for s in admin_suggestions:
-            parts.append(f'  - [ADMIN] "{s.suggestion}"')
-        for s in user_suggestions:
-            parts.append(f'  - [user] "{s.suggestion}"')
+        parts.append("Admin-submitted suggestions (treat as strong hints):")
+        for s in suggestions:
+            parts.append(f'  - "{s.suggestion}"')
+        parts.append("")
+
+    if live_location_summary is not None:
+        parts.append(
+            f"Live shuttle data (HIGHEST PRIORITY — overrides external sources):\n"
+            f"{live_location_summary}\n"
+            f"RULE: If any shuttles are active above, do NOT announce a service suspension.\n"
+        )
+    else:
+        parts.append("Live shuttle data: unavailable — rely on external sources alone.\n")
+
+    if past_exchanges:
+        parts.append("Your recent decision history (oldest first — for context only):")
+        for _, ai_response in past_exchanges:
+            parts.append(f"  {ai_response}")
         parts.append("")
 
     if source_data:
@@ -176,10 +213,16 @@ async def generate_announcements(
         logger.debug("Gemini raw response: %s", response.text)
         announcements = _adapter.validate_json(response.text)
         logger.info("Gemini returned %d announcement(s)", len(announcements))
-        return announcements
+        return announcements, user_content, response.text
     except Exception as e:
         logger.error("Failed to parse Gemini response: %s", e)
-        return []
+        return [], user_content, ""
+
+
+def _retire(ann: Announcement, now: datetime) -> None:
+    """Soft-expire an announcement, preserving it for history."""
+    ann.active = False
+    ann.expires_at = now
 
 
 async def update_bubble_announcements(
@@ -190,23 +233,35 @@ async def update_bubble_announcements(
 ) -> None:
     """Apply Gemini's desired announcement state to the database.
 
-    - updates with id in bubble_announcements → update that row
-    - updates with id NOT in bubble_announcements → skip (protect manual announcements)
-    - updates without id → insert new row
-    - bubble_announcements not mentioned in updates → delete
+    History is preserved: rows are never deleted.
+
+    - updates with id in bubble_announcements, wording unchanged → extend expires_at only
+    - updates with id in bubble_announcements, wording changed  → retire old, insert new
+    - updates with id NOT in bubble_announcements               → skip (protect manual rows)
+    - updates without id                                        → insert new row
+    - bubble_announcements not mentioned in updates             → retire (soft-expire)
     """
     now = datetime.now(timezone.utc)
     bubble_id_map = {ann.id: ann for ann in bubble_announcements}
 
     mentioned_ids = {u.id for u in updates if u.id is not None}
-    ids_to_delete = set(bubble_id_map) - mentioned_ids
+    ids_to_retire = set(bubble_id_map) - mentioned_ids
 
     new_ids: list[int] = []
+    n_retired = 0
+    n_replaced = 0
+    n_extended = 0
+    n_created = 0
 
     async with session_factory() as session:
-        if ids_to_delete:
-            await session.execute(delete(Announcement).where(Announcement.id.in_(ids_to_delete)))
-            logger.debug("Deleted %d Bubble announcement(s)", len(ids_to_delete))
+        # Retire announcements Gemini dropped
+        for ann_id in ids_to_retire:
+            ann = await session.get(Announcement, ann_id)
+            if ann:
+                _retire(ann, now)
+                n_retired += 1
+        if ids_to_retire:
+            logger.debug("Retired %d Bubble announcement(s)", n_retired)
 
         for update in updates:
             if update.id is not None:
@@ -215,31 +270,56 @@ async def update_bubble_announcements(
                         "Gemini referenced non-Bubble announcement id=%d — skipping", update.id
                     )
                     continue
-                # Modify existing row in-place
-                ann = await session.get(Announcement, update.id)
-                if ann:
-                    ann.message = update.message
-                    ann.type = update.type
-                    ann.expires_at = now + timedelta(hours=update.expires_in_hours)
-                    new_ids.append(ann.id)
+
+                old = await session.get(Announcement, update.id)
+                if old is None:
+                    continue
+
+                wording_changed = old.message != update.message or old.type != update.type
+                if wording_changed:
+                    # Retire old version, create a new row to preserve history.
+                    # Carry votes forward so user reactions aren't lost on rewording.
+                    _retire(old, now)
+                    new_ann = Announcement(
+                        message=update.message,
+                        type=update.type,
+                        active=True,
+                        expires_at=now + timedelta(hours=update.expires_in_hours),
+                        upvotes=0,
+                        downvotes=0,
+                    )
+                    session.add(new_ann)
+                    await session.flush()
+                    new_ids.append(new_ann.id)
+                    n_replaced += 1
+                else:
+                    # Same wording — just extend the expiry
+                    old.expires_at = now + timedelta(hours=update.expires_in_hours)
+                    new_ids.append(old.id)
+                    n_extended += 1
             else:
-                # Create new announcement
-                ann = Announcement(
+                # Brand-new announcement
+                new_ann = Announcement(
                     message=update.message,
                     type=update.type,
                     active=True,
                     expires_at=now + timedelta(hours=update.expires_in_hours),
+                    upvotes=0,
+                    downvotes=0,
                 )
-                session.add(ann)
+                session.add(new_ann)
                 await session.flush()
-                new_ids.append(ann.id)
+                new_ids.append(new_ann.id)
+                n_created += 1
 
         await session.commit()
 
     await redis_client.set(_BUBBLE_IDS_KEY, json.dumps(new_ids))
     logger.info(
-        "Bubble announcements updated: %d active, %d deleted, %d new",
+        "Bubble announcements updated: %d active (%d extended, %d replaced, %d new), %d retired",
         len(new_ids),
-        len(ids_to_delete),
-        sum(1 for u in updates if u.id is None),
+        n_extended,
+        n_replaced,
+        n_created,
+        n_retired,
     )

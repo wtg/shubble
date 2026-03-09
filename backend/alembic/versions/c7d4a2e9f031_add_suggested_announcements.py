@@ -24,7 +24,6 @@ def upgrade() -> None:
         'suggested_announcements',
         sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
         sa.Column('suggestion', sa.String(), nullable=False),
-        sa.Column('created_by_admin', sa.Boolean(), nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint('id'),
     )
