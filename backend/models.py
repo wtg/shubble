@@ -54,10 +54,6 @@ class GeofenceEvent(Base):
 
 class VehicleLocation(Base):
     __tablename__ = "vehicle_locations"
-    __table_args__ = (
-        Index("ix_vehicle_locations_vehicle_timestamp", "vehicle_id", "timestamp"),
-        UniqueConstraint("vehicle_id", "timestamp", name="uq_vehicle_locations_vehicle_timestamp"),
-    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     vehicle_id: Mapped[str] = mapped_column(String, ForeignKey("vehicles.id"), nullable=False)
@@ -75,6 +71,12 @@ class VehicleLocation(Base):
 
     # Relationships
     vehicle: Mapped["Vehicle"] = relationship(back_populates="locations")
+
+    # Indexes
+    __table_args__ = (
+        Index("ix_vehicle_locations_vehicle_timestamp", vehicle_id, timestamp.desc()),
+        UniqueConstraint("vehicle_id", "timestamp", name="uq_vehicle_locations_vehicle_timestamp"),
+    )
 
     def __repr__(self):
         return f"<VehicleLocation {self.vehicle_id} @ {self.timestamp}>"

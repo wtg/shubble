@@ -1,5 +1,7 @@
 """Data prediction utilities for worker."""
+import asyncio
 import logging
+from contextlib import aclosing
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional, Tuple, Any
@@ -10,12 +12,12 @@ from ml.deploy.lstm import load_lstm_for_route
 from ml.deploy.arima import load_arima
 from ml.training.train import fit_arima
 from backend.models import ETA, PredictedLocation
-from backend.database import create_async_db_engine, create_session_factory
+from backend.database import get_db
 from backend.config import settings
 from backend.cache import cache, soft_clear_namespace
+from backend.function_timer import timed
 from ml.cache import get_polyline_dir
 from shared.stops import Stops
-import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +28,7 @@ Q = 2
 # Cache for loaded models: (route_name, polyline_idx) -> LSTMModel
 _MODEL_CACHE: Dict[Tuple[str, int], Any] = {}
 
+@timed
 @cache(soft_ttl=300, hard_ttl=3600, namespace="average_travel_time")
 async def load_average_travel_time(route: str, polyline_idx: int) -> Optional[float]:
     """Load average travel time for a polyline from CSV.
@@ -54,6 +57,7 @@ async def load_average_travel_time(route: str, polyline_idx: int) -> Optional[fl
         logger.warning(f"Failed to load average travel time for {route} polyline {polyline_idx}: {e}")
         return None
 
+@timed
 async def _get_vehicle_data(vehicle_ids: List[str]) -> pd.DataFrame:
     """Helper to get and filter vehicle data."""
     try:
@@ -72,6 +76,7 @@ async def _get_vehicle_data(vehicle_ids: List[str]) -> pd.DataFrame:
 
     return target_df
 
+@timed
 async def predict_eta(vehicle_ids: List[str]) -> Dict[str, datetime]:
     """
     Predict ETA (absolute datetime of arrival at next stop) for a list of vehicle IDs using LSTM.
@@ -150,6 +155,7 @@ async def predict_eta(vehicle_ids: List[str]) -> Dict[str, datetime]:
 
     return results
 
+@timed
 async def get_all_stop_times(vehicle_ids: List[str]) -> Dict[str, List[Tuple[str, datetime]]]:
     """
     Get all stop times for a list of vehicle IDs: historical, predicted, and future.
@@ -289,6 +295,7 @@ async def get_all_stop_times(vehicle_ids: List[str]) -> Dict[str, List[Tuple[str
 
     return results
 
+@timed
 async def predict_next_state(vehicle_ids: List[str]) -> Dict[str, Dict]:
     """
     Predict next state (speed, timestamp) for vehicles using ARIMA.
@@ -361,6 +368,7 @@ async def predict_next_state(vehicle_ids: List[str]) -> Dict[str, Dict]:
 
     return results
 
+@timed
 async def save_predictions(etas: Dict[str, List[Tuple[str, datetime]]], next_states: Dict[str, Dict]):
     """Save predictions to database.
 
@@ -371,10 +379,8 @@ async def save_predictions(etas: Dict[str, List[Tuple[str, datetime]]], next_sta
     if not etas and not next_states:
         return
 
-    engine = create_async_db_engine(settings.DATABASE_URL, echo=False)
-    session_factory = create_session_factory(engine)
-
-    async with session_factory() as session:
+    async with aclosing(get_db()) as gen:
+        session = await anext(gen)
         # Save ETAs (as ISO format strings for JSON storage)
         for vid, stop_etas in etas.items():
             # Convert list of (stop_key, datetime) tuples to dict
@@ -400,8 +406,7 @@ async def save_predictions(etas: Dict[str, List[Tuple[str, datetime]]], next_sta
         await soft_clear_namespace("etas")
         await soft_clear_namespace("velocities")
 
-    await engine.dispose()
-
+@timed
 async def generate_and_save_predictions(vehicle_ids: List[str]):
     """Generate ETAs and next states, then save to DB."""
     if not vehicle_ids:
