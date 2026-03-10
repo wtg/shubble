@@ -148,11 +148,25 @@ export default function ExportTestFileModal({
     handleExport();
   }
 
+  function resetSelection() {
+  const sorted = [...Object.keys(shuttles)].sort();
+  setOrderedShuttles(sorted);
+  setSelectedShuttles([]);
+}
+
   const footer = (
     <div className="modal-actions">
       <button className="btn-secondary" onClick={handleClose}>
         Cancel
       </button>
+
+      <button
+        className="btn-secondary"
+        onClick={() => resetSelection()}
+      >
+        Reset Selection
+      </button>
+
       <button
         className="btn-secondary"
         onClick={() => exportAll()}
