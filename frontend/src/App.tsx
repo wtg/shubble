@@ -16,6 +16,7 @@ import Navigation from './components/Navigation';
 import ErrorBoundary from './components/ErrorBoundary';
 import config from "./utils/config";
 import NotFound from './components/NotFound';
+import ApplePrivacyPolicy from './privacy/ApplePrivacyPolicy';
 
 function App() {
   const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
@@ -57,6 +58,7 @@ function App() {
           {/* without header and footer */}
           <Route>
             <Route path='/map' element={<LiveLocationMapKit routeData={routeData} generateRoutes={false} selectedRoute={selectedRoute} setSelectedRoute={setSelectedRoute} isFullscreen={true} shuttleIconSize={35} />} />
+            <Route path='/apple-privacy-policy' element={<ApplePrivacyPolicy />} />
           </Route>
         </Routes>
       </Router>
