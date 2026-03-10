@@ -284,7 +284,6 @@ async def update_bubble_announcements(
                 wording_changed = old.message != update.message or old.type != update.type
                 if wording_changed:
                     # Retire old version, create a new row to preserve history.
-                    # Carry votes forward so user reactions aren't lost on rewording.
                     _retire(old, now)
                     new_ann = Announcement(
                         message=update.message,
