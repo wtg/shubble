@@ -9,7 +9,7 @@ function ApplePrivacyPolicy() {
       <section>
         <h2>Introduction</h2>
         <p>
-          Shubble ("we", "our", or "us") provides a real-time shuttle tracking
+          Shubble (&quot;we&quot;, &quot;our&quot;, or &quot;us&quot;) provides a real-time shuttle tracking
           application for Rensselaer Polytechnic Institute (RPI). This Privacy
           Policy explains how we collect, use, and protect information when you
           use our mobile application and website.
@@ -65,7 +65,7 @@ function ApplePrivacyPolicy() {
       </section>
 
       <section>
-        <h2>Children's Privacy</h2>
+        <h2>Children&apos;s Privacy</h2>
         <p>
           Our app does not collect personal information from anyone, including
           children under 13 years of age.
