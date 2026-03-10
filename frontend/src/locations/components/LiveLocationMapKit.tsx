@@ -68,7 +68,7 @@ export default function LiveLocationMapKit({
           const velocity = velocitiesData[vehicleId];
           combined[vehicleId] = {
             ...location,
-            route_name: velocity?.route_name ?? null,
+            route_name: velocity?.route_name ?? location.route_name ?? null,
             polyline_index: velocity?.polyline_index ?? null,
             predicted_location: velocity && velocity.speed_kmh !== null && velocity.timestamp !== null ? {
               speed_kmh: velocity.speed_kmh,
@@ -78,6 +78,10 @@ export default function LiveLocationMapKit({
             current_stop: velocity?.current_stop,
           };
         }
+
+        console.log('combined vehicle routes:', Object.fromEntries(
+          Object.entries(combined).map(([id, v]) => [id, v.route_name])
+        ));
 
         setVehicles(combined);
       } catch (error) {

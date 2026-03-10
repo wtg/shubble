@@ -25,6 +25,7 @@ from backend.fastapi.utils import (
     get_current_driver_assignments,
     get_latest_etas,
     get_latest_velocities,
+    get_route_for_vehicles,
 )
 from shared.stops import Stops
 # from shared.schedules import Schedule
@@ -52,6 +53,7 @@ async def get_locations(response: Response, request: Request):
     # Get current driver assignments for all vehicles in results
     vehicle_ids = [loc["vehicle_id"] for loc in results]
     current_assignments = await get_current_driver_assignments(vehicle_ids, request.app.state.session_factory)
+    route_map = await get_route_for_vehicles(vehicle_ids)
 
     # Format response
     response_data = {}
@@ -95,6 +97,7 @@ async def get_locations(response: Response, request: Request):
             "gateway_model": vehicle["gateway_model"],
             "gateway_serial": vehicle["gateway_serial"],
             "driver": driver_info,
+            "route_name": route_map.get(loc["vehicle_id"]),
         }
 
     # Add timing metadata as HTTP headers to help frontend synchronize with Samsara API
