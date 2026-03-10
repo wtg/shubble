@@ -64,7 +64,7 @@ Output rules:
 - To DELETE an existing announcement: simply omit it from the array
 - Do NOT include manually-created announcements in your output
 - ONE announcement per distinct subject (e.g. service suspension and weather are separate announcements)
-- Review the 👍/👎 counts on your announcements. If downvotes are significant (use judgment: at least 3 net downvotes for a minor notice, more for a major service alert), users likely found it inaccurate or unhelpful — remove or substantially revise it based on current data
+- Review the 👍/👎 counts on your announcements. Note that voting is unauthenticated — a single user can vote multiple times, so treat raw counts as a rough signal rather than exact data. If downvotes are significant (use judgment: at least 3 net downvotes for a minor notice, more for a major service alert), users likely found it inaccurate or unhelpful — remove or substantially revise it. Be cautious about acting on low total vote counts, as they may reflect one person voting repeatedly rather than genuine community feedback.
 - Check your recent decision history carefully. If you removed or substantially revised an announcement due to downvotes in a previous run, do NOT recreate a similar announcement in this run unless new evidence has emerged (e.g. live shuttle data has changed, or an external source now confirms the situation). Recreating a recently rejected announcement is not acceptable and will result in the same user rejection.
 - Keep each message to 1-2 sentences; markdown links are supported
 - Use "warning" for service reductions, "error" for full suspensions, "info" for general notices
