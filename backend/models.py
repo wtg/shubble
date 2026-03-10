@@ -159,7 +159,7 @@ class RouteToBusSchedule(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key = True, autoincrement = True )
     route_id: Mapped[int] = mapped_column(Integer, ForeignKey("routes.id"), nullable=False)
     bus_schedule_id: Mapped[int] = mapped_column( Integer, ForeignKey("bus_schedules.id"), nullable=False)
-    timestamp: Mapped[datetime] = mapped_column(TIME(timezone=True), nullable=False) 
+    time: Mapped[datetime] = mapped_column(TIME(timezone=True), nullable=False) 
     
     #Relationships
     route: Mapped["Route"] = relationship(back_populates="route_to_bus_schedules")

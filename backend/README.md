@@ -128,7 +128,7 @@ POST /api/webhook    # Samsara geofence events
 
 8. **route_to_bus_schedules** - Route to Bus Schedule mapping
    - `id` (PK) - Auto-increment
-   - `route_id` (FK), `bus_schedule_id` (FK), `timestamp`
+   - `route_id` (FK), `bus_schedule_id` (FK), `time`
 
 9. **date_to_day_schedules** - Date to Schedule for Day mapping
    - `id` (PK) - Auto-increment
