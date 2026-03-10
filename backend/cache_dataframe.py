@@ -160,6 +160,10 @@ async def load_today_dataframe(since: datetime | None = None) -> pd.DataFrame:
         columns=['vehicle_id', 'latitude', 'longitude', 'timestamp']
     )
 
+    # Ensure timestamp is datetime64 (SQLAlchemy rows come back as Python datetime
+    # objects which pandas stores as object dtype without explicit conversion)
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+
     return df
 
 
