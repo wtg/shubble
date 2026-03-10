@@ -1,4 +1,5 @@
 """Utility functions for FastAPI."""
+from datetime import datetime, timezone
 from sqlalchemy import func, and_, select
 from sqlalchemy.orm import selectinload
 from typing import Dict, Tuple, Optional, List, TypedDict, Any
@@ -9,8 +10,8 @@ from backend.function_timer import timed
 
 from backend.models import VehicleLocation, DriverVehicleAssignment, ETA, PredictedLocation
 from backend.cache_dataframe import get_today_dataframe
-from backend.utils import get_vehicles_in_geofence_query
 from backend.time_utils import get_campus_start_of_day
+from backend.utils import get_vehicles_in_geofence, get_vehicles_in_geofence_query
 
 import logging
 
@@ -365,3 +366,162 @@ async def get_latest_velocities(vehicle_ids: List[str], session_factory) -> Dict
             }
 
         return predicted_dict
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Response builder functions
+#
+# These build the full API response dicts, reusable by both the REST
+# endpoints (routes.py) and the SSE stream (sse.py).
+# ──────────────────────────────────────────────────────────────────────
+
+
+class TimingMetadata(TypedDict):
+    server_time: str
+    oldest_data_time: str
+    data_age_seconds: str
+
+
+async def build_locations_response(
+    session_factory,
+) -> Tuple[dict, TimingMetadata]:
+    """Build the /api/locations response data.
+
+    Queries the latest location for each vehicle in the geofence,
+    merges with driver assignment info, and computes timing metadata.
+
+    Args:
+        session_factory: Async session factory
+
+    Returns:
+        Tuple of (response_data dict, timing_metadata dict)
+    """
+    results = await get_latest_vehicle_locations(session_factory)
+
+    vehicle_ids = [loc["vehicle_id"] for loc in results]
+    current_assignments = await get_current_driver_assignments(
+        vehicle_ids, session_factory
+    )
+
+    response_data = {}
+    oldest_timestamp = None
+
+    for loc in results:
+        vehicle = loc["vehicle"]
+        ts = datetime.fromisoformat(loc["timestamp"])
+        if oldest_timestamp is None or ts < oldest_timestamp:
+            oldest_timestamp = ts
+
+        driver_info = None
+        assignment = current_assignments.get(loc["vehicle_id"])
+        if assignment and assignment.get("driver"):
+            driver_data = assignment["driver"]
+            driver_info = {
+                "id": driver_data["id"],
+                "name": driver_data["name"],
+            }
+
+        response_data[loc["vehicle_id"]] = {
+            "name": loc["name"],
+            "latitude": loc["latitude"],
+            "longitude": loc["longitude"],
+            "timestamp": loc["timestamp"],
+            "heading_degrees": loc["heading_degrees"],
+            "speed_mph": loc["speed_mph"],
+            "is_ecu_speed": loc["is_ecu_speed"],
+            "formatted_location": loc["formatted_location"],
+            "address_id": loc["address_id"],
+            "address_name": loc["address_name"],
+            "license_plate": vehicle["license_plate"],
+            "vin": vehicle["vin"],
+            "asset_type": vehicle["asset_type"],
+            "gateway_model": vehicle["gateway_model"],
+            "gateway_serial": vehicle["gateway_serial"],
+            "driver": driver_info,
+        }
+
+    now = datetime.now(timezone.utc)
+    data_age = (
+        (now - oldest_timestamp).total_seconds() if oldest_timestamp else None
+    )
+
+    timing: TimingMetadata = {
+        "server_time": now.isoformat(),
+        "oldest_data_time": oldest_timestamp.isoformat() if oldest_timestamp else "",
+        "data_age_seconds": str(data_age) if data_age is not None else "",
+    }
+
+    return response_data, timing
+
+
+async def build_velocities_response(session_factory) -> dict:
+    """Build the /api/velocities response data.
+
+    Queries predicted velocities and route matching data for all
+    vehicles currently in the geofence.
+
+    Args:
+        session_factory: Async session factory
+
+    Returns:
+        Response data dict keyed by vehicle_id
+    """
+    vehicle_ids_set = await get_vehicles_in_geofence(session_factory)
+    vehicle_ids = list(vehicle_ids_set)
+
+    if not vehicle_ids:
+        return {}
+
+    predicted_dict = await get_latest_velocities(vehicle_ids, session_factory)
+    closest_points = await smart_closest_point(vehicle_ids)
+
+    response_data = {}
+    for vehicle_id in vehicle_ids:
+        velocity_data = predicted_dict.get(vehicle_id)
+
+        closest_distance, _, closest_route_name, polyline_index, _, stop_name = (
+            closest_points.get(
+                vehicle_id, (None, None, None, None, None, None)
+            )
+        )
+
+        route_name = (
+            closest_route_name
+            if closest_distance is not None and closest_distance < 0.050
+            else None
+        )
+
+        is_at_stop = stop_name is not None
+        current_stop = stop_name if is_at_stop else None
+
+        response_data[vehicle_id] = {
+            "speed_kmh": velocity_data["speed_kmh"] if velocity_data else None,
+            "timestamp": velocity_data["timestamp"] if velocity_data else None,
+            "route_name": route_name,
+            "polyline_index": polyline_index,
+            "is_at_stop": is_at_stop,
+            "current_stop": current_stop,
+        }
+
+    return response_data
+
+
+async def build_etas_response(session_factory) -> dict:
+    """Build the /api/etas response data.
+
+    Queries the latest ETA predictions for all vehicles currently
+    in the geofence.
+
+    Args:
+        session_factory: Async session factory
+
+    Returns:
+        Response data dict keyed by vehicle_id
+    """
+    vehicle_ids_set = await get_vehicles_in_geofence(session_factory)
+    vehicle_ids = list(vehicle_ids_set)
+
+    if not vehicle_ids:
+        return {}
+
+    return await get_latest_etas(vehicle_ids, session_factory)
