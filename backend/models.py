@@ -152,8 +152,8 @@ class PredictedLocation(Base):
 class RouteToBusSchedule(Base):
     __tablename__ =  "route_to_bus_schedules"
     __table_args__ = (
-        Index("route_id", "timestamp"),
-        UniqueConstraint("bus_schedule_id", "timestamp", name="uq_route_to_bus_schedules_bus_schedule_id_timestamp"),
+        Index("route_id", "time"),
+        UniqueConstraint("bus_schedule_id", "time", name="uq_route_to_bus_schedules_bus_schedule_id_time"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key = True, autoincrement = True )
