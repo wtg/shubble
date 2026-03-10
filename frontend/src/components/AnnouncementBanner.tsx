@@ -1,6 +1,8 @@
 import './styles/AnnouncementBanner.css';
 import type { Announcement} from '../types/announcement';
 import { 
+    useState,
+    useEffect,
     type ReactNode 
 } from 'react';
 import config from '../utils/config';
@@ -103,13 +105,30 @@ async function getActiveAnnouncements(): Promise<Announcement[]> {
  * Displays announcements loaded from the JSON file.
  * Only shows active, non-expired announcements.
  */
-export default async function AnnouncementBanner() {
+export default function AnnouncementBanner() {
 
-    const activeAnnouncements = await getActiveAnnouncements();
+    const [announcementData, setAnnouncementData] = useState<Announcement[] | null>(null);
+    
+    const fetchAnnouncementData = async () => {
+        try {
+            const response = await fetch(`${config.apiBaseUrl}/api/announcements`);
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            const data = await response.json() as Announcement[];
+            setAnnouncementData(data);
+        } catch (error) {
+            console.error('Error fetching announcementData:', error);
+        }
+    }
+    
+    useEffect(() => {
+        fetchAnnouncementData();
+    }, []);
 
     return (
         <>
-            {activeAnnouncements?.map((announcement) => (
+            {announcementData?.map((announcement) => (
                 <Banner
                     key={announcement.id}
                     message={announcement.message}
