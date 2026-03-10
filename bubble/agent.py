@@ -74,13 +74,7 @@ Output rules:
 - Keep each message to 1-2 sentences; markdown links are supported
 - Use "warning" for service reductions, "error" for full suspensions, "info" for general notices
 - Set expires_in_hours to cover until the end of the affected period (max 72)
-- Return [] only if there are no relevant announcements needed
-
-Return ONLY a JSON array — no other text:
-[
-  {"id": 5, "message": "...", "type": "warning", "expires_in_hours": 24},
-  {"message": "...", "type": "info", "expires_in_hours": 12}
-]"""
+- Return [] only if there are no relevant announcements needed"""
 
 
 class GeneratedAnnouncement(BaseModel):
@@ -211,9 +205,29 @@ async def generate_announcements(
     try:
         response = await client.aio.models.generate_content(
             model=model,
-            contents=[_SYSTEM_PROMPT, user_content],
+            contents=user_content,
             config=types.GenerateContentConfig(
+                system_instruction=_SYSTEM_PROMPT,
                 response_mime_type="application/json",
+                response_schema=list[GeneratedAnnouncement],
+                safety_settings=[
+                    types.SafetySetting(
+                        category="HARM_CATEGORY_HARASSMENT",
+                        threshold="BLOCK_MEDIUM_AND_ABOVE",
+                    ),
+                    types.SafetySetting(
+                        category="HARM_CATEGORY_HATE_SPEECH",
+                        threshold="BLOCK_MEDIUM_AND_ABOVE",
+                    ),
+                    types.SafetySetting(
+                        category="HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                        threshold="BLOCK_MEDIUM_AND_ABOVE",
+                    ),
+                    types.SafetySetting(
+                        category="HARM_CATEGORY_DANGEROUS_CONTENT",
+                        threshold="BLOCK_MEDIUM_AND_ABOVE",
+                    ),
+                ],
             ),
         )
         logger.debug("Gemini raw response: %s", response.text)
