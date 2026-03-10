@@ -105,20 +105,9 @@ async function getActiveAnnouncements(): Promise<Announcement[]> {
  * Displays announcements loaded from the JSON file.
  * Only shows active, non-expired announcements.
  */
-export default function AnnouncementBanner() {
-    const [activeAnnouncements, setAnnouncements] = useState<Announcement[] | null>(null);
+export default async function AnnouncementBanner() {
 
-    const fetchAnnouncements = async () => {
-        try {
-            setAnnouncements(await getActiveAnnouncements());
-        } catch (error) {
-            console.error('Error fetching announcements:', error);
-        }
-    }
-    
-    useEffect(() => {
-        fetchAnnouncements();
-    }, []);
+    const activeAnnouncements = await getActiveAnnouncements();
 
     return (
         <>
