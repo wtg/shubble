@@ -19,11 +19,13 @@ class Vehicle(Base):
     gateway_serial: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     # Relationships
-    geofence_events: Mapped[list["GeofenceEvent"]] = relationship(back_populates="vehicle", lazy="selectin")
-    locations: Mapped[list["VehicleLocation"]] = relationship(back_populates="vehicle", lazy="selectin")
-    driver_assignments: Mapped[list["DriverVehicleAssignment"]] = relationship(back_populates="vehicle", lazy="selectin")
-    etas: Mapped[list["ETA"]] = relationship(back_populates="vehicle", lazy="selectin")
-    predicted_locations: Mapped[list["PredictedLocation"]] = relationship(back_populates="vehicle", lazy="selectin")
+    # lazy="raise" prevents accidental N+1 queries. Use explicit
+    # selectinload()/joinedload() in queries that need related objects.
+    geofence_events: Mapped[list["GeofenceEvent"]] = relationship(back_populates="vehicle", lazy="raise")
+    locations: Mapped[list["VehicleLocation"]] = relationship(back_populates="vehicle", lazy="raise")
+    driver_assignments: Mapped[list["DriverVehicleAssignment"]] = relationship(back_populates="vehicle", lazy="raise")
+    etas: Mapped[list["ETA"]] = relationship(back_populates="vehicle", lazy="raise")
+    predicted_locations: Mapped[list["PredictedLocation"]] = relationship(back_populates="vehicle", lazy="raise")
 
     def __repr__(self):
         return f"<Vehicle {self.id} - {self.name}>"
@@ -54,10 +56,6 @@ class GeofenceEvent(Base):
 
 class VehicleLocation(Base):
     __tablename__ = "vehicle_locations"
-    __table_args__ = (
-        Index("ix_vehicle_locations_vehicle_timestamp", "vehicle_id", "timestamp"),
-        UniqueConstraint("vehicle_id", "timestamp", name="uq_vehicle_locations_vehicle_timestamp"),
-    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     vehicle_id: Mapped[str] = mapped_column(String, ForeignKey("vehicles.id"), nullable=False)
@@ -76,6 +74,12 @@ class VehicleLocation(Base):
     # Relationships
     vehicle: Mapped["Vehicle"] = relationship(back_populates="locations")
 
+    # Indexes
+    __table_args__ = (
+        Index("ix_vehicle_locations_vehicle_timestamp", vehicle_id, timestamp.desc()),
+        UniqueConstraint("vehicle_id", "timestamp", name="uq_vehicle_locations_vehicle_timestamp"),
+    )
+
     def __repr__(self):
         return f"<VehicleLocation {self.vehicle_id} @ {self.timestamp}>"
 
@@ -88,7 +92,7 @@ class Driver(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Relationships
-    assignments: Mapped[list["DriverVehicleAssignment"]] = relationship(back_populates="driver", lazy="selectin")
+    assignments: Mapped[list["DriverVehicleAssignment"]] = relationship(back_populates="driver", lazy="raise")
 
     def __repr__(self):
         return f"<Driver {self.id} - {self.name}>"

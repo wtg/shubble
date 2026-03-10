@@ -2,6 +2,7 @@
 from sqlalchemy import func, and_, select
 
 from backend.cache import cache
+from backend.function_timer import timed
 from backend.models import GeofenceEvent
 from backend.time_utils import get_campus_start_of_day
 
@@ -43,6 +44,7 @@ def get_vehicles_in_geofence_query():
     return query
 
 
+@timed
 @cache(soft_ttl=900, hard_ttl=3600, namespace="vehicles_in_geofence")
 async def get_vehicles_in_geofence(session_factory):
     """
