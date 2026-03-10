@@ -64,7 +64,7 @@ async def update_locations(session_factory):
             has_next_page = True
             after_token = None
             new_records_added = 0
-            updated_vehicle_ids = []
+            inserted_vehicle_ids = []
 
             while has_next_page:
                 # Add pagination token if present
@@ -136,13 +136,10 @@ async def update_locations(session_factory):
                         insert_stmt = insert_stmt.returning(VehicleLocation.vehicle_id)
 
                         result = await session.execute(insert_stmt)
-                        inserted_vehicle_ids = result.scalars().all()
+                        batch_inserted_ids = result.scalars().all()
                         
-                        new_records_added += len(inserted_vehicle_ids)
-                        
-                        for vid in set(inserted_vehicle_ids):
-                            if vid not in updated_vehicle_ids:
-                                updated_vehicle_ids.append(vid)
+                        new_records_added += len(batch_inserted_ids)
+                        inserted_vehicle_ids.extend(batch_inserted_ids)
 
                     # Only commit if we actually added new records
                     if new_records_added > 0:
@@ -157,7 +154,7 @@ async def update_locations(session_factory):
                             f"No new location data for {len(current_vehicle_ids)} vehicles"
                         )
 
-            return updated_vehicle_ids
+            return inserted_vehicle_ids
 
     except httpx.HTTPError as e:
         logger.error(f"Failed to fetch locations: {e}")
