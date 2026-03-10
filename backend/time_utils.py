@@ -23,10 +23,11 @@ def get_campus_start_of_day():
         microsecond=0,
     )
 
-    """
-    This means that, if it is currently between 00:00 and settings.DAY_START in the campus timezone, the function will return the start of the current day in UTC.
-    This is a problem, because this is used as a cutoff for when to stop showing shuttles, meaning that a shuttle that is still on campus at 12:30 am will not be shown, even though it should be.
-    """
+    # Note: If it is currently between 00:00 and settings.DAY_START in the
+    # campus timezone, this logic will return the start of the current day
+    # in UTC. Since this value is used as a cutoff for when to stop showing
+    # shuttles, a shuttle that is still on campus at e.g. 12:30 am may not
+    # be shown, even though it should be.
 
     # if day_start_campus_tz is in the future, subtract one day to get the most recent day start
     if now < day_start_campus_tz:
