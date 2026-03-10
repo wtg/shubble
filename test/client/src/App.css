@@ -832,3 +832,20 @@
   color: var(--text-secondary);
   font-size: 0.875rem;
 }
+
+.export-shuttle-box.disabled {
+  background: #e5e5e5;
+  color: #888;
+  border: 1px solid #ccc;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.export-error {
+  background: #fee2e2;
+  border: 1px solid #ef4444;
+  color: #991b1b;
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin-bottom: 10px;
+}

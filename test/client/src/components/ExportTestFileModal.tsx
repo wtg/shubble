@@ -21,6 +21,9 @@ export default function ExportTestFileModal({
   // Tracks which shuttles are selected shuttles 2, 6, 9
   const [selectedShuttles, setSelectedShuttles] = useState<string[]>([]);
 
+  // alerts are displyed in modal
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
   // Sync orderedShuttles when new shuttles are added or removed
   useEffect(() => {
     const ids = Object.keys(shuttles);
@@ -37,7 +40,16 @@ export default function ExportTestFileModal({
 
     // Sync selectedShuttles in future change delete selected shuttle
     setSelectedShuttles((prev) =>
-    prev.filter((id) => ids.includes(id)));
+      prev.filter((id) => ids.includes(id)));
+
+    // Clear export error if at least one shuttle has events
+    const hasValidShuttle = Object.values(shuttles).some(
+      (s) => s.queue?.length > 0
+    );
+
+    if (hasValidShuttle) {
+      setErrorMessage(null);
+    }
 
   }, [shuttles]);
 
@@ -76,17 +88,26 @@ export default function ExportTestFileModal({
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
   };
-  
-
 
 
   const handleExport = () => { 
+
+    setErrorMessage(null);
+
     // If nothing selected then export all in the dragged order
+    const shuttlesWithEvents = orderedShuttles.filter(
+      (id) => shuttles[id]?.queue?.length > 0
+    );
+
     const shuttlesToExport =
       selectedShuttles.length === 0
-        ? orderedShuttles
-        : orderedShuttles.filter((id) => selectedShuttles.includes(id));
-
+        ? shuttlesWithEvents
+        : shuttlesWithEvents.filter((id) => selectedShuttles.includes(id));
+    
+    if (shuttlesToExport.length === 0) {
+      setErrorMessage('No events defined. At least one shuttle must contain actions to export.');
+      return;
+    }
 
     // For each shuttle, build invidual test file and validate each one
     // before adding shuttles to a list to be exported.
@@ -100,22 +121,16 @@ export default function ExportTestFileModal({
       // Parse shuttle data
       const parseResult = parseTestFile(text);
       if (!parseResult.success || !parseResult.data) {
-        alert(parseResult.error);
-      return;
+        setErrorMessage(parseResult.error || 'Parse failed');
+        return;
       }
 
       //  Validate
       const validation = validateTestData(parseResult.data);
       if (!validation.valid || !validation.data) {
-        alert(validation.errors[0]?.message);
+        setErrorMessage(validation.errors[0]?.message || 'Validation failed');
         return;
       }
-
-      //alerts are displyed in modal
-      //grey out the shuttles no events
-      // 'No events defined'
-      
-
 
       // No alerts, add to export list
       builtShuttles.push(validation.data.shuttles[0]);
@@ -159,20 +174,32 @@ export default function ExportTestFileModal({
     >
 
         <div>
+
+          {/* alerts are displyed in modal */}
+          {errorMessage && (
+            <div className="export-error">
+              {errorMessage}
+            </div>
+          )}
+
           <h3>Drag to Reorder. Click to Select.</h3>
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             {orderedShuttles.map((id, index) => {
               const isSelected = selectedShuttles.includes(id);
+              const hasEvents = shuttles[id]?.queue?.length > 0;
 
               return (
                 <div
                   key={id}
                   draggable
-                  className={`export-shuttle-box ${isSelected ? 'selected' : ''}`}
+                  className={`export-shuttle-box ${isSelected ? 'selected' : ''} ${!hasEvents ? 'disabled' : ''}`}
                   onDragStart={(e) => handleDragStart(e, index)}
                   onDrop={(e) => handleDrop(e, index)}
                   onDragOver={handleDragOver}
-                  onClick={() => toggleSelection(id)}
+                  onClick={() => {
+                    if (!hasEvents) return;
+                    toggleSelection(id);
+                  }}
                 >
                   {id}
                 </div>
@@ -184,7 +211,6 @@ export default function ExportTestFileModal({
             Selected shuttles turn blue. If none are selected, all will be exported.
           </p>
         </div>
-
 
     </Modal>
   );
