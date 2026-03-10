@@ -14,6 +14,7 @@ from backend.database import create_async_db_engine, create_session_factory
 from backend.models import VehicleLocation, Driver, DriverVehicleAssignment
 from backend.utils import get_vehicles_in_geofence
 from backend.function_timer import timed
+from backend.pubsub import publish_update
 from backend.worker.data import generate_and_save_predictions
 from backend.cache_dataframe import update_today_dataframe
 
@@ -147,6 +148,8 @@ async def update_locations(session_factory):
                         )
                         # Invalidate cache for locations
                         await soft_clear_namespace("locations")
+                        # Notify SSE clients that new location data is available
+                        await publish_update("locations")
                     else:
                         logger.info(
                             f"No new location data for {len(current_vehicle_ids)} vehicles"
