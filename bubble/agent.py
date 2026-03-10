@@ -52,6 +52,11 @@ Generate an announcement whenever any of the following applies TODAY or in the n
 - Shuttles are running on a reduced or modified schedule
 - Weather conditions may delay or cancel shuttle service
 - Road closures, construction, or campus events are affecting routes
+- Service has ended for the day or has not yet started — use the schedule from external sources
+  to determine today's operating hours (hours vary by day), and announce accordingly
+- A specific stop is not currently served — some stops have restricted hours (e.g. only
+  available on weekdays during daytime) and riders should be informed when those stops are
+  inactive. Remove such announcements once the stop resumes normal service.
 
 IMPORTANT: If the source lists service suspension dates (e.g. "no service Spring Break 2-28 thru 3-7")
 and today's date falls within that range, BUT live data shows active shuttles, do NOT announce
@@ -149,7 +154,8 @@ async def generate_announcements(
 
     now = datetime.now(backend_settings.CAMPUS_TZ)
     today = now.strftime("%A, %B %-d, %Y")
-    parts = [f"Today's date is {today} (campus timezone: {backend_settings.CAMPUS_TZ}).\n"]
+    current_time = now.strftime("%-I:%M %p")
+    parts = [f"The current date and time is {today} at {current_time} (campus timezone: {backend_settings.CAMPUS_TZ}).\n"]
 
     if bubble_announcements:
         parts.append("Your currently active announcements (keep, modify, or delete as needed):")
