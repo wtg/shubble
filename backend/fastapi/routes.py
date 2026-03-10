@@ -8,7 +8,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Request, Depends, HTTPException, Response
 from fastapi.responses import FileResponse, JSONResponse
-from sqlalchemy import func, and_, select
+from sqlalchemy import and_, select
 
 from backend.cache import cache, soft_clear_namespace
 from backend.function_timer import timed
@@ -18,18 +18,12 @@ from backend.database import get_db
 from backend.models import Vehicle, GeofenceEvent, VehicleLocation
 from backend.config import settings
 from backend.time_utils import get_campus_start_of_day
-from backend.utils import (
-    get_vehicles_in_geofence,
-)
 from backend.fastapi.utils import (
-    smart_closest_point,
-    get_latest_vehicle_locations,
-    get_current_driver_assignments,
-    get_latest_etas,
-    get_latest_velocities,
+    build_locations_response,
+    build_velocities_response,
+    build_etas_response,
 )
-from shared.stops import Stops
-# from shared.schedules import Schedule
+from backend.fastapi.sse import sse_stream
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +31,7 @@ router = APIRouter()
 
 
 @router.get("/api/locations")
-@timed
-@cache(soft_ttl=15, hard_ttl=300, lock_timeout=0.0, namespace="locations")
+@cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="locations")
 async def get_locations(response: Response, request: Request):
     """
     Returns the latest location for each vehicle currently inside the geofence.
@@ -46,71 +39,16 @@ async def get_locations(response: Response, request: Request):
     today is a 'geofenceEntry'.
 
     This endpoint returns raw vehicle location data without ML predictions
-    or route matching. Use /api/predictions for that data.
+    or route matching. Use /api/velocities for that data.
     """
-    # Get latest locations for vehicles in geofence
-    # Uses cached function that returns dicts
-    # Get current driver assignments for all vehicles in results
-    vehicle_ids_set, results = await asyncio.gather(
-        get_vehicles_in_geofence(request.app.state.session_factory),
-        get_latest_vehicle_locations(request.app.state.session_factory),
-    )
-    vehicle_ids = list(vehicle_ids_set)
-    current_assignments = await get_current_driver_assignments(
-        vehicle_ids, request.app.state.session_factory
+    response_data, timing = await build_locations_response(
+        request.app.state.session_factory
     )
 
-    # Format response
-    response_data = {}
-    oldest_timestamp = None
-
-    for loc in results:
-        vehicle = loc["vehicle"]
-        # Track oldest data point for latency calculation
-        # Timestamp is ISO string in cached dict, convert back to datetime
-        ts = datetime.fromisoformat(loc["timestamp"])
-        if oldest_timestamp is None or ts < oldest_timestamp:
-            oldest_timestamp = ts
-
-        # Get current driver info
-        driver_info = None
-        assignment = current_assignments.get(loc["vehicle_id"])
-        # Assignment is DriverAssignmentDict (dict)
-        if assignment and assignment.get("driver"):
-            driver_data = assignment["driver"]
-            driver_info = {
-                "id": driver_data["id"],
-                "name": driver_data["name"],
-            }
-        else:
-            driver_info = None
-
-        response_data[loc["vehicle_id"]] = {
-            "name": loc["name"],
-            "latitude": loc["latitude"],
-            "longitude": loc["longitude"],
-            "timestamp": loc["timestamp"], # Already ISO string
-            "heading_degrees": loc["heading_degrees"],
-            "speed_mph": loc["speed_mph"],
-            "is_ecu_speed": loc["is_ecu_speed"],
-            "formatted_location": loc["formatted_location"],
-            "address_id": loc["address_id"],
-            "address_name": loc["address_name"],
-            "license_plate": vehicle["license_plate"],
-            "vin": vehicle["vin"],
-            "asset_type": vehicle["asset_type"],
-            "gateway_model": vehicle["gateway_model"],
-            "gateway_serial": vehicle["gateway_serial"],
-            "driver": driver_info,
-        }
-
-    # Add timing metadata as HTTP headers to help frontend synchronize with Samsara API
-    now = datetime.now(timezone.utc)
-    data_age = (now - oldest_timestamp).total_seconds() if oldest_timestamp else None
-
-    response.headers['X-Server-Time'] = now.isoformat()
-    response.headers['X-Oldest-Data-Time'] = oldest_timestamp.isoformat() if oldest_timestamp else ''
-    response.headers['X-Data-Age-Seconds'] = str(data_age) if data_age is not None else ''
+    # Add timing metadata as HTTP headers
+    response.headers["X-Server-Time"] = timing["server_time"]
+    response.headers["X-Oldest-Data-Time"] = timing["oldest_data_time"]
+    response.headers["X-Data-Age-Seconds"] = timing["data_age_seconds"]
 
     return response_data
 
@@ -122,17 +60,7 @@ async def get_etas(request: Request, response: Response):
     """
     Returns ETA information for each vehicle currently inside the geofence.
     """
-    # Get vehicle IDs currently in geofence using cached query
-    vehicle_ids_set = await get_vehicles_in_geofence(request.app.state.session_factory)
-    vehicle_ids = list(vehicle_ids_set)
-
-    if not vehicle_ids:
-        return {}
-
-    # Get latest ETAs
-    etas_dict = await get_latest_etas(vehicle_ids, request.app.state.session_factory)
-
-    return etas_dict
+    return await build_etas_response(request.app.state.session_factory)
 
 
 @router.get("/api/velocities")
@@ -140,49 +68,14 @@ async def get_etas(request: Request, response: Response):
 @cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="velocities")
 async def get_velocities(request: Request, response: Response):
     """
-    Returns predicted velocity and route matching data for each vehicle currently inside the geofence.
+    Returns predicted velocity and route matching data for each vehicle
+    currently inside the geofence.
     """
-    # Get vehicle IDs currently in geofence using cached query
-    vehicle_ids_set = await get_vehicles_in_geofence(request.app.state.session_factory)
-    vehicle_ids = list(vehicle_ids_set)
+    return await build_velocities_response(request.app.state.session_factory)
 
-    if not vehicle_ids:
-        return {}
 
-    # Get latest velocities
-    predicted_dict = await get_latest_velocities(vehicle_ids, request.app.state.session_factory)
-
-    # Get route matching data from cached dataframe
-    closest_points = await smart_closest_point(vehicle_ids)
-
-    # Format response
-    response_data = {}
-    for vehicle_id in vehicle_ids:
-        # Get velocity data
-        velocity_data = predicted_dict.get(vehicle_id)
-
-        # Get closest point result from smart_closest_point
-        closest_distance, _, closest_route_name, polyline_index, _, stop_name = closest_points.get(
-            vehicle_id,
-            (None, None, None, None, None, None)
-        )
-
-        route_name = closest_route_name if closest_distance is not None and closest_distance < 0.050 else None
-
-        # Determine if vehicle is at a stop
-        is_at_stop = stop_name is not None
-        current_stop = stop_name if is_at_stop else None
-
-        response_data[vehicle_id] = {
-            "speed_kmh": velocity_data["speed_kmh"] if velocity_data else None,
-            "timestamp": velocity_data["timestamp"] if velocity_data else None,
-            "route_name": route_name,
-            "polyline_index": polyline_index,
-            "is_at_stop": is_at_stop,
-            "current_stop": current_stop,
-        }
-
-    return response_data
+# SSE streaming endpoint
+router.add_api_route("/api/stream", sse_stream, methods=["GET"])
 
 
 @router.post("/api/webhook")
