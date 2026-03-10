@@ -1,8 +1,6 @@
 import './styles/AnnouncementBanner.css';
 import type { Announcement} from '../types/announcement';
 import { 
-    useState, 
-    useEffect,
     type ReactNode 
 } from 'react';
 import config from '../utils/config';
