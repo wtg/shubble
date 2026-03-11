@@ -7,7 +7,7 @@ from typing import Literal, Optional
 
 from google import genai
 from google.genai import types
-from pydantic import BaseModel, Field, TypeAdapter, field_validator
+from pydantic import BaseModel, TypeAdapter, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -88,7 +88,7 @@ class GeneratedAnnouncement(BaseModel):
     id: Optional[int] = None
     message: str
     type: Literal["info", "warning", "error"] = "info"
-    expires_in_hours: float = Field(default=24.0, gt=0)
+    expires_in_hours: float = 24.0
 
     @field_validator("expires_in_hours")
     @classmethod
