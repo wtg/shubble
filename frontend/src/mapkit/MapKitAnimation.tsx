@@ -2,17 +2,14 @@ import { useEffect, useRef } from "react";
 import type { KeyedAnnotation } from "./MapKitOverlays";
 import {
   type Coordinate,
-  findNearestPointOnPolyline,
   moveAlongPolyline,
-  calculateDistanceAlongPolyline,
-  calculateBearing,
-  getAngleDifference
 } from "../utils/mapUtils";
 
 export interface AnimatedAnnotation extends KeyedAnnotation {
   heading: number;
   speedMph: number;
   timestamp: number;
+  segmentIndex: number;
   routePolyline?: Coordinate[];
   predictedSpeedKmh?: number;
 }
@@ -51,14 +48,16 @@ export default function MapKitAnimation({
       // For now, let's only set up animation if we have a valid route.
       if (!annotation.routePolyline) return;
 
-      const routePolyline = annotation.routePolyline;
       // Use the coordinate from the annotation props (source of truth from server)
-      const vehicleCoord = { latitude: annotation.coordinate.latitude, longitude: annotation.coordinate.longitude };
+      const vehicleCoord: Coordinate = {
+        latitude: annotation.coordinate.latitude,
+        longitude: annotation.coordinate.longitude,
+      };
 
       const serverTime = annotation.timestamp; // already number? or Date? Assuming number based on usage.
 
       // Check if we already have state
-      let animState = vehicleAnimationStates.current[annotation.id];
+      const animState = vehicleAnimationStates.current[annotation.id];
 
       // If the server data hasn't changed (cached response), ignore this update
       // and let the client-side prediction continue running.
@@ -66,100 +65,29 @@ export default function MapKitAnimation({
         return;
       }
 
-      const snapToPolyline = () => {
-        const { index, point } = findNearestPointOnPolyline(vehicleCoord, routePolyline);
-        vehicleAnimationStates.current[annotation.id] = {
-          lastUpdateTime: now,
-          polylineIndex: index,
-          currentPoint: point,
-          targetDistance: 0,
-          distanceTraveled: 0,
-          lastServerTime: serverTime
-        };
+      // =======================================================================
+      // PREDICTION SMOOTHING ALGORITHM
+      // =======================================================================
+      const PREDICTION_WINDOW_SECONDS = 5;
+
+      // Step 1: Calculate where the shuttle will be in 5 seconds
+      // Use predicted speed if available, otherwise fall back to reported speed
+      // If showTrueLocation is true, use 0 speed to disable animation
+      const speedMph = annotation.predictedSpeedKmh 
+        ? annotation.predictedSpeedKmh * 0.621371 
+        : annotation.speedMph;
+      // Convert speed from mph to meters/second (1 mph = 0.44704 m/s)
+      const speedMetersPerSecond = speedMph * 0.44704;
+      const projectedDistanceMeters = speedMetersPerSecond * PREDICTION_WINDOW_SECONDS;
+
+      vehicleAnimationStates.current[annotation.id] = {
+        lastUpdateTime: now,
+        polylineIndex: annotation.segmentIndex,
+        currentPoint: vehicleCoord,
+        targetDistance: projectedDistanceMeters,
+        distanceTraveled: 0,
+        lastServerTime: serverTime,
       };
-
-      if (!animState) {
-        snapToPolyline();
-      } else {
-        // =======================================================================
-        // PREDICTION SMOOTHING ALGORITHM
-        // =======================================================================
-        const PREDICTION_WINDOW_SECONDS = 5;
-
-        // Step 1: Find where the server says the shuttle is right now
-        const { index: serverIndex, point: serverPoint } = findNearestPointOnPolyline(vehicleCoord, routePolyline);
-
-        // Step 2: Calculate where the shuttle will be in 5 seconds
-        // Use predicted speed if available, otherwise fall back to reported speed
-        // If showTrueLocation is true, use 0 speed to disable animation
-        const speedMph = showTrueLocation ? 0 : (
-          annotation.predictedSpeedKmh
-            ? annotation.predictedSpeedKmh * 0.621371  // Convert km/h to mph
-            : annotation.speedMph
-        );
-        // Convert speed from mph to meters/second (1 mph = 0.44704 m/s)
-        const speedMetersPerSecond = speedMph * 0.44704;
-        const projectedDistanceMeters = speedMetersPerSecond * PREDICTION_WINDOW_SECONDS;
-
-        // Move along the route polyline by that distance to find the target point
-        const { index: targetIndex, point: targetPoint } = moveAlongPolyline(
-          routePolyline,
-          serverIndex,
-          serverPoint,
-          projectedDistanceMeters
-        );
-
-        // Step 3: Verify the shuttle is moving in the correct direction
-        // Compare the vehicle's GPS heading to the route segment bearing.
-        // If they differ by more than 90°, the shuttle may be going the wrong way.
-        let isMovingCorrectDirection = true;
-        if (routePolyline.length > serverIndex + 1 && speedMph > 1) {
-          const segmentStart = routePolyline[serverIndex];
-          const segmentEnd = routePolyline[serverIndex + 1];
-          const segmentBearing = calculateBearing(segmentStart, segmentEnd);
-          const headingDifference = getAngleDifference(segmentBearing, annotation.heading);
-
-          if (headingDifference > 90) {
-            isMovingCorrectDirection = false;
-          }
-        }
-
-        // Step 4: Calculate distance from current visual position to target
-        const distanceToTarget = calculateDistanceAlongPolyline(
-          routePolyline,
-          animState.polylineIndex,
-          animState.currentPoint,
-          targetIndex,
-          targetPoint
-        );
-
-        // Step 5: Calculate the total distance to travel with easing
-        let targetDistanceMeters = distanceToTarget;
-
-        // If moving wrong direction, stop the animation
-        if (!isMovingCorrectDirection) {
-          targetDistanceMeters = 0;
-        }
-
-        // Step 6: Update animation state.
-        // If the gap is extremely large (>250m in either direction), snap to server position.
-        // For smaller backward gaps, animate smoothly backward to correct the overprediction.
-        const MAX_REASONABLE_GAP_METERS = 250;
-        if (Math.abs(distanceToTarget) > MAX_REASONABLE_GAP_METERS) {
-          snapToPolyline();
-        } else {
-          // Allow negative targetDistance for smooth backward animation
-          // Reset the animation progress - we're starting a new prediction window
-          vehicleAnimationStates.current[annotation.id] = {
-            lastUpdateTime: now,
-            polylineIndex: animState.polylineIndex,
-            currentPoint: animState.currentPoint,
-            targetDistance: targetDistanceMeters,
-            distanceTraveled: 0,
-            lastServerTime: serverTime
-          };
-        }
-      }
     });
   }, [annotations, showTrueLocation]);
 
