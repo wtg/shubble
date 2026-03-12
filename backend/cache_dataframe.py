@@ -48,6 +48,12 @@ def process_raw_dataframe(raw_df: pd.DataFrame) -> pd.DataFrame:
     if raw_df.empty:
         return raw_df
 
+    # Defensive: ensure timestamp is datetime64 regardless of source
+    # (old cached data pickled before dc1f5b5 may have object dtype)
+    if 'timestamp' in raw_df.columns and not pd.api.types.is_datetime64_any_dtype(raw_df['timestamp']):
+        raw_df = raw_df.copy()
+        raw_df['timestamp'] = pd.to_datetime(raw_df['timestamp'])
+
     # Run pipelines in sequence, injecting the dataframe to bypass disk cache loading
     # We pass flag=True to ensure any internal checks know we want to compute
     # We pass cache=False to disable disk caching (Redis cache is sufficient)
