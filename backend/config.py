@@ -41,6 +41,8 @@ class Settings(BaseSettings):
     # Shubble settings
     CAMPUS_TZ: ZoneInfo = ZoneInfo("America/New_York")
 
+    DAY_START: str = "00:00:00"  # Default to midnight, can be overridden in .env
+
     @field_validator("DATABASE_URL")
     @classmethod
     def fix_database_url(cls, v: str) -> str:
