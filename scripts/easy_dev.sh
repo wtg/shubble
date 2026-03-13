@@ -1,19 +1,25 @@
 #!/usr/bin/env bash
 set -e
 
-# ============================================================
-# Shubble Development Launcher
-# Usage: ./shubble.sh {start|stop}
-# ============================================================
+# ======================================= #
+# NOTE - Must have tmux installed for use #
+# ======================================= #
+
+
+# ================================== #
+# Shubble Development Launcher       # 
+# Usage: ./easy_dev.sh start OR stop #
+# ================================== #
 
 # -------- CONFIG --------
-SHUBBLE_DIR="$HOME/shubble" # <--- Replace "" with "$PARENT_DIRECTORY_NAME/shubble_folder_name"
+SHUBBLE_DIR="$HOME/shubble" # <--- Replace "" with "$PARENT_DIR_NAME/shubble_work_dir_name"
 VITE_DIR="$SHUBBLE_DIR/test/client"
 SESSION="shubble-dev"
 
 # -------- CLEANUP FUNCTION --------
-# This is called automatically if the script receives an exit signal
+# Called automatically if the script receives an exit signal; equivalent to stop command
 cleanup() {
+    echo "🛑 Stopping Shubble services..."
     tmux kill-session -t "$SESSION" 2>/dev/null || true
     cd "$SHUBBLE_DIR"
     docker compose --profile frontend down
@@ -30,7 +36,7 @@ case "$1" in
         echo "✅ Shubble stack stopped."
         ;;
     start|*)
-        # 1. Validation
+        # Validation
         if [ -z "$SHUBBLE_DIR" ]; then
             echo "ERROR: SHUBBLE_DIR not set in script."
             exit 1
@@ -42,18 +48,18 @@ case "$1" in
             fi
         done
 
-        # 2. Trap signals so cleanup runs on exit
+        # Trap signals so cleanup runs on exit
         trap cleanup EXIT SIGINT SIGTERM
 
-        # 3. Clean old session
+        # Clean old session
         if tmux has-session -t "$SESSION" 2>/dev/null; then
             echo "Stopping existing session..."
             tmux kill-session -t "$SESSION"
         fi
 
-        echo "🚀 Starting Shubble dev environment..."
+        echo "Starting Shubble dev environment..."
 
-        # 4. Create Session
+        # Create Session
         tmux new-session -d -s "$SESSION" -n "docker" -c "$SHUBBLE_DIR" "docker compose up -d postgres redis"
         tmux new-window -t "$SESSION" -n "worker" -c "$SHUBBLE_DIR" "uv run python -m backend.worker"
         tmux new-window -t "$SESSION" -n "test-server" -c "$SHUBBLE_DIR" "uv run uvicorn test.server.server:app --port 4000"
