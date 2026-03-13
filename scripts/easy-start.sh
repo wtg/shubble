@@ -1,41 +1,69 @@
 #!/usr/bin/env bash
 set -e
 
-# ************************************************************************* #
-# *** NOTE Gnome Terminal needs to be installed for this script to work *** #
-# *** Install using "sudo apt install gnome-terminal"                   *** #  
-# ************************************************************************* #
+# ============================================================
+# Shubble Development Launcher
+# Usage: ./shubble.sh {start|stop}
+# ============================================================
 
-# --------------------------------------------------------------------------------------- #
-# Copy this file outside of your Shubble work folder and fill in the necessary data below #
-# --------------------------------------------------------------------------------------- #
+# -------- CONFIG --------
+SHUBBLE_DIR="$HOME/shubble" # <--- Replace "" with "$PARENT_DIRECTORY_NAME/shubble_folder_name"
+VITE_DIR="$SHUBBLE_DIR/test/client"
+SESSION="shubble-dev"
 
-SHUBBLE_DIR="" # <--- Replace "" with "$PARENT_DIRECTORY_NAME/shubble_folder_name"
-VITE_DIR="$SHUBBLE_DIR/test/client" 
+# -------- CLEANUP FUNCTION --------
+# This is called automatically if the script receives an exit signal
+cleanup() {
+    tmux kill-session -t "$SESSION" 2>/dev/null || true
+    cd "$SHUBBLE_DIR"
+    docker compose --profile frontend down
+    docker compose down redis postgres
+    echo "✅ Shubble stack stopped."
+}
+# -------- ARGUMENT HANDLING --------
+case "$1" in
+    stop)
+        echo "🛑 Stopping Shubble services..."
+        tmux kill-session -t "$SESSION" 2>/dev/null || true
+        docker compose --profile frontend down
+        docker compose down redis postgres
+        echo "✅ Shubble stack stopped."
+        ;;
+    start|*)
+        # 1. Validation
+        if [ -z "$SHUBBLE_DIR" ]; then
+            echo "ERROR: SHUBBLE_DIR not set in script."
+            exit 1
+        fi
+        for cmd in docker uv npm tmux; do
+            if ! command -v "$cmd" &> /dev/null; then
+                echo "ERROR: Required command '$cmd' not found."
+                exit 1
+            fi
+        done
 
+        # 2. Trap signals so cleanup runs on exit
+        trap cleanup EXIT SIGINT SIGTERM
 
-echo "Starting FULL Shubble stack in separate terminal tabs"
+        # 3. Clean old session
+        if tmux has-session -t "$SESSION" 2>/dev/null; then
+            echo "Stopping existing session..."
+            tmux kill-session -t "$SESSION"
+        fi
 
-# ------------------ Postgres & Redis ------------------
-gnome-terminal --tab --title="Postgres+Redis" -- bash -c "cd $SHUBBLE_DIR && docker compose up -d postgres redis; exec bash"
+        echo "🚀 Starting Shubble dev environment..."
 
-# ------------------ Backend worker ------------------
-gnome-terminal --tab --title="Backend Worker" -- bash -c "cd $SHUBBLE_DIR && uv run python -m backend.worker; exec bash"
+        # 4. Create Session
+        tmux new-session -d -s "$SESSION" -n "docker" -c "$SHUBBLE_DIR" "docker compose up -d postgres redis"
+        tmux new-window -t "$SESSION" -n "worker" -c "$SHUBBLE_DIR" "uv run python -m backend.worker"
+        tmux new-window -t "$SESSION" -n "test-server" -c "$SHUBBLE_DIR" "uv run uvicorn test.server.server:app --port 4000"
+        tmux new-window -t "$SESSION" -n "api" -c "$SHUBBLE_DIR" "uv run uvicorn shubble:app --reload --port 8000"
+        tmux new-window -t "$SESSION" -n "frontend" -c "$SHUBBLE_DIR" "docker compose --profile frontend up"
+        tmux new-window -t "$SESSION" -n "vite-client" -c "$VITE_DIR" "npm run dev -- --port 5174 --host"
+        tmux new-window -t "$SESSION" -n "command" -c "../$SHUBBLE_DIR" bash
 
-# ------------------ Test server ------------------
-gnome-terminal --tab --title="Test Server 4000" -- bash -c "cd $SHUBBLE_DIR && uv run uvicorn test.server.server:app --port 4000; exec bash"
-
-# ------------------ Main API ------------------
-gnome-terminal --tab --title="Main API 8000" -- bash -c "cd $SHUBBLE_DIR && source .venv/bin/activate && uvicorn shubble:app --reload --port 8000; exec bash"
-
-# ------------------ Docker Frontend ------------------
-gnome-terminal --tab --title="Frontend Docker 3000" -- bash -c "cd $SHUBBLE_DIR && docker compose --profile frontend up; exec bash"
-
-# ------------------ Vite Test Client ------------------
-gnome-terminal --tab --title="Vite Client 5174" -- bash -c "cd $VITE_DIR && npm run dev -- --port 5174 --host; exec bash"
-
-echo "All services launched in separate tabs."
-echo "   • Frontend (Docker): http://localhost:3000"
-echo "   • Test Client (Vite): http://localhost:5174"
-echo "   • Main API: http://localhost:8000"
-echo "   • Test Server: http://localhost:4000"
+        # 5. Attach
+        echo "✅ Shubble services started."
+        tmux attach -t "$SESSION"
+        ;;
+esac
