@@ -4,6 +4,7 @@ export interface Announcement {
     type: 'info' | 'warning' | 'error';
     active: boolean;
     expiresAt?: string;
+    createdAt: string;
 }
 
 export interface AnnouncementsData {

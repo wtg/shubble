@@ -15,7 +15,7 @@ from backend.function_timer import timed
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects import postgresql
 from backend.database import get_db
-from backend.models import Vehicle, GeofenceEvent, VehicleLocation
+from backend.models import Vehicle, GeofenceEvent, VehicleLocation, Announcement
 from backend.config import settings
 from backend.time_utils import get_campus_start_of_day
 from backend.utils import (
@@ -452,3 +452,24 @@ async def get_matched_shuttle_schedules(force_recompute: bool = False):
         return JSONResponse(
             {"status": "error", "message": str(e)}, status_code=500
         )
+
+@router.get("/api/announcements")
+@cache(soft_ttl=900, hard_ttl=3600, namespace="announcements")
+async def data_announcement(db: AsyncSession = Depends(get_db)):
+
+    # Query announcements that are active and not expired
+    now = datetime.now(timezone.utc)
+    announcements_query = (
+        select(Announcement)
+        .where(
+            and_(
+                Announcement.active == True,
+                Announcement.expires_at >= now,
+            )
+        )
+        # Order by most recent first
+        .order_by(Announcement.created_at.desc())
+    )
+    announcements_result = await db.execute(announcements_query)
+    announcements = announcements_result.scalars().all()
+    return announcements
