@@ -10,11 +10,11 @@ set -e
 # Copy this file outside of your Shubble work folder and fill in the necessary data below #
 # --------------------------------------------------------------------------------------- #
 
-SHUBBLE_DIR="$HOME/shubble" # <--- Replace "" with "$PARENT_DIRECTORY_NAME/shubble_folder_name"
+SHUBBLE_DIR="" # <--- Replace "" with "$PARENT_DIRECTORY_NAME/shubble_folder_name"
 VITE_DIR="$SHUBBLE_DIR/test/client" 
 
 
-echo "Starting FULL Shubble stack in separate terminal tabs..."
+echo "Starting FULL Shubble stack in separate terminal tabs"
 
 # ------------------ Postgres & Redis ------------------
 gnome-terminal --tab --title="Postgres+Redis" -- bash -c "cd $SHUBBLE_DIR && docker compose up -d postgres redis; exec bash"
