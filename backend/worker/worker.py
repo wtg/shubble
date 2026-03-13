@@ -64,7 +64,7 @@ async def update_locations(session_factory):
             has_next_page = True
             after_token = None
             new_records_added = 0
-            updated_vehicle_ids = []
+            inserted_vehicle_ids = []
 
             while has_next_page:
                 # Add pagination token if present
@@ -89,6 +89,8 @@ async def update_locations(session_factory):
                 after_token = pagination.get("endCursor", after_token)
 
                 async with session_factory() as session:
+                    values_to_insert = []
+                    
                     for vehicle in data.get("data", []):
                         # Process each vehicle's GPS data
                         vehicle_id = vehicle.get("id")
@@ -107,37 +109,37 @@ async def update_locations(session_factory):
                             timestamp_str.replace("Z", "+00:00")
                         )
 
-                        # Use PostgreSQL upsert with ON CONFLICT DO NOTHING and RETURNING
-                        insert_stmt = postgresql.insert(VehicleLocation).values(
-                            vehicle_id=vehicle_id,
-                            timestamp=timestamp,
-                            name=vehicle_name,
-                            latitude=gps.get("latitude"),
-                            longitude=gps.get("longitude"),
-                            heading_degrees=gps.get("headingDegrees"),
-                            speed_mph=gps.get("speedMilesPerHour"),
-                            is_ecu_speed=gps.get("isEcuSpeed", False),
-                            formatted_location=gps.get("reverseGeo", {}).get(
+                        values_to_insert.append({
+                            "vehicle_id": vehicle_id,
+                            "timestamp": timestamp,
+                            "name": vehicle_name,
+                            "latitude": gps.get("latitude"),
+                            "longitude": gps.get("longitude"),
+                            "heading_degrees": gps.get("headingDegrees"),
+                            "speed_mph": gps.get("speedMilesPerHour"),
+                            "is_ecu_speed": gps.get("isEcuSpeed", False),
+                            "formatted_location": gps.get("reverseGeo", {}).get(
                                 "formattedLocation"
                             ),
-                            address_id=gps.get("address", {}).get("id"),
-                            address_name=gps.get("address", {}).get("name"),
-                        )
+                            "address_id": gps.get("address", {}).get("id"),
+                            "address_name": gps.get("address", {}).get("name"),
+                        })
+
+                    if values_to_insert:
+                        # Use PostgreSQL bulk upsert with ON CONFLICT DO NOTHING and RETURNING
+                        insert_stmt = postgresql.insert(VehicleLocation).values(values_to_insert)
                         # ON CONFLICT on the composite index (vehicle_id, timestamp) DO NOTHING
                         insert_stmt = insert_stmt.on_conflict_do_nothing(
                             index_elements=["vehicle_id", "timestamp"]
                         )
-                        # RETURNING id to check if insert occurred
-                        insert_stmt = insert_stmt.returning(VehicleLocation.id)
+                        # RETURNING vehicle_id to track which vehicles were actually updated
+                        insert_stmt = insert_stmt.returning(VehicleLocation.vehicle_id)
 
                         result = await session.execute(insert_stmt)
-                        inserted_id = result.scalar_one_or_none()
-
-                        # If a row was returned, an insert occurred
-                        if inserted_id:
-                            new_records_added += 1
-                            if vehicle_id not in updated_vehicle_ids:
-                                updated_vehicle_ids.append(vehicle_id)
+                        batch_inserted_ids = result.scalars().all()
+                        
+                        new_records_added += len(batch_inserted_ids)
+                        inserted_vehicle_ids.extend(batch_inserted_ids)
 
                     # Only commit if we actually added new records
                     if new_records_added > 0:
@@ -152,7 +154,7 @@ async def update_locations(session_factory):
                             f"No new location data for {len(current_vehicle_ids)} vehicles"
                         )
 
-            return updated_vehicle_ids
+            return inserted_vehicle_ids
 
     except httpx.HTTPError as e:
         logger.error(f"Failed to fetch locations: {e}")
