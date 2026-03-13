@@ -171,3 +171,48 @@ footer {
   text-decoration: none;
   /* remove underline */
 }
+
+.about-underline-animation {
+  display: inline-block;
+  position: relative;
+}
+
+.about-underline-animation::after {
+  content: '';
+  position: absolute;
+  width: 100%;
+  transform: scaleX(0);
+  height: 2px;
+  bottom: 0;
+  left: 0;
+  background-color: var(--text-color);
+  transition: transform 0.25s ease-out;
+}
+
+.about-underline-animation:hover::after {
+  transform: scaleX(1);
+}
+
+.about-underline-animation.left::after {
+  transform-origin: bottom right;
+}
+
+.about-underline-animation.left:hover::after {
+  transform-origin: bottom left;
+}
+
+.about-underline-animation.center::after {
+  transform-origin: bottom center;
+}
+
+.about-underline-animation.center:hover::after {
+  transform-origin: bottom center;
+}
+
+.about-underline-animation.right::after {
+  transform-origin: bottom left;
+}
+
+.about-underline-animation.right:hover::after {
+  transform-origin: bottom right;
+}

@@ -234,3 +234,166 @@ def add_polyline_distances(
         result_df = df.progress_apply(process_row, axis=1)
         for output_col in output_columns.values():
             df[output_col] = result_df[output_col]
+
+
+def clean_stops(
+    df: pd.DataFrame,
+    route_column: str,
+    polyline_index_column: str,
+    stop_column: str,
+    lat_column: str,
+    lon_column: str,
+    distance_column: str,
+) -> None:
+    """
+    Rectify unrecorded stops by identifying jumps in polyline indices without stop records.
+
+    When a shuttle passes a stop but the event is not recorded in the data, there will be
+    a jump in polyline indices between consecutive rows without any stop being logged.
+    This function detects these gaps and assigns the missing stop to either the previous
+    or current data point based on which GPS position is closer to the actual stop location.
+
+    The function examines consecutive rows within the same route and looks for cases where:
+    1. The polyline index increases between rows
+    2. Neither row has a stop recorded
+    3. A stop should exist between the two polyline indices
+
+    For each detected gap, it determines which GPS point (previous or current) is closer
+    to the unrecorded stop and assigns that stop accordingly.
+
+    Modifies the dataframe in place by populating the stop_column where stops were missing.
+
+    Args:
+        df: Pandas DataFrame to modify
+        route_column: Name of the column containing route names
+        polyline_index_column: Name of the column containing polyline indices
+        stop_column: Name of the column containing stop names (will be populated)
+        lat_column: Name of the latitude column
+        lon_column: Name of the longitude column
+        distance_column: Name of the column containing distance to closest point on route
+
+    Raises:
+        None
+
+    Example:
+        >>> # Before clean_stops: polyline_idx jumps from 0 to 1 without any stops for either point
+        >>> df = pd.DataFrame({
+        ...     'route': ['North Route', 'North Route', 'North Route'],
+        ...     'polyline_idx': [0, 1, 2],
+        ...     'stop': [None, None, 'Georgian'],
+        ...     'latitude': [42.7284, 42.7295, 42.7300],
+        ...     'longitude': [-73.6788, -73.6799, -73.6805],
+        ...     'distance_to_route': [0.015, 0.003, 0.001]
+        ... })
+        >>> clean_stops(
+        ...     df, 'route', 'polyline_idx', 'stop',
+        ...     'latitude', 'longitude', 'distance_to_route'
+        ... )
+        >>> # After clean_stops: the middle point (index 1) is closer to the stop 
+        >>> # location than the previous point (index 0), so the stop is assigned to index 1
+        >>> df = pd.DataFrame({
+        ...     'route': ['North Route', 'North Route', 'North Route'],
+        ...     'polyline_idx': [0, 1, 2],
+        ...     'stop': [None, 'Colonie', 'Georgian'],
+        ...     'latitude': [42.7284, 42.7295, 42.7300],
+        ...     'longitude': [-73.6788, -73.6799, -73.6805],
+        ...     'distance_to_route': [0.015, 0.003, 0.001]
+        ... })
+        >>> clean_stops(
+        ...     df, 'route', 'polyline_idx', 'stop',
+        ...     'latitude', 'longitude', 'distance_to_route'
+        ... )
+    """
+    # Import here to avoid circular imports
+    from shared.stops import Stops
+
+    df['prev_route'] = df[route_column].shift(1)
+    df['prev_polyline_index'] = df[polyline_index_column].shift(1)
+    df['prev_stop'] = df[stop_column].shift(1)
+    df['prev_lat'] = df[lat_column].shift(1)
+    df['prev_lon'] = df[lon_column].shift(1)
+    df['prev_distance'] = df[distance_column].shift(1)
+
+    # Identify any jumps
+    jumps_mask = (
+        (df[route_column] == df['prev_route']) & # Same route?
+        (df[polyline_index_column].notna()) & # Current index valid?
+        (df['prev_polyline_index'].notna()) & # Previous index valid?
+        (df[polyline_index_column] == df['prev_polyline_index'] + 1) # Polyline index increased?
+    )
+
+    # Filter for only unidentified stops with jumps
+    unrecorded_mask = (
+        jumps_mask &
+        (df[stop_column].isna()) & # No current stop
+        (df['prev_stop'].isna()) # No previous stop
+    )
+
+    unrecorded_jumps = df[unrecorded_mask]
+
+    # Clean data frame if no unrecorded jumps found
+    if len(unrecorded_jumps) == 0:
+        print("   No unrecorded stop jumps found")
+        df.drop(columns=['prev_route', 'prev_polyline_index', 'prev_stop', 'prev_lat', 'prev_lon', 'prev_distance'], inplace=True)
+        return
+    
+    print(f"   Found {len(unrecorded_jumps)} unrecorded stop jumps")
+
+    # Vectorized function to find matching stops
+    def find_stop(row):
+        """
+        Find the stop name at the current polyline index.
+        Uses the route's POLYLINE_STOPS list, where each index maps directly
+        to a stop name. Returns the stop at idx (the current polyline
+        index for this row).
+        """
+        route_name = row[route_column]
+        idx = int(row[polyline_index_column])
+        
+        if route_name not in Stops.routes_data:
+            return None
+        
+        route_data = Stops.routes_data[route_name]
+        polyline_stops = route_data.get('POLYLINE_STOPS', [])
+        
+        # Find stops that fall between before and after indices
+        if idx < len(polyline_stops):
+            return polyline_stops[idx]
+        
+        return None
+    
+    df.loc[unrecorded_mask, 'matched_stop'] = df[unrecorded_mask].apply(
+        find_stop, axis=1
+    )
+
+    valid_comparison = (
+        unrecorded_mask & 
+        df['matched_stop'].notna() &
+        df['prev_distance'].notna() &
+        df[distance_column].notna()
+    )
+    
+    prev_closer_mask = valid_comparison & (df['prev_distance'] < df[distance_column])
+    next_closer_mask = valid_comparison & (df['prev_distance'] >= df[distance_column])
+
+    # Assign stops using vectorized operations
+    # For rows where next (current) is closer: directly assign to current row
+    df.loc[next_closer_mask, stop_column] = df.loc[next_closer_mask, 'matched_stop']
+    
+    # For rows where prev is closer: shift assignment to previous row
+    df['stop_to_assign_prev'] = None
+    df.loc[prev_closer_mask, 'stop_to_assign_prev'] = df.loc[prev_closer_mask, 'matched_stop']
+    
+    # This effectively assigns the stop to the previous row
+    df['stop_assignment'] = df['stop_to_assign_prev'].shift(-1)
+    
+    # Apply the assignment where we have values
+    assignment_mask = df['stop_assignment'].notna()
+    df.loc[assignment_mask, stop_column] = df.loc[assignment_mask, 'stop_assignment']
+    
+    stops_assigned = (prev_closer_mask | next_closer_mask).sum()
+
+    print(f"   ✓ Assigned {stops_assigned} unrecorded stops")
+    temp_cols = ['prev_route', 'prev_polyline_index', 'prev_stop', 'prev_distance',
+                 'matched_stop', 'stop_to_assign_prev', 'stop_assignment']
+    df.drop(columns=temp_cols, inplace=True, errors='ignore')
