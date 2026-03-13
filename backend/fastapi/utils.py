@@ -365,3 +365,60 @@ async def get_latest_velocities(vehicle_ids: List[str], session_factory) -> Dict
             }
 
         return predicted_dict
+
+async def get_route_for_vehicles(vehicle_ids: list[str]) -> dict[str, str | None]:
+    """
+    Read the most recent route assignment per vehicle from the cached
+    processed dataframe (written by the ML worker).
+
+    Used by /api/locations to include route_name in its response so that
+    shuttle color-coding works independently of /api/velocities being warm.
+
+    Falls back gracefully to an empty dict if the cache is cold or missing.
+
+    Args:
+        vehicle_ids: List of vehicle IDs to look up
+
+    Returns:
+        Dict mapping vehicle_id -> route name string, or None if not matched
+    """
+    import pickle
+    import logging
+    from backend.time_utils import get_campus_start_of_day
+    from redis import asyncio as aioredis
+    from backend.config import settings
+
+    logger = logging.getLogger(__name__)
+
+    today_str = get_campus_start_of_day().strftime('%Y-%m-%d')
+    cache_key = f"locations:{today_str}"
+
+    try:
+        redis = await aioredis.from_url(settings.REDIS_URL)
+        try:
+            cached_data = await redis.get(cache_key)
+            if not cached_data:
+                return {}
+
+            df = pickle.loads(cached_data)
+
+            if df.empty or 'route' not in df.columns:
+                return {}
+
+            result = {}
+            for vid in vehicle_ids:
+                vehicle_rows = df[df['vehicle_id'] == str(vid)]
+                if not vehicle_rows.empty:
+                    latest = vehicle_rows.sort_values('timestamp').iloc[-1]
+                    route = latest.get('route')
+                    # Treat pandas NA/NaN as no route
+                    result[vid] = None if (route is None or str(route) == 'nan') else str(route)
+
+            return result
+
+        finally:
+            await redis.close()
+
+    except Exception as e:
+        logger.warning(f"Could not read route from dataframe cache: {e}")
+        return {}

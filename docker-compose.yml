@@ -64,10 +64,37 @@ services:
     profiles:
       - backend
 
-  worker:
+  locations_worker:
     build:
       context: .
-      dockerfile: docker/worker/Dockerfile.worker
+      dockerfile: docker/worker/Dockerfile.location_worker
+    extra_hosts:
+      - "localhost:host-gateway"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://shubble:shubble@postgres:5432/shubble}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DEPLOY_MODE: ${DEPLOY_MODE:-development}
+      API_KEY: ${API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    restart: unless-stopped
+    volumes:
+      - ./backend:/app/backend
+      - ./shared:/app/shared
+      #- ./ml:/app/ml
+    profiles:
+      - backend
+
+  ml_worker:
+    build:
+      context: .
+      dockerfile: docker/worker/Dockerfile.ml_worker
     extra_hosts:
       - "localhost:host-gateway"
     environment:
