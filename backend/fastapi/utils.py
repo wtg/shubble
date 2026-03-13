@@ -5,10 +5,12 @@ from typing import Dict, Tuple, Optional, List, TypedDict, Any
 import pandas as pd
 
 from backend.cache import cache
+from backend.function_timer import timed
 
 from backend.models import VehicleLocation, DriverVehicleAssignment, ETA, PredictedLocation
 from backend.cache_dataframe import get_today_dataframe
 from backend.utils import get_vehicles_in_geofence_query
+from backend.time_utils import get_campus_start_of_day
 
 import logging
 
@@ -58,6 +60,7 @@ class VelocityDict(TypedDict):
     timestamp: str
 
 
+@timed
 @cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="smart_closest_point")
 async def smart_closest_point(
     vehicle_ids: List[str]
@@ -88,20 +91,17 @@ async def smart_closest_point(
                 results[vehicle_id] = (None, None, None, None, None, None)
             return results
 
-        # Ensure vehicle_id is string type for comparison
         df['vehicle_id'] = df['vehicle_id'].astype(str)
+        grouped = df.groupby('vehicle_id')
 
         # Get the latest row for each vehicle
         for vehicle_id in vehicle_ids:
-            vehicle_data = df[df['vehicle_id'] == str(vehicle_id)]
-
-            if vehicle_data.empty:
-                # No data for this vehicle
+            vid_str = str(vehicle_id)
+            if vid_str not in grouped.groups:
                 results[vehicle_id] = (None, None, None, None, None, None)
                 continue
 
-            # Get the latest row (dataframe is sorted by timestamp)
-            latest = vehicle_data.iloc[-1]
+            latest = grouped.get_group(vid_str).iloc[-1]
 
             # Extract closest point data from the preprocessed columns
             # These columns are added by ml/data/preprocess.py pipeline
@@ -150,7 +150,8 @@ async def smart_closest_point(
     return results
 
 
-@cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="locations")
+@timed
+@cache(soft_ttl=15, hard_ttl=300, lock_timeout=0.0, namespace="locations")
 async def get_latest_vehicle_locations(session_factory) -> List[VehicleLocationDict]:
     """
     Get the latest location for each vehicle currently inside the geofence.
@@ -165,27 +166,17 @@ async def get_latest_vehicle_locations(session_factory) -> List[VehicleLocationD
         # Get query for vehicles in geofence and convert to subquery
         geofence_entries = get_vehicles_in_geofence_query().subquery()
 
-        # Subquery: latest vehicle location per vehicle
-        latest_locations = (
-            select(
-                VehicleLocation.vehicle_id,
-                func.max(VehicleLocation.timestamp).label("latest_time"),
-            )
-            .where(VehicleLocation.vehicle_id.in_(select(geofence_entries.c.vehicle_id)))
-            .group_by(VehicleLocation.vehicle_id)
-            .subquery()
-        )
-
-        # Join to get full location and vehicle info for vehicles in geofence
         query = (
             select(VehicleLocation)
-            .join(
-                latest_locations,
-                and_(
-                    VehicleLocation.vehicle_id == latest_locations.c.vehicle_id,
-                    VehicleLocation.timestamp == latest_locations.c.latest_time,
-                ),
+            .where(
+                VehicleLocation.vehicle_id.in_(select(geofence_entries.c.vehicle_id)),
+                VehicleLocation.timestamp >= get_campus_start_of_day(),
             )
+            .order_by(
+                VehicleLocation.vehicle_id,
+                VehicleLocation.timestamp.desc()
+            )
+            .distinct(VehicleLocation.vehicle_id)
             .options(selectinload(VehicleLocation.vehicle))
         )
 
@@ -223,6 +214,7 @@ async def get_latest_vehicle_locations(session_factory) -> List[VehicleLocationD
         return location_dicts
 
 
+@timed
 @cache(soft_ttl=900, hard_ttl=3600, namespace="driver_assignments")
 async def get_current_driver_assignments(
     vehicle_ids: List[str], session_factory
@@ -269,6 +261,7 @@ async def get_current_driver_assignments(
         return result_dict
 
 
+@timed
 @cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="etas")
 async def get_latest_etas(vehicle_ids: List[str], session_factory) -> Dict[str, ETADict]:
     """
@@ -321,6 +314,7 @@ async def get_latest_etas(vehicle_ids: List[str], session_factory) -> Dict[str, 
         return etas_dict
 
 
+@timed
 @cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="velocities")
 async def get_latest_velocities(vehicle_ids: List[str], session_factory) -> Dict[str, VelocityDict]:
     """

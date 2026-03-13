@@ -3,6 +3,7 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from brotli_asgi import BrotliMiddleware
 
 from backend.config import settings
 from backend.database import create_async_db_engine, create_session_factory
@@ -64,6 +65,9 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Enable Brotli/GZip compression (previously handled by NGINX)
+    app.add_middleware(BrotliMiddleware, minimum_size=500)
 
     # Register routes
     from .routes import router

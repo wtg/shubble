@@ -1,4 +1,5 @@
 """FastAPI routes for the Shubble API."""
+import asyncio
 import logging
 import hmac
 from hashlib import sha256
@@ -10,6 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import func, and_, select
 
 from backend.cache import cache, soft_clear_namespace
+from backend.function_timer import timed
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects import postgresql
 from backend.database import get_db
@@ -36,7 +38,8 @@ router = APIRouter()
 
 
 @router.get("/api/locations")
-@cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0,namespace="locations")
+@timed
+@cache(soft_ttl=15, hard_ttl=300, lock_timeout=0.0, namespace="locations")
 async def get_locations(response: Response, request: Request):
     """
     Returns the latest location for each vehicle currently inside the geofence.
@@ -50,7 +53,6 @@ async def get_locations(response: Response, request: Request):
     # Uses cached function that returns dicts
     results = await get_latest_vehicle_locations(request.app.state.session_factory)
 
-    # Get current driver assignments for all vehicles in results
     vehicle_ids = [loc["vehicle_id"] for loc in results]
     current_assignments = await get_current_driver_assignments(vehicle_ids, request.app.state.session_factory)
     route_map = await get_route_for_vehicles(vehicle_ids)
@@ -112,6 +114,7 @@ async def get_locations(response: Response, request: Request):
 
 
 @router.get("/api/etas")
+@timed
 @cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="etas")
 async def get_etas(request: Request, response: Response):
     """
@@ -131,6 +134,7 @@ async def get_etas(request: Request, response: Response):
 
 
 @router.get("/api/velocities")
+@timed
 @cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="velocities")
 async def get_velocities(request: Request, response: Response):
     """
@@ -180,6 +184,7 @@ async def get_velocities(request: Request, response: Response):
 
 
 @router.post("/api/webhook")
+@timed
 async def webhook(request: Request, db: AsyncSession = Depends(get_db)):
     """
     Handles incoming webhook events for geofence entries/exits.
@@ -314,6 +319,7 @@ async def webhook(request: Request, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/api/today")
+@timed
 async def data_today(db: AsyncSession = Depends(get_db)):
     """Get all location data and geofence events for today."""
     now = datetime.now(timezone.utc)
@@ -387,6 +393,7 @@ async def data_today(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/api/routes")
+@timed
 async def get_shuttle_routes():
     """Serve routes.json file."""
     root_dir = Path(__file__).parent.parent.parent
@@ -397,10 +404,10 @@ async def get_shuttle_routes():
 
 
 @router.get("/api/schedule")
+@timed
 async def get_shuttle_schedule():
     """Serve schedule.json file."""
     root_dir = Path(__file__).parent.parent.parent
-    print(root_dir)
     schedule_file = root_dir / "shared" / "schedule.json"
     if schedule_file.exists():
         return FileResponse(schedule_file)
@@ -408,6 +415,7 @@ async def get_shuttle_schedule():
 
 
 @router.get("/api/aggregated-schedule")
+@timed
 async def get_aggregated_shuttle_schedule():
     """Serve aggregated_schedule.json file."""
     root_dir = Path(__file__).parent.parent.parent
@@ -418,6 +426,7 @@ async def get_aggregated_shuttle_schedule():
 
 
 @router.get("/api/matched-schedules")
+@timed
 @cache(soft_ttl=3600, hard_ttl=86400, namespace="matched_schedules")
 async def get_matched_shuttle_schedules(force_recompute: bool = False):
     """

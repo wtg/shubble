@@ -116,9 +116,12 @@ def add_closest_points(
     # If additive mode, initialize columns if they don't exist and determine which rows need processing
     if additive:
         # Initialize output columns with NaN if they don't exist
-        for output_col in output_columns.values():
+        for key, output_col in output_columns.items():
             if output_col not in df.columns:
-                df[output_col] = np.nan
+                # route_name is a string column; use None (object dtype) so
+                # pandas doesn't initialise it as float64 and then reject
+                # the string values assigned later.
+                df[output_col] = None if key == 'route_name' else np.nan
 
         # Determine which rows need processing (any row with NaN in any output column)
         route_col = output_columns['route_name']
