@@ -85,23 +85,6 @@ export function Banner({ message, type, showReload = false }: BannerProps) {
 }
 
 /**
- * Filters announcements to only return active, non-expired ones.
- */
-async function getActiveAnnouncements(): Promise<Announcement[]> {
-    try{
-        const response = await fetch(`${config.apiBaseUrl}/api/announcements`);
-        if (!response.ok) {
-            throw new Error('Network response was not ok');
-        }
-        const data = await response.json() as Announcement[];
-        return data
-    } catch (error) {
-        console.error('Error fetching announcements:', error);
-        return [];
-    }
-}
-
-/**
  * Displays announcements loaded from the JSON file.
  * Only shows active, non-expired announcements.
  */
