@@ -1,7 +1,7 @@
 """Adding announcements to models
 
 Revision ID: 1cc2da604c8f
-Revises: 80692b8f8d92
+Revises: 2fa67080ee04th
 Create Date: 2026-02-27 07:58:26.331015
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '1cc2da604c8f'
-down_revision: Union[str, None] = '80692b8f8d92'
+down_revision: Union[str, None] = '2fa67080ee04'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
