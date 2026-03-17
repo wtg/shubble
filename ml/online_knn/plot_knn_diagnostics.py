@@ -29,7 +29,8 @@ from ml.online_knn.stops_config import STOPS_STUDENT_UNION_COLONIE
 # Match run_learning_curve
 STOPS = STOPS_STUDENT_UNION_COLONIE
 STOP_RADIUS_KM = 0.08
-ROUTE_FILTER = "WEST"
+# Use NORTH so both Student Union and Colonie are on the route (Colonie is not on WEST)
+ROUTE_FILTER = "NORTH"
 MAX_DIST_TO_ROUTE_KM = 0.08
 MAX_GAP_SEC = 3600
 MIN_DATE = "2025-09-01"
@@ -60,6 +61,13 @@ def load_and_prepare():
     )
     eta_cols = [f"eta_seconds_stop_{i}" for i in range(len(STOPS))]
     valid = labeled.dropna(subset=eta_cols).sort_values("timestamp").reset_index(drop=True)
+    min_required = TRAIN_SIZE + TEST_SIZE
+    if len(valid) < min_required:
+        raise SystemExit(
+            f"Not enough rows with both ETAs: got {len(valid)}, need at least {min_required}. "
+            f"Data is filtered to route '{ROUTE_FILTER}'. Both stops must be on that route. "
+            "Colonie is on the NORTH route in routes.json; set ROUTE_FILTER = 'NORTH' in this script (and run_learning_curve) to use Colonie, or use Blitman with WEST in stops_config.py."
+        )
     valid = add_minutes_since_last_stop_passage(
         valid, stops=STOPS, radius_km=STOP_RADIUS_KM, segment_column="segment_id"
     )

@@ -24,7 +24,8 @@ from ml.online_knn.stops_config import STOPS_STUDENT_UNION_COLONIE
 # Match run_learning_curve config
 STOPS = STOPS_STUDENT_UNION_COLONIE
 STOP_RADIUS_KM = 0.08   # 80 m
-ROUTE_FILTER = "WEST"
+# Use NORTH so both Student Union and Colonie are on the route
+ROUTE_FILTER = "NORTH"
 MAX_DIST_TO_ROUTE_KM = 0.08   # 80 m
 MAX_GAP_SEC = 3600
 MIN_DATE = "2025-09-01"

@@ -33,8 +33,8 @@ STOPS = STOPS_STUDENT_UNION_COLONIE
 # Radius (km) to count as "at stop".
 STOP_RADIUS_KM = 0.08  # 80 m
 
-# Only use shuttles that were on the WEST route (requires preprocessed CSV with 'route' column)
-ROUTE_FILTER = "WEST"
+# Use NORTH so both Student Union and Colonie are on the route (Colonie is not on WEST)
+ROUTE_FILTER = "NORTH"
 # Max distance to route (km) — drop points farther than this.
 MAX_DIST_TO_ROUTE_KM = 0.08  # 80 m
 # Max time gap (seconds) between consecutive points (same vehicle). Larger = new segment (shuttle left and came back); ETAs are not computed across this gap.
