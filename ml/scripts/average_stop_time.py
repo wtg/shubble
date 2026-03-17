@@ -64,11 +64,14 @@ def calculate_stop_times(df: pd.DataFrame) -> pd.DataFrame:
         logger.warning("No stop data found!")
         return pd.DataFrame()
 
-    # Sort by segment and timestamp
-    stops_df = stops_df.sort_values(['segment_id', 'timestamp'])
+    # Sort by route, polyline, segment, and timestamp to ensure correct grouping
+    stops_df = stops_df.sort_values(['route', 'polyline_idx', 'segment_id', 'timestamp'])
 
-    # Define new stop visit whenever segment changes or stop_name changes
+    # Define new stop visit whenever route, polyline, segment, or stop_name changes.
+    # Including route and polyline_idx prevents visits from bleeding across routes.
     stops_df['new_visit'] = (
+        (stops_df['route'] != stops_df['route'].shift()) |
+        (stops_df['polyline_idx'] != stops_df['polyline_idx'].shift()) |
         (stops_df['segment_id'] != stops_df['segment_id'].shift()) |
         (stops_df['stop_name'] != stops_df['stop_name'].shift())
     )
@@ -95,10 +98,10 @@ def calculate_stop_times(df: pd.DataFrame) -> pd.DataFrame:
         visit_durations
         .groupby(['route', 'polyline_idx', 'stop_name'])['duration']
         .agg(
-            avg_stop_time_seconds=lambda x: x.replace(0, 5).mean(),
+            avg_stop_time_seconds='mean',
             std_stop_time_seconds='std',
             sample_count='count',
-            min_time=lambda x: x.replace(0, 5).min(),
+            min_time='min',
             max_time='max'
         )
         .reset_index()
@@ -122,16 +125,14 @@ def save_stop_stats(stats_df: pd.DataFrame):
         return
 
     saved_count = 0
-    for _, row in stats_df.iterrows():
-        route = row['route']
-        polyline_idx = int(row['polyline_idx'])
-
-        polyline_dir = get_polyline_dir(route, polyline_idx)
+    # Group by (route, polyline_idx) so all stops for a pair are written together,
+    # rather than overwriting the file once per row.
+    for (route, polyline_idx), group_df in stats_df.groupby(['route', 'polyline_idx']):
+        polyline_dir = get_polyline_dir(route, int(polyline_idx))
         polyline_dir.mkdir(parents=True, exist_ok=True)
 
-        stop_stats = pd.DataFrame([row])
         output_path = polyline_dir / 'average_stop_time.csv'
-        stop_stats.to_csv(output_path, index=False)
+        group_df.to_csv(output_path, index=False)
         saved_count += 1
 
     logger.info(f"Saved statistics to {saved_count} polyline directories")
@@ -179,7 +180,5 @@ def main():
     logger.info("="*70)
     return 0
 
-
 if __name__ == '__main__':
-    import sys
     sys.exit(main())
