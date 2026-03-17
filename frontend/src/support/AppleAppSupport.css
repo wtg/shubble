@@ -1,0 +1,46 @@
+.app-support {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 3rem 1.5rem;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: #1d1d1f;
+  line-height: 1.7;
+}
+
+.app-support h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+
+.app-support p {
+  margin-bottom: 0.75rem;
+}
+
+.app-support section {
+  margin-bottom: 2rem;
+}
+
+.app-support h2 {
+  font-size: 1.3rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.app-support a {
+  color: #0071e3;
+  text-decoration: none;
+}
+
+.app-support a:hover {
+  text-decoration: underline;
+}
+
+.iframe-container {
+  width: 100%;
+  border: 1px solid #e1e4e8;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-top: 1.5rem;
+  height: 600px;
+}

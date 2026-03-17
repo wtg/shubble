@@ -157,7 +157,8 @@
 .timeline-dot {
   position: absolute;
   left: -35px;
-  top: 8px;
+  top: 50%;
+  transform: translateY(-50%);
   width: 12px;
   height: 12px;
   background: #578FCA;
@@ -237,8 +238,9 @@
 
 .secondary-timeline-dot {
   position: absolute;
-  left: -25px;
-  top: 6px;
+  left: -27px;
+  top: 50%;
+  transform: translateY(-50%);
   width: 8px;
   height: 8px;
   background: #95a5a6;
@@ -473,6 +475,6 @@
   }
 
   .secondary-timeline-dot {
-    left: -22px;
+    left: -24px;
   }
 }
