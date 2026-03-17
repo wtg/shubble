@@ -1,5 +1,6 @@
 """Configuration using Pydantic BaseSettings."""
 import base64
+from datetime import datetime, time
 from typing import Optional
 from zoneinfo import ZoneInfo
 from pydantic import field_validator
@@ -41,7 +42,7 @@ class Settings(BaseSettings):
     # Shubble settings
     CAMPUS_TZ: ZoneInfo = ZoneInfo("America/New_York")
 
-    DAY_START: str = "00:00:00"  # Default to midnight, can be overridden in .env
+    DAY_START: time = time(0, 0, 0)  # Default to midnight, can be overridden in .env
 
     @field_validator("DATABASE_URL")
     @classmethod
@@ -50,6 +51,22 @@ class Settings(BaseSettings):
         if v.startswith("postgres://"):
             return v.replace("postgres://", "postgresql://", 1)
         return v
+    
+    @field_validator("DAY_START", mode="before")
+    @classmethod
+    def parse_day_start(cls, v: str | time) -> time:
+        """Parse DAY_START from env into a datetime.time object."""
+        if isinstance(v, time):
+            return v
+        try:
+            return datetime.strptime(v, "%H:%M:%S").time()
+        except ValueError:
+            return time(0, 0, 0)  # Fallback to midnight if parsing fails
+
+    @property
+    def day_start_time(self) -> time:
+        """Get the day start time as a datetime.time object."""
+        return self.DAY_START
 
     @property
     def samsara_secret_decoded(self) -> Optional[bytes]:
