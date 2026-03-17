@@ -381,7 +381,7 @@ async def data_today(db: AsyncSession = Depends(get_db)):
                 )
 
     return locations_today_dict
-
+#pytest call api locations create test suite
 
 @router.get("/api/routes")
 async def get_shuttle_routes():
