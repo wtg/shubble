@@ -58,15 +58,16 @@ async def load_average_travel_time(route: str, polyline_idx: int) -> Optional[fl
         return None
 
 @timed
-async def _get_vehicle_data(vehicle_ids: List[str]) -> pd.DataFrame:
+async def _get_vehicle_data(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
     """Helper to get and filter vehicle data."""
-    try:
-        df = await get_today_dataframe()
-    except Exception as e:
-        logger.error(f"Failed to load dataframe for prediction: {e}")
-        return pd.DataFrame()
+    if df is None:
+        try:
+            df = await get_today_dataframe()
+        except Exception as e:
+            logger.error(f"Failed to load dataframe for prediction: {e}")
+            return pd.DataFrame()
 
-    if df.empty:
+    if df is None or df.empty:
         return pd.DataFrame()
 
     # Filter for vehicles
@@ -77,11 +78,11 @@ async def _get_vehicle_data(vehicle_ids: List[str]) -> pd.DataFrame:
     return target_df
 
 @timed
-async def predict_eta(vehicle_ids: List[str]) -> Dict[str, datetime]:
+async def predict_eta(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None) -> Dict[str, datetime]:
     """
     Predict ETA (absolute datetime of arrival at next stop) for a list of vehicle IDs using LSTM.
     """
-    target_df = await _get_vehicle_data(vehicle_ids)
+    target_df = await _get_vehicle_data(vehicle_ids, df=df)
     if target_df.empty:
         return {}
 
@@ -156,7 +157,7 @@ async def predict_eta(vehicle_ids: List[str]) -> Dict[str, datetime]:
     return results
 
 @timed
-async def get_all_stop_times(vehicle_ids: List[str]) -> Dict[str, List[Tuple[str, datetime]]]:
+async def get_all_stop_times(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None) -> Dict[str, List[Tuple[str, datetime]]]:
     """
     Get all stop times for a list of vehicle IDs: historical, predicted, and future.
 
@@ -172,6 +173,7 @@ async def get_all_stop_times(vehicle_ids: List[str]) -> Dict[str, List[Tuple[str
 
     Args:
         vehicle_ids: List of vehicle IDs to predict for
+        df: Optional pre-loaded dataframe
 
     Returns:
         Dictionary mapping vehicle_id to list of (stop_key, datetime) tuples
@@ -179,20 +181,22 @@ async def get_all_stop_times(vehicle_ids: List[str]) -> Dict[str, List[Tuple[str
     """
 
     # Get full vehicle dataframe to find historical stop times and current position
-    try:
-        full_df = await get_today_dataframe()
-    except Exception as e:
-        logger.error(f"Failed to load dataframe for get_all_stop_times: {e}")
-        return {}
+    full_df = df
+    if full_df is None:
+        try:
+            full_df = await get_today_dataframe()
+        except Exception as e:
+            logger.error(f"Failed to load dataframe for get_all_stop_times: {e}")
+            return {}
 
-    if full_df.empty:
+    if full_df is None or full_df.empty:
         return {}
 
     # Load routes data from Stops class
     routes = Stops.routes_data
 
     # Get ML prediction for next stop (current transition)
-    next_stop_etas = await predict_eta(vehicle_ids)
+    next_stop_etas = await predict_eta(vehicle_ids, df=full_df)
     if not next_stop_etas:
         return {}
 
@@ -296,11 +300,11 @@ async def get_all_stop_times(vehicle_ids: List[str]) -> Dict[str, List[Tuple[str
     return results
 
 @timed
-async def predict_next_state(vehicle_ids: List[str]) -> Dict[str, Dict]:
+async def predict_next_state(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None) -> Dict[str, Dict]:
     """
     Predict next state (speed, timestamp) for vehicles using ARIMA.
     """
-    target_df = await _get_vehicle_data(vehicle_ids)
+    target_df = await _get_vehicle_data(vehicle_ids, df=df)
     if target_df.empty:
         return {}
 
@@ -414,12 +418,17 @@ async def generate_and_save_predictions(vehicle_ids: List[str]):
 
     logger.info(f"Generating predictions for {len(vehicle_ids)} vehicles...")
 
-    # Run in parallel
-    # Note: get_all_stop_times and predict_next_state both call get_today_dataframe.
-    # get_today_dataframe is cached in Redis so overhead is low.
+    # Load dataframe once to avoid unpickling overhead twice
+    try:
+        df = await get_today_dataframe()
+    except Exception as e:
+        logger.error(f"Failed to load dataframe for predictions: {e}")
+        return
+
+    # Run in parallel, passing the pre-loaded dataframe
     results = await asyncio.gather(
-        get_all_stop_times(vehicle_ids),
-        predict_next_state(vehicle_ids)
+        get_all_stop_times(vehicle_ids, df=df),
+        predict_next_state(vehicle_ids, df=df)
     )
 
     etas = results[0]
