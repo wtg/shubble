@@ -10,12 +10,14 @@ export interface AnimatedAnnotation extends KeyedAnnotation {
   speedMph: number;
   timestamp: number;
   segmentIndex: number;
-  routePolyline?: Coordinate[];
+  routePolylineIndex: number;
+  routePolyline?: Coordinate[][];
   predictedSpeedKmh?: number;
 }
 
 type AnimationState = {
   lastUpdateTime: number; // local time when we received the server update
+  segmentIndex: number;
   polylineIndex: number;
   currentPoint: Coordinate;
   targetDistance: number; // total distance to travel in this prediction window (meters)
@@ -32,7 +34,7 @@ type MapKitAnimationProps = {
 export default function MapKitAnimation({
   annotations,
   vehicleAnnotations,
-  showTrueLocation
+  showTrueLocation,
 }: MapKitAnimationProps) {
   const vehicleAnimationStates = useRef<Record<string, AnimationState>>({});
   const animationFrameId = useRef<number | null>(null);
@@ -47,6 +49,11 @@ export default function MapKitAnimation({
       // We'll just rely on the API updates or maybe simple linear extrapolation later?
       // For now, let's only set up animation if we have a valid route.
       if (!annotation.routePolyline) return;
+
+      const routePolyline = annotation.routePolyline;
+      const currentPolyline =  routePolyline[annotation.routePolylineIndex];
+
+      if (!currentPolyline) return;
 
       // Use the coordinate from the annotation props (source of truth from server)
       const vehicleCoord: Coordinate = {
@@ -80,14 +87,37 @@ export default function MapKitAnimation({
       const speedMetersPerSecond = speedMph * 0.44704;
       const projectedDistanceMeters = speedMetersPerSecond * PREDICTION_WINDOW_SECONDS;
 
-      vehicleAnimationStates.current[annotation.id] = {
-        lastUpdateTime: now,
-        polylineIndex: annotation.segmentIndex,
-        currentPoint: vehicleCoord,
-        targetDistance: projectedDistanceMeters,
-        distanceTraveled: 0,
-        lastServerTime: serverTime,
-      };
+      if (!animState) {
+        // First time seeing this vehicle, snap to server position
+        vehicleAnimationStates.current[annotation.id] = {
+          lastUpdateTime: now,
+          segmentIndex: annotation.segmentIndex,
+          polylineIndex: annotation.routePolylineIndex,
+          currentPoint: vehicleCoord,
+          targetDistance: projectedDistanceMeters,
+          distanceTraveled: 0,
+          lastServerTime: serverTime,
+        };
+      }
+
+      else {
+        // Subsequent update — check whether the vehicle has moved to a new polyline.
+        // If so, snap to the server position to avoid animating across a discontinuity
+        // between route legs. Otherwise, keep the current visual position.
+        const polylineChanged = animState.polylineIndex !== annotation.routePolylineIndex;
+ 
+        vehicleAnimationStates.current[annotation.id] = {
+          lastUpdateTime: now,
+          polylineIndex: annotation.routePolylineIndex,
+          segmentIndex: annotation.segmentIndex,
+          // If on a new polyline, snap to the server's reported position.
+          // Otherwise, keep the current visual position to avoid jumping.
+          currentPoint: polylineChanged ? vehicleCoord : animState.currentPoint,
+          targetDistance: projectedDistanceMeters,
+          distanceTraveled: 0,
+          lastServerTime: serverTime,
+        };
+      }
     });
   }, [annotations, showTrueLocation]);
 
@@ -118,7 +148,8 @@ export default function MapKitAnimation({
         if (!dataAnnotation || !annotation || !animState) return;
         if (!dataAnnotation.routePolyline) return;
 
-        const routePolyline = dataAnnotation.routePolyline;
+        const currentPolyline = dataAnnotation.routePolyline[animState.polylineIndex];
+        if (!currentPolyline) return;
 
         // =======================================================================
         // EASED ANIMATION
@@ -140,14 +171,14 @@ export default function MapKitAnimation({
 
         // Move along polyline
         const { index, point } = moveAlongPolyline(
-          routePolyline,
-          animState.polylineIndex,
+          currentPolyline,
+          animState.segmentIndex,
           animState.currentPoint,
           distanceToMove
         );
 
         // Update state
-        animState.polylineIndex = index;
+        animState.segmentIndex = index;
         animState.currentPoint = point;
         animState.distanceTraveled = targetPosition;
 
