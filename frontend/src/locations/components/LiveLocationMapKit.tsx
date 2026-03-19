@@ -22,6 +22,10 @@ type LiveLocationMapKitProps = {
   isFullscreen?: boolean;
   showTrueLocation?: boolean;
   shuttleIconSize?: number;
+  /** Set of "ROUTE:STOP_KEY" identifiers for stops that are currently inactive */
+  inactiveStops?: Set<string>;
+  /** Current scrollTop of the schedule panel (for time-based map interactions) */
+  scheduleScrollY?: number;
 };
 
 export default function LiveLocationMapKit({
@@ -33,6 +37,7 @@ export default function LiveLocationMapKit({
   isFullscreen = false,
   showTrueLocation = true,
   shuttleIconSize = 25,
+  inactiveStops,
 }: LiveLocationMapKitProps) {
   const [map, setMap] = useState<(mapkit.Map | null)>(null);
   const [vehicles, setVehicles] = useState<VehicleCombinedMap | null>(null);
@@ -197,6 +202,7 @@ export default function LiveLocationMapKit({
         setSelectedRoute={setSelectedRoute}
         isFullscreen={isFullscreen}
         onMapReady={setMap}
+        inactiveStops={inactiveStops}
       />
       <MapKitOverlays
         map={map}

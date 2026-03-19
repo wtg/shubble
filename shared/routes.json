@@ -728,7 +728,20 @@
         -73.68883082757004
       ],
       "OFFSET": 9,
-      "NAME": "Chasan Building"
+      "NAME": "Chasan Building",
+      "SCHEDULE": {
+        "days": [
+          "MONDAY",
+          "TUESDAY",
+          "WEDNESDAY",
+          "THURSDAY",
+          "FRIDAY"
+        ],
+        "hours": {
+          "start": "07:00",
+          "end": "17:30"
+        }
+      }
     },
     "FEDERAL_6TH": {
       "COORDINATES": [

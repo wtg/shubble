@@ -10,6 +10,8 @@ declare global {
             stopKey?: string;
             stopName?: string;
             style?: mapkit.Style;
+            /** Whether the stop is currently outside its operating schedule */
+            isInactive?: boolean;
         }
         interface Map {
             _hoverCleanup?: () => void;
