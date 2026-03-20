@@ -26,7 +26,7 @@ async def lifespan(app: FastAPI):
         app,
         app.state.engine,
         title="Shubble Admin",
-        base_url="/admin"
+        base_url="/admin/sqladmin"
     )
     
     # Add model views
@@ -54,7 +54,7 @@ app = FastAPI(
 @app.get("/")
 async def root():
     """Root endpoint."""
-    return {"message": "Shubble Admin API", "admin_panel": "/admin"}
+    return {"message": "Shubble Admin API", "admin_panel": "/admin/sqladmin"}
 
 
 @app.get("/health")
