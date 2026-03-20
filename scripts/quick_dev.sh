@@ -8,7 +8,7 @@ set -e
 
 # ================================== #
 # Shubble Development Launcher       #
-# Usage: ./easy_dev.sh start OR stop #
+# Usage: ./quick_dev.sh start OR stop #
 # ================================== #
 
 # -------- CONFIG --------
