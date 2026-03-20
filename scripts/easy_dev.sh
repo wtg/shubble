@@ -7,7 +7,7 @@ set -e
 
 
 # ================================== #
-# Shubble Development Launcher       # 
+# Shubble Development Launcher       #
 # Usage: ./easy_dev.sh start OR stop #
 # ================================== #
 
@@ -26,16 +26,18 @@ cleanup() {
     docker compose down redis postgres
     echo "✅ Shubble stack stopped."
 }
+
 # -------- ARGUMENT HANDLING --------
 case "$1" in
     stop)
         echo "🛑 Stopping Shubble services..."
         tmux kill-session -t "$SESSION" 2>/dev/null || true
+        cd "$SHUBBLE_DIR"
         docker compose --profile frontend down
         docker compose down redis postgres
         echo "✅ Shubble stack stopped."
         ;;
-    start|*)
+    start)
         # Validation
         if [ -z "$SHUBBLE_DIR" ]; then
             echo "ERROR: SHUBBLE_DIR not set in script."
@@ -60,16 +62,19 @@ case "$1" in
         echo "Starting Shubble dev environment..."
 
         # Create Session
-        tmux new-session -d -s "$SESSION" -n "docker" -c "$SHUBBLE_DIR" "docker compose up -d postgres redis"
-        tmux new-window -t "$SESSION" -n "worker" -c "$SHUBBLE_DIR" "uv run python -m backend.worker"
-        tmux new-window -t "$SESSION" -n "test-server" -c "$SHUBBLE_DIR" "uv run uvicorn test.server.server:app --port 4000"
-        tmux new-window -t "$SESSION" -n "api" -c "$SHUBBLE_DIR" "uv run uvicorn shubble:app --reload --port 8000"
-        tmux new-window -t "$SESSION" -n "frontend" -c "$SHUBBLE_DIR" "docker compose --profile frontend up"
-        tmux new-window -t "$SESSION" -n "vite-client" -c "$VITE_DIR" "npm run dev -- --port 5174 --host"
-        tmux new-window -t "$SESSION" -n "command" -c "../$SHUBBLE_DIR" bash
+        tmux new-session -d -s "$SESSION" -n "docker"      -c "$SHUBBLE_DIR" "docker compose up -d postgres redis"
+        tmux new-window  -t "$SESSION" -n "worker"         -c "$SHUBBLE_DIR" "uv run python -m backend.worker"
+        tmux new-window  -t "$SESSION" -n "test-server"    -c "$SHUBBLE_DIR" "uv run uvicorn test.server.server:app --port 4000"
+        tmux new-window  -t "$SESSION" -n "api"            -c "$SHUBBLE_DIR" "uv run uvicorn shubble:app --reload --port 8000"
+        tmux new-window  -t "$SESSION" -n "frontend"       -c "$SHUBBLE_DIR" "docker compose --profile frontend up"
+        tmux new-window  -t "$SESSION" -n "vite-client"    -c "$VITE_DIR"    "npm run dev -- --port 5174 --host"
+        tmux new-window  -t "$SESSION" -n "command"        -c "$SHUBBLE_DIR" bash
 
-        # 5. Attach
         echo "✅ Shubble services started."
         tmux attach -t "$SESSION"
+        ;;
+    *)
+        echo "Usage: $0 start|stop"
+        exit 1
         ;;
 esac
