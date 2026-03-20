@@ -4,228 +4,225 @@ import Modal from './Modal.tsx';
 import { buildTestFile, parseTestFile, validateTestData, stringy } from '../utils/testFiles.ts';
 
 interface ExportTestFileModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  shuttles: ShuttlesState;
+	isOpen: boolean;
+	onClose: () => void;
+	shuttles: ShuttlesState;
 }
 
 export default function ExportTestFileModal({
-  isOpen,
-  onClose,
-  shuttles
+	isOpen,
+	onClose,
+	shuttles
 }: ExportTestFileModalProps) {
 
-  // Order Shuttles With Drag
-  const [orderedShuttles, setOrderedShuttles] = useState<string[]>(Object.keys(shuttles));
+	// Order Shuttles With Drag
+	const [orderedShuttles, setOrderedShuttles] = useState<string[]>(Object.keys(shuttles));
 
-  // Tracks which shuttles are selected shuttles 2, 6, 9
-  const [selectedShuttles, setSelectedShuttles] = useState<string[]>([]);
+	// Tracks which shuttles are selected shuttles 2, 6, 9
+	const [selectedShuttles, setSelectedShuttles] = useState<string[]>([]);
 
-  // alerts are displyed in modal
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+	// alerts are displyed in modal
+	const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Sync orderedShuttles when new shuttles are added or removed
-  useEffect(() => {
-    const ids = Object.keys(shuttles);
+	// Sync orderedShuttles when new shuttles are added or removed
+	useEffect(() => {
+		const ids = Object.keys(shuttles);
 
-    setOrderedShuttles((prev) => {
-      // Keep existing order for shuttles that still exist
-      const existing = prev.filter((id) => ids.includes(id));
+		setOrderedShuttles((prev) => {
+			// Keep existing order for shuttles that still exist
+			const existing = prev.filter((id) => ids.includes(id));
+			// Add newly created shuttles to the end
+			const newOnes = ids.filter((id) => !prev.includes(id));
+			return [...existing, ...newOnes];
+		});
 
-      // Add newly created shuttles to the end
-      const newOnes = ids.filter((id) => !prev.includes(id));
+		// Sync selectedShuttles in future change delete selected shuttle
+		setSelectedShuttles((prev) =>
+			prev.filter((id) => ids.includes(id)));
+		
+		// Clear export error if at least one shuttle has events
+		const hasValidShuttle = Object.values(shuttles).some(
+			(s) => s.queue?.length > 0
+		);
 
-      return [...existing, ...newOnes];
-    });
+		if (hasValidShuttle) {
+			setErrorMessage(null);
+		}
 
-    // Sync selectedShuttles in future change delete selected shuttle
-    setSelectedShuttles((prev) =>
-      prev.filter((id) => ids.includes(id)));
+	}, [shuttles]);
 
-    // Clear export error if at least one shuttle has events
-    const hasValidShuttle = Object.values(shuttles).some(
-      (s) => s.queue?.length > 0
-    );
+	if (!isOpen) return null;
 
-    if (hasValidShuttle) {
-      setErrorMessage(null);
-    }
+	const handleClose = () => {
+		onClose();
+	};
 
-  }, [shuttles]);
+	// Toggle selection when clicked
+	const toggleSelection = (id: string) => {
+		setSelectedShuttles((prev) =>
+			prev.includes(id)
+				? prev.filter((s) => s !== id)
+				: [...prev, id]
+		);
+	};
 
-  if (!isOpen) return null;
+	// Drag Shuttle Logic
+	const handleDragStart = (e: React.DragEvent<HTMLDivElement>, index: number) => {
+		e.dataTransfer.setDragImage(new Image(), 0, 0);
+		e.dataTransfer.setData('text/plain', index.toString());
+	};
 
-  const handleClose = () => {
-    onClose();
-  };
+	const handleDrop = (e: React.DragEvent<HTMLDivElement>, dropIndex: number) => {
+		const dragIndex = Number(e.dataTransfer.getData('text/plain'));
+		if (dragIndex === dropIndex) return;
 
-  // Toggle selection when clicked
-  const toggleSelection = (id: string) => {
-    setSelectedShuttles((prev) =>
-      prev.includes(id)
-        ? prev.filter((s) => s !== id)
-        : [...prev, id]
-    );
-  };
+		const updated = [...orderedShuttles];
+		const [moved] = updated.splice(dragIndex, 1);
+		updated.splice(dropIndex, 0, moved);
 
-  // Drag Shuttle Logic
-  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, index: number) => {
-    e.dataTransfer.setDragImage(new Image(), 0, 0);
-    e.dataTransfer.setData('text/plain', index.toString());
-  };
+		setOrderedShuttles(updated);
+	};
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>, dropIndex: number) => {
-    const dragIndex = Number(e.dataTransfer.getData('text/plain'));
-    if (dragIndex === dropIndex) return;
-
-    const updated = [...orderedShuttles];
-    const [moved] = updated.splice(dragIndex, 1);
-    updated.splice(dropIndex, 0, moved);
-
-    setOrderedShuttles(updated);
-  };
-
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-  };
+	const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+		e.preventDefault();
+	};
 
 
-  const handleExport = () => { 
+	//const handleExport = (int) => {
+	const handleExport = (shuttleData: ShuttlesState, selected: string[], ordered: string[]) => {
+		setErrorMessage(null);
 
-    setErrorMessage(null);
+		// If nothing selected then export all in the dragged order
+		const shuttlesWithEvents = ordered.filter(
+			(id) => shuttleData[id]?.queue?.length > 0
+		);
 
-    // If nothing selected then export all in the dragged order
-    const shuttlesWithEvents = orderedShuttles.filter(
-      (id) => shuttles[id]?.queue?.length > 0
-    );
+		const shuttlesToExport =
+			selected.length === 0
+				? shuttlesWithEvents
+				: shuttlesWithEvents.filter((id) => selected.includes(id));
 
-    const shuttlesToExport =
-      selectedShuttles.length === 0
-        ? shuttlesWithEvents
-        : shuttlesWithEvents.filter((id) => selectedShuttles.includes(id));
-    
-    if (shuttlesToExport.length === 0) {
-      setErrorMessage('No events defined. At least one shuttle must contain actions to export.');
-      return;
-    }
+		if (shuttlesToExport.length === 0) {
+			setErrorMessage('No events defined. At least one shuttle must contain actions to export.');
+			return;
+		}
 
-    // For each shuttle, build invidual test file and validate each one
-    // before adding shuttles to a list to be exported.
-    // If shuttle fails validation, stop export and alert user with error message.
-    const builtShuttles: TestShuttle[] = [];
-    for (const id of shuttlesToExport) {
-      const shuttle = shuttles[id];
+		// For each shuttle, build invidual test file and validate each one
+		// before adding shuttles to a list to be exported.
+		// If shuttle fails validation, stop export and alert user with error message.
+		const builtShuttles: TestShuttle[] = [];
+		for (const id of shuttlesToExport) {
+			const shuttle = shuttleData[id];
 
-      const text = buildTestFile(shuttle.queue);
+			const text = buildTestFile(shuttle.queue);
 
-      // Parse shuttle data
-      const parseResult = parseTestFile(text);
-      if (!parseResult.success || !parseResult.data) {
-        setErrorMessage(parseResult.error || 'Parse failed');
-        return;
-      }
+			// Parse shuttle data
+			const parseResult = parseTestFile(text);
+			if (!parseResult.success || !parseResult.data) {
+				setErrorMessage(parseResult.error || 'Parse failed');
+				return;
+			}
 
-      //  Validate
-      const validation = validateTestData(parseResult.data);
-      if (!validation.valid || !validation.data) {
-        setErrorMessage(validation.errors[0]?.message || 'Validation failed');
-        return;
-      }
+			//  Validate
+			const validation = validateTestData(parseResult.data);
+			if (!validation.valid || !validation.data) {
+				setErrorMessage(validation.errors[0]?.message || 'Validation failed');
+				return;
+			}
 
-      // No alerts, add to export list
-      builtShuttles.push(validation.data.shuttles[0]);
-    }
+			// No alerts, add to export list
+			builtShuttles.push(validation.data.shuttles[0]);
+		}
 
-    const finalData: TestData = {shuttles: builtShuttles};
-    
-    stringy(finalData);
-    onClose();
-  };
+		const finalData: TestData = { shuttles: builtShuttles };
 
-  // deselects all shuttles and export
-  function exportAll(){
-    setSelectedShuttles([]);
-    handleExport();
-  }
+		stringy(finalData);
+		onClose();
+	};
 
-  function resetSelection() {
-  const sorted = [...Object.keys(shuttles)].sort();
-  setOrderedShuttles(sorted);
-  setSelectedShuttles([]);
-}
+	function resetSelection() {
+		const sorted = [...Object.keys(shuttles)].sort();
+		setOrderedShuttles(sorted);
+		setSelectedShuttles([]);
+	}
 
-  const footer = (
-    <div className="modal-actions">
-      <button className="btn-secondary" onClick={handleClose}>
-        Cancel
-      </button>
+	
 
-      <button
-        className="btn-secondary"
-        onClick={() => resetSelection()}
-      >
-        Reset Selection
-      </button>
+	const footer = (
+		<div className="modal-actions">
+			<button 
+				className="btn-secondary" 
+				onClick={handleClose}>
+				Cancel
+			</button>
 
-      <button
-        className="btn-secondary"
-        onClick={() => exportAll()}
-      >
-        Export All
-      </button>
-      <button className="btn-primary" onClick={handleExport}>
-        Export
-      </button>
-    </div>
-  );
+			<button
+				className="btn-secondary"
+				onClick={() => resetSelection()}>
+				Reset Selection
+			</button>
 
-  return (
-    <Modal
-      isOpen={isOpen}
-      title="Export Test File"
-      onClose={handleClose}
-      footer={footer}
-    >
+			<button
+				className="btn-secondary"
+				onClick={() => handleExport(shuttles, [], orderedShuttles)}>
+				Export All
+			</button>
 
-        <div>
+			<button 
+				className="btn-primary" 
+				onClick={() => handleExport(shuttles, selectedShuttles, orderedShuttles)}>
+				Export
+			</button>
+		</div>
+	);
 
-          {/* alerts are displyed in modal */}
-          {errorMessage && (
-            <div className="export-error">
-              {errorMessage}
-            </div>
-          )}
+	return (
+		<Modal
+			isOpen={isOpen}
+			title="Export Test File"
+			onClose={handleClose}
+			footer={footer}
+		>
 
-          <h3>Drag to Reorder. Click to Select.</h3>
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            {orderedShuttles.map((id, index) => {
-              const isSelected = selectedShuttles.includes(id);
-              const hasEvents = shuttles[id]?.queue?.length > 0;
+			<div>
 
-              return (
-                <div
-                  key={id}
-                  draggable
-                  className={`export-shuttle-box ${isSelected ? 'selected' : ''} ${!hasEvents ? 'disabled' : ''}`}
-                  onDragStart={(e) => handleDragStart(e, index)}
-                  onDrop={(e) => handleDrop(e, index)}
-                  onDragOver={handleDragOver}
-                  onClick={() => {
-                    if (!hasEvents) return;
-                    toggleSelection(id);
-                  }}
-                >
-                  {id}
-                </div>
-              );
-            })}
-          </div>
+				{/* alerts are displyed in modal */}
+				{errorMessage && (
+					<div className="export-error">
+						{errorMessage}
+					</div>
+				)}
 
-          <p className="export-shuttle-description">
-            Selected shuttles turn blue. If none are selected, all will be exported.
-          </p>
-        </div>
+				<h3>Drag to Reorder. Click to Select.</h3>
+				<div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+					{orderedShuttles.map((id, index) => {
+						const isSelected = selectedShuttles.includes(id);
+						const hasEvents = shuttles[id]?.queue?.length > 0;
 
-    </Modal>
-  );
+						return (
+							<div
+								key={id}
+								draggable
+								className={`export-shuttle-box ${isSelected ? 'selected' : ''} ${!hasEvents ? 'disabled' : ''}`}
+								onDragStart={(e) => handleDragStart(e, index)}
+								onDrop={(e) => handleDrop(e, index)}
+								onDragOver={handleDragOver}
+								onClick={() => {
+									if (!hasEvents) return;
+									toggleSelection(id);
+								}}
+							>
+								{id}
+							</div>
+						);
+					})}
+				</div>
+
+				<p className="export-shuttle-description">
+					Selected shuttles turn blue. If none are selected, all will be exported.
+				</p>
+			</div>
+
+		</Modal>
+	);
 }
