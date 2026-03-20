@@ -48,7 +48,7 @@ async def load_average_travel_time(route: str, polyline_idx: int) -> Optional[fl
     try:
         df = pd.read_csv(csv_path)
         if len(df) == 0:
-            logger.info(f"No file")
+            logger.info(f"No average travel time data for {route} polyline {polyline_idx}")
             return None
         return float(df.iloc[0]['avg_travel_time_seconds'])
     except Exception as e:
@@ -251,6 +251,10 @@ async def get_all_stop_times(vehicle_ids: List[str]) -> Dict[str, List[Tuple[str
         # So if current_polyline_idx = 0, vehicle is going from STOPS[0] to STOPS[1]
 
         if not pd.isna(now_stop_key):
+            # Guard against stop keys not present in this route's stop list
+            if now_stop_key not in stops:
+                logger.warning(f"Stop {now_stop_key} not found in stops for route {route}")
+                continue
             now_stop_idx = stops.index(now_stop_key)
             if now_stop_idx == current_polyline_idx:
                 # Vehicle is at the stop it's going to, increment to next
@@ -291,10 +295,14 @@ async def get_all_stop_times(vehicle_ids: List[str]) -> Dict[str, List[Tuple[str
         next_stop_key = stops[next_stop_idx]
         stop_times.append((next_stop_key, next_stop_eta))
 
-        # 3. Calculate ETAs for subsequent stops using average travel + dwell times
+        # 3. Calculate ETAs for subsequent stops using average travel + dwell times.
+        # Start accumulating from the predicted arrival at the next stop, adding
+        # dwell time there before computing travel to each subsequent stop.
         cumulative_eta = next_stop_eta
 
-        # Add dwell time at the NEXT stop first (arrival stop)
+        # Add dwell time at the arrival stop before continuing to subsequent stops.
+        # The polyline index for the arrival stop's dwell time matches current_polyline_idx
+        # (the transition we're currently on).
         dwell_time = await load_average_stop_time(route, current_polyline_idx, next_stop_key)
         if dwell_time:
             cumulative_eta = cumulative_eta + timedelta(seconds=dwell_time)
@@ -316,16 +324,15 @@ async def get_all_stop_times(vehicle_ids: List[str]) -> Dict[str, List[Tuple[str
             cumulative_eta = cumulative_eta + timedelta(seconds=avg_time)
             stop_times.append((curr_stop_key, cumulative_eta))
 
-            # Add dwell time at this stop before continuing
+            # Add dwell time at this stop before continuing.
+            # Use polyline_idx_for_transition to stay consistent with how stop
+            # time CSVs are keyed (by the polyline arriving at the stop).
             dwell_time = await load_average_stop_time(route, polyline_idx_for_transition, curr_stop_key)
             if dwell_time:
                 cumulative_eta = cumulative_eta + timedelta(seconds=dwell_time)
 
-
         if stop_times:
             results[vehicle_id] = stop_times
-
-    print(results)
 
     return results
 
@@ -364,9 +371,9 @@ async def predict_next_state(vehicle_ids: List[str]) -> Dict[str, Dict]:
             # Fit ARIMA on recent history (max 200 points) using warm start
             recent_speeds = speeds[-200:]
 
-            if len(recent_speeds) < P and len(recent_speeds) < Q + 1:
-                # return average speed if not enough data
-                predicted_speed = np.array([float(np.mean(recent_speeds))])
+            # Fall back to mean if there isn't enough data for either the AR or MA terms
+            if len(recent_speeds) < P or len(recent_speeds) < Q + 1:
+                predicted_speed = float(np.mean(recent_speeds))
             else:
                 model = fit_arima(recent_speeds, p=P, d=D, q=Q, start_params=arima_params['params'])
 
