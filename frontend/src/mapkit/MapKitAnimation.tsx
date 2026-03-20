@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { KeyedAnnotation } from "./MapKitOverlays";
+import type { KeyedAnnotation, ShuttleAnnotationRecord } from "./MapKitOverlays";
 import {
   type Coordinate,
   findNearestPointOnPolyline,
@@ -28,7 +28,7 @@ type AnimationState = {
 
 type MapKitAnimationProps = {
   annotations: AnimatedAnnotation[];
-  vehicleAnnotations: Record<string, mapkit.Annotation>;
+  vehicleAnnotations: ShuttleAnnotationRecord;
   showTrueLocation: boolean;
 };
 
@@ -183,7 +183,7 @@ export default function MapKitAnimation({
       // We need to iterate over *current* animation states
       Object.keys(vehicleAnimationStates.current).forEach(key => {
         const animState = vehicleAnimationStates.current[key];
-        const annotation = vehicleAnnotations[key] as mapkit.ShuttleAnnotation;
+        const annotation = vehicleAnnotations[key];
         // Find the data object corresponding to this key to get the route
         const dataAnnotation = annotations.find(a => a.id === key);
 
