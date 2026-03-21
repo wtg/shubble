@@ -203,16 +203,6 @@ export async function importTestData(data: TestData): Promise<void> {
 */
 export async function stringy(data: TestData): Promise<void> {
     let json = JSON.stringify(data, null, 2);
-    // Must be updated if there are new shuttle actions
-    json = json.replace(
-        /{\n\s+"type":\s+"([^"]+)"(,\n\s+"(route|duration)":\s+("[^"]+"|\d+))?\n\s+}/g,
-        (match) => {
-        return match
-            .replace(/\n\s+/g, ' ')
-            .replace(/\s+/g, ' ')
-            .replace(/\s+}/, ' }');
-      }
-    );
 
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);

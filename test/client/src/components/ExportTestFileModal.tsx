@@ -15,6 +15,8 @@ export default function ExportTestFileModal({
 	shuttles
 }: ExportTestFileModalProps) {
 
+	if (!isOpen) return null;
+
 	// Order Shuttles With Drag
 	const [orderedShuttles, setOrderedShuttles] = useState<string[]>(Object.keys(shuttles));
 
@@ -51,11 +53,7 @@ export default function ExportTestFileModal({
 
 	}, [shuttles]);
 
-	if (!isOpen) return null;
 
-	const handleClose = () => {
-		onClose();
-	};
 
 	// Toggle selection when clicked
 	const toggleSelection = (id: string) => {
@@ -152,7 +150,7 @@ export default function ExportTestFileModal({
 		<div className="modal-actions">
 			<button 
 				className="btn-secondary" 
-				onClick={handleClose}>
+				onClick={() =>onClose()}>
 				Cancel
 			</button>
 
@@ -180,7 +178,7 @@ export default function ExportTestFileModal({
 		<Modal
 			isOpen={isOpen}
 			title="Export Test File"
-			onClose={handleClose}
+			onClose={() => onClose()}
 			footer={footer}
 		>
 
