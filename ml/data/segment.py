@@ -445,7 +445,7 @@ def add_closest_points_educated(
         return pd.Series(result)
 
     # Apply to filtered rows
-    results = df.loc[mask].progress_apply(process_row, axis=1)
+    results = df.loc[mask].apply(process_row, axis=1)
 
     # Assign back to original dataframe
     for key, output_col in output_columns.items():

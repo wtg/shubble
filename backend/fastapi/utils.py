@@ -1,18 +1,19 @@
 """Utility functions for FastAPI."""
+import asyncio
+import logging
+from typing import Dict, Tuple, Optional, List, TypedDict, Any
+
+import pandas as pd
 from sqlalchemy import func, and_, select
 from sqlalchemy.orm import selectinload
-from typing import Dict, Tuple, Optional, List, TypedDict, Any
-import pandas as pd
 
 from backend.cache import cache
 from backend.function_timer import timed
-
 from backend.models import VehicleLocation, DriverVehicleAssignment, ETA, PredictedLocation
-from backend.cache_dataframe import get_today_dataframe
+from backend.cache_dataframe import get_today_dataframe, get_cached_today_dataframe_optional
 from backend.utils import get_vehicles_in_geofence_query
 from backend.time_utils import get_campus_start_of_day
-
-import logging
+from shared.stops import Stops
 
 logger = logging.getLogger(__name__)
 
@@ -60,30 +61,79 @@ class VelocityDict(TypedDict):
     timestamp: str
 
 
+async def _get_latest_lat_lon_for_vehicle_ids(session_factory, vehicle_ids: List[str]) -> Dict[str, Tuple[float, float]]:
+    """Fetch latest (lat, lon) for each vehicle_id from today's locations. Used for lightweight route matching."""
+    if not vehicle_ids:
+        return {}
+    start_of_day = get_campus_start_of_day()
+    async with session_factory() as db:
+        subq = (
+            select(
+                VehicleLocation.vehicle_id,
+                func.max(VehicleLocation.timestamp).label("max_ts"),
+            )
+            .where(
+                VehicleLocation.vehicle_id.in_(vehicle_ids),
+                VehicleLocation.timestamp >= start_of_day,
+            )
+            .group_by(VehicleLocation.vehicle_id)
+            .subquery()
+        )
+        stmt = (
+            select(VehicleLocation.vehicle_id, VehicleLocation.latitude, VehicleLocation.longitude)
+            .join(subq, and_(
+                VehicleLocation.vehicle_id == subq.c.vehicle_id,
+                VehicleLocation.timestamp == subq.c.max_ts,
+            ))
+        )
+        result = await db.execute(stmt)
+        rows = result.fetchall()
+    out = {}
+    for vehicle_id, lat, lon in rows:
+        if lat is not None and lon is not None:
+            out[str(vehicle_id)] = (float(lat), float(lon))
+    return out
+
+
 @timed
 @cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="smart_closest_point")
 async def smart_closest_point(
-    vehicle_ids: List[str]
+    vehicle_ids: List[str],
+    session_factory=None,
 ) -> Dict[str, Tuple[Optional[float], Optional[Tuple[float, float]], Optional[str], Optional[int], Optional[int], Optional[str]]]:
     """
     Get the closest point data for each vehicle from the cached dataframe (cached for 15 seconds).
 
-    The cached dataframe (from get_today_dataframe) already contains preprocessed
-    route matching data from the ML pipeline. This function simply retrieves the
-    latest row for each vehicle and extracts the relevant columns.
-
-    Args:
-        vehicle_ids: List of vehicle IDs to get closest point data for
-
-    Returns:
-        Dictionary mapping vehicle_id to (distance, closest_point, route_name, polyline_idx, segment_idx, stop_name)
-        Returns (None, None, None, None, None, None) for vehicles not found in the cache.
+    If the processed dataframe is not in Redis and session_factory is provided, uses a lightweight
+    path (latest DB location + Stops.get_closest_point) and warms the cache in the background to
+    avoid running the full ML pipeline in the request path.
     """
     results = {}
+    for vid in vehicle_ids:
+        results[vid] = (None, None, None, None, None, None)
 
     try:
-        # Load cached dataframe with preprocessed route information
-        df = await get_today_dataframe()
+        # Prefer cache-only read to avoid running pipeline in request path
+        df = await get_cached_today_dataframe_optional()
+
+        if df is None and session_factory is not None:
+            # Lightweight path: latest location from DB + Stops only (no pipeline)
+            lat_lon = await _get_latest_lat_lon_for_vehicle_ids(session_factory, vehicle_ids)
+            for vid, (lat, lon) in lat_lon.items():
+                try:
+                    dist, closest, route_name, polyline_idx, segment_idx = Stops.get_closest_point((lat, lon))
+                    _, stop_name = Stops.is_at_stop((lat, lon))
+                    if closest is not None:
+                        closest = (float(closest[0]), float(closest[1]))
+                    results[vid] = (dist, closest, route_name, polyline_idx, segment_idx, stop_name)
+                except Exception:
+                    pass
+            # Warm cache in background so next request can use full dataframe
+            asyncio.create_task(get_today_dataframe())
+            return results
+
+        if df is None:
+            df = await get_today_dataframe()
 
         if df.empty:
             # No cached data, return None for all vehicles

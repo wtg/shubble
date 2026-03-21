@@ -151,8 +151,8 @@ async def get_velocities(request: Request, response: Response):
     # Get latest velocities
     predicted_dict = await get_latest_velocities(vehicle_ids, request.app.state.session_factory)
 
-    # Get route matching data from cached dataframe
-    closest_points = await smart_closest_point(vehicle_ids)
+    # Get route matching data (uses cached dataframe or lightweight DB+Stops path)
+    closest_points = await smart_closest_point(vehicle_ids, request.app.state.session_factory)
 
     # Format response
     response_data = {}

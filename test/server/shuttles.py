@@ -1,6 +1,7 @@
 """Shuttle-related API routes and state management for the test server."""
 import asyncio
 import logging
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
@@ -88,15 +89,29 @@ async def list_shuttles():
 
 
 @router.post("/shuttles")
-async def create_shuttle():
-    """Create a new test shuttle."""
+async def create_shuttle(request: Request):
+    """Create a new test shuttle and persist to DB so the worker will poll it."""
     global shuttle_counter
+    shuttle_id = str(shuttle_counter).zfill(15)
+    name = f"Shuttle {shuttle_counter}"
+
+    async with request.app.state.session_factory() as db:
+        db.add(Vehicle(id=shuttle_id, name=name, asset_type="vehicle"))
+        db.add(
+            GeofenceEvent(
+                id=f"test-geo-{shuttle_id}-{shuttle_counter}",
+                vehicle_id=shuttle_id,
+                event_type="geofenceEntry",
+                event_time=datetime.now(timezone.utc),
+            )
+        )
+        await db.commit()
+
     async with shuttle_lock:
-        shuttle_id = str(shuttle_counter).zfill(15)
         shuttle = Shuttle(shuttle_id)
         shuttle.start()
         shuttles[shuttle_id] = shuttle
-        logger.info(f"Created shuttle {shuttle_counter}")
+        logger.info(f"Created shuttle {shuttle_counter} (id={shuttle_id})")
         shuttle_counter += 1
         return JSONResponse(shuttle.to_dict(), status_code=201)
 

@@ -117,14 +117,18 @@ def fit_arima(
         warnings.filterwarnings('ignore', category=ConvergenceWarning)
         warnings.filterwarnings('ignore', category=UserWarning)
 
+        fit_kwargs = {} if start_params is None else {"start_params": start_params}
         try:
-            # Pass start_params to fit if provided
-            if start_params is not None:
-                model.fit(data, start_params=start_params)
-            else:
-                model.fit(data)
+            model.fit(data, **fit_kwargs)
         except Exception as e:
-            raise RuntimeError(f"Failed to fit ARIMA({p},{d},{q}): {str(e)}")
+            err_str = str(e).lower()
+            if "lu" in err_str or "decomposition" in err_str:
+                try:
+                    model.fit(data, enforce_stationarity=False, **fit_kwargs)
+                except Exception as e2:
+                    raise RuntimeError(f"Failed to fit ARIMA({p},{d},{q}): {str(e2)}")
+            else:
+                raise RuntimeError(f"Failed to fit ARIMA({p},{d},{q}): {str(e)}")
 
     return model
 

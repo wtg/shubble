@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     # Shubble settings
     CAMPUS_TZ: ZoneInfo = ZoneInfo("America/New_York")
 
+    # ML / worker: run heavy pipeline and predictions less often to reduce CPU
+    ML_UPDATE_INTERVAL_SECONDS: int = 30  # Min seconds between dataframe update + ETA/velocity predictions
+    ARIMA_ENABLED: bool = True  # Set False to skip per-vehicle ARIMA fit (saves significant CPU)
+
     @field_validator("DATABASE_URL")
     @classmethod
     def fix_database_url(cls, v: str) -> str:

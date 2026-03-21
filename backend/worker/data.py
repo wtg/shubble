@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime, timezone, timedelta
 
 from backend.cache_dataframe import get_today_dataframe
+from backend.config import settings
 from ml.deploy.lstm import load_lstm_for_route
 from ml.deploy.arima import load_arima
 from ml.training.train import fit_arima
@@ -302,13 +303,27 @@ async def get_all_stop_times(vehicle_ids: List[str], df: Optional[pd.DataFrame] 
 @timed
 async def predict_next_state(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None) -> Dict[str, Dict]:
     """
-    Predict next state (speed, timestamp) for vehicles using ARIMA.
+    Predict next state (speed, timestamp) for vehicles using ARIMA, or simple fallback when ARIMA is disabled.
     """
     target_df = await _get_vehicle_data(vehicle_ids, df=df)
     if target_df.empty:
         return {}
 
     results = {}
+
+    # When ARIMA is disabled, use last-known speed + next timestamp (saves CPU from per-vehicle fit)
+    if not getattr(settings, "ARIMA_ENABLED", True):
+        for vehicle_id, vehicle_df in target_df.groupby('vehicle_id'):
+            vehicle_df = vehicle_df.sort_values('timestamp')
+            if len(vehicle_df) < 1 or 'speed_kmh' not in vehicle_df.columns:
+                continue
+            last = vehicle_df.iloc[-1]
+            speed = float(last['speed_kmh']) if pd.notna(last.get('speed_kmh')) else 0.0
+            last_ts = pd.to_datetime(last['timestamp']).to_pydatetime()
+            if last_ts.tzinfo is None:
+                last_ts = last_ts.replace(tzinfo=timezone.utc)
+            results[vehicle_id] = {'speed_kmh': max(0.0, speed), 'timestamp': last_ts + timedelta(seconds=5)}
+        return results
 
     # Load default ARIMA params (p=3, d=0, q=2)
     try:

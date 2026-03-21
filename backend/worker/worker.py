@@ -17,6 +17,9 @@ from backend.function_timer import timed
 from backend.worker.data import generate_and_save_predictions
 from backend.cache_dataframe import update_today_dataframe
 
+# Track last time we ran ML so we only run at ML_UPDATE_INTERVAL_SECONDS
+_last_ml_run: float | None = None
+
 # Logging config for Worker
 worker_log_level = settings.get_log_level("worker")
 numeric_level = logging._nameToLevel.get(worker_log_level.upper(), logging.INFO)
@@ -314,8 +317,9 @@ async def run_worker():
         logger.error(f"Failed to initialize Redis cache: {e}")
         # Continue without cache
 
-    # Worker interval in seconds
+    # Worker interval in seconds (GPS + driver updates)
     interval = 5
+    ml_interval = getattr(settings, "ML_UPDATE_INTERVAL_SECONDS", 30)
 
     async def ticker(interval_seconds):
         """Async generator that yields at fixed intervals."""
@@ -344,14 +348,18 @@ async def run_worker():
                     update_driver_assignments(session_factory, current_vehicle_ids),
                 )
 
-                # If locations were updated, refresh the ML data cache
-                updated_vehicles = results[0]
-                if updated_vehicles:
-                    logger.info(f"Triggering ML cache update for {len(updated_vehicles)} vehicles")
-                    await update_today_dataframe()
+                # Run ML (dataframe update + ETA/velocity predictions) at most every ml_interval seconds
+                global _last_ml_run
+                now = asyncio.get_event_loop().time()
+                run_ml = False
+                if _last_ml_run is None or (now - _last_ml_run) >= ml_interval:
+                    run_ml = True
+                    _last_ml_run = now
 
-                    # Generate predictions
-                    await generate_and_save_predictions(updated_vehicles)
+                if run_ml and current_vehicle_ids:
+                    logger.info(f"Running ML update (dataframe + predictions) for {len(current_vehicle_ids)} vehicles")
+                    await update_today_dataframe()
+                    await generate_and_save_predictions(list(current_vehicle_ids))
 
             except Exception as e:
                 logger.exception(f"Error in worker loop: {e}")

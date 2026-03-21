@@ -21,6 +21,7 @@ docker compose --profile test --profile backend up
 ```
 
 This starts:
+
 - **PostgreSQL** (port 5432) - Database
 - **Redis** (port 6379) - Cache
 - **Backend** (port 8000) - Main API server
@@ -98,12 +99,12 @@ For each shuttle, you can:
 
 ### Shuttle States
 
-| State | Description |
-|-------|-------------|
-| `running` | Moving along assigned route |
-| `stopped` | Stationary (not at a designated stop) |
-| `at_stop` | At a bus stop |
-| `out_of_service` | Outside geofence, not tracked |
+| State            | Description                           |
+| ---------------- | ------------------------------------- |
+| `running`        | Moving along assigned route           |
+| `stopped`        | Stationary (not at a designated stop) |
+| `at_stop`        | At a bus stop                         |
+| `out_of_service` | Outside geofence, not tracked         |
 
 ### Viewing Data
 
@@ -236,6 +237,60 @@ lsof -i :5173
 TEST_BACKEND_PORT=4001
 TEST_FRONTEND_PORT=5175
 ```
+
+## Run ARIMA and LSTM for CPU benchmarking
+
+To measure the CPU impact of ARIMA (with the benchmark script or the live worker), you need cached ARIMA and optionally LSTM models. From the project root:
+
+**1. Get location data** (if you don’t have `ml/cache/shared/locations_raw.csv` yet):
+
+```bash
+uv run python -m ml.pipelines load
+```
+
+(Requires `DATABASE_URL` and today’s vehicle_locations. Alternatively place a CSV with columns `vehicle_id`, `latitude`, `longitude`, `timestamp` at `ml/cache/shared/locations_raw.csv`.)
+
+**2. Run ARIMA pipeline** (writes params the worker uses: p=3, d=0, q=2):
+
+```bash
+uv run python -m ml.pipelines arima --segment --p 3 --d 0 --q 2
+```
+
+If you need to run from DB load through to fit:
+
+```bash
+uv run python -m ml.pipelines arima --load --p 3 --d 0 --q 2
+```
+
+**3. (Optional) Run LSTM pipeline** (for full worker ETA predictions):
+
+```bash
+uv run python -m ml.pipelines lstm --stops --train --epochs 20
+```
+
+From scratch (including load):
+
+```bash
+uv run python -m ml.pipelines lstm --load --stops --train --epochs 20
+```
+
+**4. Run the ARIMA CPU benchmark** (compares ARIMA on vs off):
+
+```bash
+uv run python test/bench_worker_arima.py
+```
+
+With ARIMA cached from step 2, the script runs real ARIMA fits in the “ARIMA enabled” run and reports timings so you can see the impact of disabling ARIMA.
+
+**5. Run the full-pipeline benchmark (LSTM + ARIMA vs LSTM + cheap velocity):**
+
+This times the whole prediction path (`generate_and_save_predictions`: LSTM ETAs + velocity prediction + DB save) with ARIMA on vs off. Requires **Redis and PostgreSQL** running and a **warm cache** (e.g. start the worker or hit the API once so the processed dataframe is in Redis).
+
+```bash
+uv run python test/bench_full_predictions.py
+```
+
+Single mode: `--with-arima` or `--no-arima`. Options: `--calls N` (default 2), `--max-vehicles N` (default 10). If you see “no cached dataframe”, start backend services and run the worker briefly so the cache is populated.
 
 ## Automated Testing
 

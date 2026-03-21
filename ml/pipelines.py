@@ -198,6 +198,10 @@ def speed_pipeline(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
           .pipe(distance_delta, 'closest_lat', 'closest_lon', 'distance_km')
           .pipe(speed, 'distance_km', 'epoch_seconds', 'speed_kmh'))
 
+    # Cap speed to plausible range (km/h) so outliers from tiny time deltas don't poison ARIMA
+    if 'speed_kmh' in df.columns:
+        df['speed_kmh'] = df['speed_kmh'].clip(lower=0, upper=120)
+
     # Mark segment boundaries
     df['_new_segment'] = df['segment_id'] != df['segment_id'].shift(1)
 
@@ -1083,7 +1087,7 @@ def arima_pipeline(
                 test_segment,
                 p=p, d=d, q=q,
                 value_column=value_column,
-                min_training_length=100,
+                min_training_length=20,
                 start_params=pretrained_params
             )
 
@@ -1106,6 +1110,8 @@ def arima_pipeline(
 
         except Exception as e:
             num_failed += 1
+            if num_failed == 1:
+                logger.warning(f"  First segment failure (segment {segment_id}): {e}")
             continue
 
     # Aggregate results
@@ -1126,6 +1132,12 @@ def arima_pipeline(
         logger.info(f"  Overall MSE: {overall_mse:.4f}")
         logger.info(f"  Overall RMSE: {overall_rmse:.4f}")
         logger.info(f"  Overall MAE: {overall_mae:.4f}")
+
+        if value_column == 'speed_kmh' and overall_rmse > 500:
+            logger.warning(
+                "  Speed RMSE is very high (expected ~0-50 km/h for shuttle data). "
+                "Check for outliers or units: ensure speed_kmh is in km/h and clip/cap extreme values in the segment pipeline."
+            )
 
         return {
             'overall_mse': overall_mse,

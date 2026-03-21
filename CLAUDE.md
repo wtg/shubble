@@ -316,7 +316,13 @@ SAMSARA_SECRET=...
 
 # Environment
 DEPLOY_MODE=development
+
+# ML / worker CPU (optional)
+ML_UPDATE_INTERVAL_SECONDS=30   # Min seconds between dataframe update + ETA/velocity predictions (default 30)
+ARIMA_ENABLED=true              # Set false to skip per-vehicle ARIMA fit and reduce CPU
 ```
+
+**ML and CPU:** The worker runs the ML pipeline (preprocess → segment → stops) and predictions (LSTM ETA, ARIMA velocity) at most every `ML_UPDATE_INTERVAL_SECONDS`. Set `ARIMA_ENABLED=false` to disable ARIMA (uses last-known speed instead). The API uses a lightweight path when the processed dataframe is not in Redis: latest DB location + `Stops.get_closest_point` per vehicle, and warms the cache in the background so the full pipeline is not run in the request path.
 
 ---
 

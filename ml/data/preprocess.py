@@ -169,7 +169,7 @@ def add_closest_points(
         return pd.Series(result)
 
     # Apply the function to rows that need processing
-    result_df = rows_to_process.progress_apply(process_row, axis=1)
+    result_df = rows_to_process.apply(process_row, axis=1)
     print('Done! Adding columns to dataframe.')
 
     # Assign results back to the original dataframe for the processed rows

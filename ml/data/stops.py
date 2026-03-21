@@ -81,7 +81,7 @@ def add_stops(
 
     # Apply the function to each row and assign results
     if output_columns:  # Only process if there are columns to add
-        result_df = df.progress_apply(process_row, axis=1)
+        result_df = df.apply(process_row, axis=1)
         for output_col in output_columns.values():
             df[output_col] = result_df[output_col]
 
@@ -231,7 +231,7 @@ def add_polyline_distances(
 
     # Apply the function to each row and assign results
     if output_columns:  # Only process if there are columns to add
-        result_df = df.progress_apply(process_row, axis=1)
+        result_df = df.apply(process_row, axis=1)
         for output_col in output_columns.values():
             df[output_col] = result_df[output_col]
 

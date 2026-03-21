@@ -172,6 +172,21 @@ async def load_today_dataframe(since: datetime | None = None) -> pd.DataFrame:
     return df
 
 
+async def get_cached_today_dataframe_optional() -> pd.DataFrame | None:
+    """
+    Return today's processed dataframe only if it is already in Redis.
+    Does not run the ML pipeline or load from DB. Use for fast path when
+    API only needs latest per-vehicle route matching.
+    """
+    today_str = get_campus_start_of_day().strftime('%Y-%m-%d')
+    cache_key, _ = get_cache_and_timestamp_key(today_str)
+    redis = get_redis()
+    cached_data = await redis.get(cache_key)
+    if not cached_data:
+        return None
+    return pickle.loads(cached_data)
+
+
 async def get_today_dataframe() -> pd.DataFrame:
     """
     Get today's processed vehicle location data, using Redis cache if available.
