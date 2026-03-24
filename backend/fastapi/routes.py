@@ -385,6 +385,7 @@ async def data_today(db: AsyncSession = Depends(get_db)):
 
 @router.get("/api/routes")
 async def get_shuttle_routes(db: AsyncSession = Depends(get_db)):
+    
     result = await db.execute(
         select(Route)
         .options(
@@ -394,10 +395,12 @@ async def get_shuttle_routes(db: AsyncSession = Depends(get_db)):
     )
 
     routes = result.scalars().all()
-
     response = []
 
+    #Loop through routes
     for route in routes:
+
+        # Skip ENTRY and EXIT routes which are not real shuttle routes
         if route.name.startswith("ENTRY") or route.name.startswith("EXIT"):
             continue
 
@@ -406,6 +409,7 @@ async def get_shuttle_routes(db: AsyncSession = Depends(get_db)):
         stops_list = []
         full_path = []
 
+        #loop through stops to build stops list and path
         for stop in stops:
             stops_list.append({
                 "name": stop.name,
@@ -413,7 +417,7 @@ async def get_shuttle_routes(db: AsyncSession = Depends(get_db)):
                 "longitude": stop.longitude,
             })
 
-        # Build path from polylines
+        #Build path from polylines
         for stop in stops:
             for poly in stop.departure_polyline:
                 coords = [
@@ -445,10 +449,10 @@ async def get_shuttle_schedule(db: AsyncSession = Depends(get_db)):
     )
 
     day_schedules = result.scalars().all()
-
     response = []
 
     for day in day_schedules:
+
         day_obj = {
             "day_type": day.name,
             "buses": []
@@ -465,15 +469,13 @@ async def get_shuttle_schedule(db: AsyncSession = Depends(get_db)):
 
             #loop through times for this bus
             for rbs in bus.route_to_bus_schedules:
+               
                 departure = {
-                    "time": None,   # fill
-                    "route": None   # fill
+                    "time": rbs.time.strftime("%H:%M"),   
+                    "route": rbs.route.name   
                 }
 
                 bus_obj["departures"].append(departure)
-
-            # sort departures by time
-            # DO THIS
 
             day_obj["buses"].append(bus_obj)
 
