@@ -171,7 +171,7 @@ class RouteToBusSchedule(Base):
 class DateToDaySchedule(Base):
     __tablename__ = "date_to_day_schedules"
     __table_args__ = (
-        Index("day_schedule_id"),
+        Index("ix_date_to_day_schedules_day_schedule_id", "day_schedule_id"),
     )
 
 
@@ -201,7 +201,6 @@ class BusScheduleToDaySchedule(Base):
     __table_args__ = (
         Index("bus_schedule_id", "day_schedule_id"),
     )
-
 
     id: Mapped[int] = mapped_column(Integer, primary_key = True, autoincrement = True )
     bus_schedule_id: Mapped[int] = mapped_column(Integer, ForeignKey("bus_schedules.id"), nullable=False)
@@ -244,7 +243,7 @@ class Route(Base):
 class Stop(Base):
     __tablename__ = "stops"
     __table_args__ = (
-        Index("route_id"),
+        Index("ix_stops_route_id", "route_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key = True, autoincrement = True )
