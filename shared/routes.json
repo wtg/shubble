@@ -659,6 +659,7 @@
       "CHASAN",
       "FEDERAL_6TH",
       "WEST_HALL",
+      "SAGE_HALL",
       "STUDENT_UNION_RETURN"
     ],
     "POLYLINE_STOPS": [
@@ -672,6 +673,7 @@
       "GHOST_STOP_2",
       "FEDERAL_6TH",
       "WEST_HALL",
+      "SAGE_HALL",
       "STUDENT_UNION_RETURN"
     ],
     "STUDENT_UNION": {
@@ -753,6 +755,14 @@
       ],
       "OFFSET": 13,
       "NAME": "West Hall"
+    },
+    "SAGE_HALL": {
+      "COORDINATES": [
+        42.73124696840008,
+        -73.68023231793701
+      ],
+      "OFFSET": 14,
+      "NAME": "Sage Hall"
     },
     "STUDENT_UNION_RETURN": {
       "COORDINATES": [
