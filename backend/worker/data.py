@@ -14,7 +14,6 @@ from ml.deploy.arima import load_arima
 from ml.training.train import fit_arima
 from backend.models import ETA, PredictedLocation
 from backend.database import get_db
-from backend.config import settings
 from backend.cache import cache, soft_clear_namespace
 from backend.function_timer import timed
 from ml.cache import get_polyline_dir
@@ -440,14 +439,16 @@ async def generate_and_save_predictions(vehicle_ids: List[str]):
         logger.error(f"Failed to load dataframe for predictions: {e}")
         return
 
-    # Run in parallel, passing the pre-loaded dataframe
-    results = await asyncio.gather(
-        get_all_stop_times(vehicle_ids, df=df),
-        predict_next_state(vehicle_ids, df=df)
-    )
-
-    etas = results[0]
-    next_states = results[1]
+    if settings.LSTM_PREDICTIONS_ENABLED:
+        results = await asyncio.gather(
+            get_all_stop_times(vehicle_ids, df=df),
+            predict_next_state(vehicle_ids, df=df),
+        )
+        etas = results[0]
+        next_states = results[1]
+    else:
+        next_states = await predict_next_state(vehicle_ids, df=df)
+        etas = {}
 
     await save_predictions(etas, next_states)
 

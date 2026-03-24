@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     # ML / worker: run heavy pipeline and predictions less often to reduce CPU
     ML_UPDATE_INTERVAL_SECONDS: int = 30  # Min seconds between dataframe update + ETA/velocity predictions
     ARIMA_ENABLED: bool = True  # Set False to skip per-vehicle ARIMA fit (saves significant CPU)
+    LSTM_PREDICTIONS_ENABLED: bool = True  # Set False to skip LSTM ETAs in generate_and_save_predictions (velocity-only)
 
     @field_validator("DATABASE_URL")
     @classmethod

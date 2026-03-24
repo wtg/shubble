@@ -282,15 +282,21 @@ uv run python test/bench_worker_arima.py
 
 With ARIMA cached from step 2, the script runs real ARIMA fits in the “ARIMA enabled” run and reports timings so you can see the impact of disabling ARIMA.
 
-**5. Run the full-pipeline benchmark (LSTM + ARIMA vs LSTM + cheap velocity):**
+**5. Run the full-pipeline benchmark (ARIMA vs cheap velocity):**
 
-This times the whole prediction path (`generate_and_save_predictions`: LSTM ETAs + velocity prediction + DB save) with ARIMA on vs off. Requires **Redis and PostgreSQL** running and a **warm cache** (e.g. start the worker or hit the API once so the processed dataframe is in Redis).
+This times `generate_and_save_predictions` with ARIMA on vs off. Default includes **LSTM ETAs + velocity + DB save**. Use **`--velocity-only`** to skip LSTM and measure only **velocity prediction + save** (cleaner baseline for ARIMA CPU). Requires **Redis and PostgreSQL** and a **warm cache** (e.g. start the worker or hit the API once).
 
 ```bash
 uv run python test/bench_full_predictions.py
+uv run python test/bench_full_predictions.py --velocity-only
+uv run python test/bench_full_predictions.py --minimal
+uv run python test/bench_full_predictions.py --triple
 ```
 
-Single mode: `--with-arima` or `--no-arima`. Options: `--calls N` (default 2), `--max-vehicles N` (default 10). If you see “no cached dataframe”, start backend services and run the worker briefly so the cache is populated.
+- **`--minimal`** — one timing: no LSTM, no ARIMA (cheap velocity + save only).
+- **`--triple`** — three timings: LSTM+ARIMA, LSTM+cheap, no-LSTM+cheap (do not use with `--velocity-only`).
+
+Single mode: `--with-arima` or `--no-arima`. Options: `--calls N` (default 2), `--max-vehicles N` (default 10), `--velocity-only`. To skip LSTM in the **worker** itself, set `LSTM_PREDICTIONS_ENABLED=false` in `.env`. If you see “no cached dataframe”, start backend services and run the worker briefly so the cache is populated.
 
 ## Automated Testing
 
