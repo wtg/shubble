@@ -1,11 +1,13 @@
 """Configuration using Pydantic BaseSettings."""
 import base64
+import logging
 from datetime import datetime, time
 from typing import Optional
 from zoneinfo import ZoneInfo
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+logger = logging.getLogger(__name__)
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
@@ -60,20 +62,16 @@ class Settings(BaseSettings):
             return v
         try:
             return datetime.strptime(v, "%H:%M:%S").time()
-        except ValueError:
-            return time(0, 0, 0)  # Fallback to midnight if parsing fails
-
-    @property
-    def day_start_time(self) -> time:
-        """Get the day start time as a datetime.time object."""
-        return self.DAY_START
+        except ValueError as exc:
+            logger.error(f"Invalid DAY_START format: {v}. Expected HH:MM:SS. Error: {exc}")
+            return time(0, 0, 0)  # Default to midnight if parsing fails
 
     @property
     def samsara_secret_decoded(self) -> Optional[bytes]:
         """Decode base64 Samsara secret."""
         if self.SAMSARA_SECRET:
             return base64.b64decode(self.SAMSARA_SECRET.encode("utf-8"))
-        return None
+        raise ValueError("SAMSARA_SECRET is required for webhook signature verification.")
 
     def get_log_level(self, component: str = "default") -> str:
         """
