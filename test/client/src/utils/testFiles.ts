@@ -1,5 +1,5 @@
 // Test file loading - parses test JSON files and queues actions
-import type { TestData, ShuttleAction } from '../types.ts';
+import type { TestData, ShuttleAction, QueuedAction} from '../types.ts';
 import { ACTIONS } from '../types.ts';
 import { addShuttleToApi, addToQueueApi } from './shuttles.ts';
 
@@ -20,6 +20,14 @@ export interface ParseResult {
     error?: string;
     data?: TestData;
 }
+
+export interface BuildResult {
+    success: boolean;
+    error?: string;
+    data?: TestData;
+}
+
+/* export interface for confirming export is successfull?*/
 
 /**
  * Parse a test file from text content.
@@ -187,4 +195,52 @@ export async function importTestData(data: TestData): Promise<void> {
 
         await addToQueueApi(shuttleId, actions);
     }
+}
+
+/*
+ * Export all shuttles and their queue of actions
+ * Exports a JSON file
+*/
+export async function stringy(data: TestData): Promise<void> {
+    let json = JSON.stringify(data, null, 2);
+
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'shuttle_export.json';
+    link.click();
+
+    URL.revokeObjectURL(url);
+}
+
+
+/**
+ * Builds a test file from shuttle actions
+ * Accept a list of queued actions and handle the building of the json here
+ */
+export function buildTestFile(actions: QueuedAction[]): string {
+    const data: TestData = {
+        shuttles: [
+            {
+                events: actions.map(action => {
+                    const event: any = {
+                        type: action.action
+                    };
+
+                    if (action.action === ACTIONS.LOOPING && action.route) {
+                        event.route = action.route;
+                    }
+
+                    if (action.action === ACTIONS.ON_BREAK && action.duration !== undefined) {
+                        event.duration = action.duration;
+                    }
+
+                    return event;
+                })
+            }
+        ]
+    };
+    return JSON.stringify(data, null, 2);
 }
