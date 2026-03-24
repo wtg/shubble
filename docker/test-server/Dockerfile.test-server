@@ -20,7 +20,7 @@ ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --frozen --no-dev --no-install-project
+    uv sync --frozen --no-install-project
 
 # Copy application code
 COPY backend/ ./backend/
@@ -30,7 +30,7 @@ COPY pyproject.toml uv.lock ./
 
 # Sync again to install the project (validates lockfile)
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev --no-editable
+    uv sync --locked --no-editable
 
 # Create non-root user
 RUN useradd -m -u 1000 shubble && chown -R shubble:shubble /app

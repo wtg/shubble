@@ -14,6 +14,9 @@ if TYPE_CHECKING:
 
 Base = declarative_base()
 
+_engine: AsyncEngine | None = None
+_session_factory = None
+
 
 def create_async_db_engine(database_url: str, echo: bool = False) -> AsyncEngine:
     """
@@ -26,13 +29,15 @@ def create_async_db_engine(database_url: str, echo: bool = False) -> AsyncEngine
     Returns:
         AsyncEngine instance
     """
+    global _engine
     # Convert postgresql:// to postgresql+asyncpg://
     if database_url.startswith("postgresql://"):
         database_url = database_url.replace("postgresql://", "postgresql+asyncpg://")
     elif database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql+asyncpg://")
 
-    return create_async_engine(database_url, echo=echo, pool_pre_ping=True)
+    _engine = create_async_engine(database_url, echo=echo, pool_pre_ping=True)
+    return _engine
 
 
 def create_session_factory(engine: AsyncEngine):
@@ -45,16 +50,32 @@ def create_session_factory(engine: AsyncEngine):
     Returns:
         async_sessionmaker instance
     """
-    return async_sessionmaker(
+    global _session_factory
+    _session_factory = async_sessionmaker(
         engine,
         class_=AsyncSession,
         expire_on_commit=False,
         autocommit=False,
         autoflush=False,
     )
+    return _session_factory
 
 
-async def get_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """
+    FastAPI dependency for getting async database sessions.
+
+    Yields a session from the global session factory (set by create_session_factory
+    during application startup).
+
+    Yields:
+        AsyncSession instance
+    """
+    async with _session_factory() as session:
+        yield session
+
+
+async def get_fastapi_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
     """
     FastAPI dependency for getting async database sessions.
 

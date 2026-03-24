@@ -161,6 +161,7 @@ def load_lstm_for_route(
     # Get polyline directory
     polyline_dir = get_polyline_dir(route_name, polyline_idx)
     model_path = polyline_dir / "model.pth"
+    scaler_path = polyline_dir / "scaler.pkl"
 
     if not model_path.exists():
         raise FileNotFoundError(
@@ -179,8 +180,8 @@ def load_lstm_for_route(
         dropout=dropout
     )
 
-    # Load trained weights
-    model.load(model_path)
+    # Load trained weights and scaler (scaler optional for backward compatibility)
+    model.load(model_path, scaler_path=str(scaler_path))
     return model
 
 

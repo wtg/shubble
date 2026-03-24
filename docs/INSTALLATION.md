@@ -127,6 +127,11 @@ brew install uv
    uv sync
    ```
 
+   And if you need ml dependencies:
+   ```bash
+   uv sync --all-groups
+   ```
+
 2. **Set up environment variables:**
    ```bash
    cp .env.example .env

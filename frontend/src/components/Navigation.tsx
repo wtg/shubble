@@ -16,17 +16,17 @@ export default function Navigation({ GIT_REV }: { GIT_REV: string }) {
           <ul>
             <li>
               <Link to='/about'>
-                <span className="big">About</span>
+                <span className="big about-underline-animation center">About</span>
               </Link>
             </li>
             <li>
               <Link to='/'>
-                <span className='big'>Live Location</span>
+                <span className='big about-underline-animation center'>Live Location</span>
               </Link>
             </li>
             <li className='schedule'>
               <Link to='/schedule'>
-                <span className='big'>Schedule</span>
+                <span className='big about-underline-animation center'>Schedule</span>
               </Link>
             </li>
           </ul>

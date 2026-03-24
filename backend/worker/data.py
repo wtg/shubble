@@ -1,5 +1,7 @@
 """Data prediction utilities for worker."""
+import asyncio
 import logging
+from contextlib import aclosing
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional, Tuple, Any
@@ -10,12 +12,12 @@ from ml.deploy.lstm import load_lstm_for_route
 from ml.deploy.arima import load_arima
 from ml.training.train import fit_arima
 from backend.models import ETA, PredictedLocation
-from backend.database import create_async_db_engine, create_session_factory
+from backend.database import get_db
 from backend.config import settings
 from backend.cache import cache, soft_clear_namespace
+from backend.function_timer import timed
 from ml.cache import get_polyline_dir
 from shared.stops import Stops
-import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +28,7 @@ Q = 2
 # Cache for loaded models: (route_name, polyline_idx) -> LSTMModel
 _MODEL_CACHE: Dict[Tuple[str, int], Any] = {}
 
+@timed
 @cache(soft_ttl=300, hard_ttl=3600, namespace="average_travel_time")
 async def load_average_travel_time(route: str, polyline_idx: int) -> Optional[float]:
     """Load average travel time for a polyline from CSV.
@@ -54,15 +57,17 @@ async def load_average_travel_time(route: str, polyline_idx: int) -> Optional[fl
         logger.warning(f"Failed to load average travel time for {route} polyline {polyline_idx}: {e}")
         return None
 
-async def _get_vehicle_data(vehicle_ids: List[str]) -> pd.DataFrame:
+@timed
+async def _get_vehicle_data(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
     """Helper to get and filter vehicle data."""
-    try:
-        df = await get_today_dataframe()
-    except Exception as e:
-        logger.error(f"Failed to load dataframe for prediction: {e}")
-        return pd.DataFrame()
+    if df is None:
+        try:
+            df = await get_today_dataframe()
+        except Exception as e:
+            logger.error(f"Failed to load dataframe for prediction: {e}")
+            return pd.DataFrame()
 
-    if df.empty:
+    if df is None or df.empty:
         return pd.DataFrame()
 
     # Filter for vehicles
@@ -72,11 +77,12 @@ async def _get_vehicle_data(vehicle_ids: List[str]) -> pd.DataFrame:
 
     return target_df
 
-async def predict_eta(vehicle_ids: List[str]) -> Dict[str, datetime]:
+@timed
+async def predict_eta(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None) -> Dict[str, datetime]:
     """
     Predict ETA (absolute datetime of arrival at next stop) for a list of vehicle IDs using LSTM.
     """
-    target_df = await _get_vehicle_data(vehicle_ids)
+    target_df = await _get_vehicle_data(vehicle_ids, df=df)
     if target_df.empty:
         return {}
 
@@ -150,7 +156,8 @@ async def predict_eta(vehicle_ids: List[str]) -> Dict[str, datetime]:
 
     return results
 
-async def get_all_stop_times(vehicle_ids: List[str]) -> Dict[str, List[Tuple[str, datetime]]]:
+@timed
+async def get_all_stop_times(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None) -> Dict[str, List[Tuple[str, datetime]]]:
     """
     Get all stop times for a list of vehicle IDs: historical, predicted, and future.
 
@@ -166,6 +173,7 @@ async def get_all_stop_times(vehicle_ids: List[str]) -> Dict[str, List[Tuple[str
 
     Args:
         vehicle_ids: List of vehicle IDs to predict for
+        df: Optional pre-loaded dataframe
 
     Returns:
         Dictionary mapping vehicle_id to list of (stop_key, datetime) tuples
@@ -173,20 +181,22 @@ async def get_all_stop_times(vehicle_ids: List[str]) -> Dict[str, List[Tuple[str
     """
 
     # Get full vehicle dataframe to find historical stop times and current position
-    try:
-        full_df = await get_today_dataframe()
-    except Exception as e:
-        logger.error(f"Failed to load dataframe for get_all_stop_times: {e}")
-        return {}
+    full_df = df
+    if full_df is None:
+        try:
+            full_df = await get_today_dataframe()
+        except Exception as e:
+            logger.error(f"Failed to load dataframe for get_all_stop_times: {e}")
+            return {}
 
-    if full_df.empty:
+    if full_df is None or full_df.empty:
         return {}
 
     # Load routes data from Stops class
     routes = Stops.routes_data
 
     # Get ML prediction for next stop (current transition)
-    next_stop_etas = await predict_eta(vehicle_ids)
+    next_stop_etas = await predict_eta(vehicle_ids, df=full_df)
     if not next_stop_etas:
         return {}
 
@@ -287,15 +297,14 @@ async def get_all_stop_times(vehicle_ids: List[str]) -> Dict[str, List[Tuple[str
         if stop_times:
             results[vehicle_id] = stop_times
 
-    print(results)
-
     return results
 
-async def predict_next_state(vehicle_ids: List[str]) -> Dict[str, Dict]:
+@timed
+async def predict_next_state(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None) -> Dict[str, Dict]:
     """
     Predict next state (speed, timestamp) for vehicles using ARIMA.
     """
-    target_df = await _get_vehicle_data(vehicle_ids)
+    target_df = await _get_vehicle_data(vehicle_ids, df=df)
     if target_df.empty:
         return {}
 
@@ -363,6 +372,7 @@ async def predict_next_state(vehicle_ids: List[str]) -> Dict[str, Dict]:
 
     return results
 
+@timed
 async def save_predictions(etas: Dict[str, List[Tuple[str, datetime]]], next_states: Dict[str, Dict]):
     """Save predictions to database.
 
@@ -373,10 +383,8 @@ async def save_predictions(etas: Dict[str, List[Tuple[str, datetime]]], next_sta
     if not etas and not next_states:
         return
 
-    engine = create_async_db_engine(settings.DATABASE_URL, echo=False)
-    session_factory = create_session_factory(engine)
-
-    async with session_factory() as session:
+    async with aclosing(get_db()) as gen:
+        session = await anext(gen)
         # Save ETAs (as ISO format strings for JSON storage)
         for vid, stop_etas in etas.items():
             # Convert list of (stop_key, datetime) tuples to dict
@@ -402,8 +410,7 @@ async def save_predictions(etas: Dict[str, List[Tuple[str, datetime]]], next_sta
         await soft_clear_namespace("etas")
         await soft_clear_namespace("velocities")
 
-    await engine.dispose()
-
+@timed
 async def generate_and_save_predictions(vehicle_ids: List[str]):
     """Generate ETAs and next states, then save to DB."""
     if not vehicle_ids:
@@ -411,12 +418,17 @@ async def generate_and_save_predictions(vehicle_ids: List[str]):
 
     logger.info(f"Generating predictions for {len(vehicle_ids)} vehicles...")
 
-    # Run in parallel
-    # Note: get_all_stop_times and predict_next_state both call get_today_dataframe.
-    # get_today_dataframe is cached in Redis so overhead is low.
+    # Load dataframe once to avoid unpickling overhead twice
+    try:
+        df = await get_today_dataframe()
+    except Exception as e:
+        logger.error(f"Failed to load dataframe for predictions: {e}")
+        return
+
+    # Run in parallel, passing the pre-loaded dataframe
     results = await asyncio.gather(
-        get_all_stop_times(vehicle_ids),
-        predict_next_state(vehicle_ids)
+        get_all_stop_times(vehicle_ids, df=df),
+        predict_next_state(vehicle_ids, df=df)
     )
 
     etas = results[0]

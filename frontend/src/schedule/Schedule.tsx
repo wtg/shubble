@@ -31,8 +31,10 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
 
   const safeSelectedRoute = selectedRoute || routeNames[0];
 
-  // Fetch live ETAs from backend etas endpoint
+  // Fetch live ETAs from backend etas endpoint (when not using static ETAs)
   useEffect(() => {
+    if (config.staticETAs) return;
+
     const fetchETAs = async () => {
       try {
         const response = await fetch(`${config.apiBaseUrl}/api/etas`, { cache: 'no-store' });
@@ -152,6 +154,29 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
   const route = routeData[safeSelectedRoute as keyof typeof routeData];
   const currentLoopIndex = findCurrentLoopIndex(times);
 
+  // Compute static ETAs from route offsets for the current loop
+  const computeStaticETAs = (loopIndex: number): StopETAs => {
+    if (loopIndex < 0 || !route?.STOPS) return {};
+
+    const departureTime = timeToDate(times[loopIndex]);
+    const stopETAs: StopETAs = {};
+
+    for (const stopKey of route.STOPS) {
+      const stopData = route[stopKey] as ShuttleStopData;
+      if (!stopData) continue;
+
+      const etaDate = new Date(departureTime.getTime() + stopData.OFFSET * 60_000);
+      stopETAs[stopKey] = etaDate.toLocaleTimeString(undefined, {
+        hour: 'numeric',
+        minute: '2-digit'
+      });
+    }
+
+    return stopETAs;
+  };
+
+  const activeETAs = config.staticETAs ? computeStaticETAs(currentLoopIndex) : liveETAs;
+
   return (
     <div className="schedule-container">
       <div className="schedule-header">
@@ -201,8 +226,8 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
                   <div className="timeline-content-item">
                     <div className="timeline-time">
                       {time}
-                      {isCurrentLoop && liveETAs[firstStop] && (
-                        <span className="live-eta"> - ETA: {liveETAs[firstStop]}</span>
+                      {isCurrentLoop && activeETAs[firstStop] && (
+                        <span className="live-eta"> - ETA: {activeETAs[firstStop]}</span>
                       )}
                     </div>
                     <div className="timeline-stop">{firstStopData?.NAME || 'Unknown Stop'}</div>
@@ -214,7 +239,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
                   <div className="secondary-timeline">
                     {route.STOPS.slice(1).map((stop, stopIndex) => {
                       const stopData = route[stop] as ShuttleStopData;
-                      const hasETA = isCurrentLoop && liveETAs[stop];
+                      const hasETA = isCurrentLoop && activeETAs[stop];
 
                       return (
                         <div
@@ -225,7 +250,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute }: SchedulePr
                           <div className="secondary-timeline-content">
                             <div className="secondary-timeline-time">
                               {hasETA ? (
-                                <span className="live-eta">{liveETAs[stop]}</span>
+                                <span className="live-eta">{activeETAs[stop]}</span>
                               ) : (
                                 <span className="no-eta">--:--</span>
                               )}

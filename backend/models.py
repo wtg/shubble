@@ -54,10 +54,6 @@ class GeofenceEvent(Base):
 
 class VehicleLocation(Base):
     __tablename__ = "vehicle_locations"
-    __table_args__ = (
-        Index("ix_vehicle_locations_vehicle_timestamp", "vehicle_id", "timestamp"),
-        UniqueConstraint("vehicle_id", "timestamp", name="uq_vehicle_locations_vehicle_timestamp"),
-    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     vehicle_id: Mapped[str] = mapped_column(String, ForeignKey("vehicles.id"), nullable=False)
@@ -76,6 +72,12 @@ class VehicleLocation(Base):
     # Relationships
     vehicle: Mapped["Vehicle"] = relationship(back_populates="locations")
 
+    # Indexes
+    __table_args__ = (
+        Index("ix_vehicle_locations_vehicle_timestamp", vehicle_id, timestamp.desc()),
+        UniqueConstraint("vehicle_id", "timestamp", name="uq_vehicle_locations_vehicle_timestamp"),
+    )
+
     def __repr__(self):
         return f"<VehicleLocation {self.vehicle_id} @ {self.timestamp}>"
 
@@ -88,7 +90,7 @@ class Driver(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Relationships
-    assignments: Mapped[list["DriverVehicleAssignment"]] = relationship(back_populates="driver", lazy="selectin")
+    assignments: Mapped[list["DriverVehicleAssignment"]] = relationship(back_populates="driver", lazy="raise")
 
     def __repr__(self):
         return f"<Driver {self.id} - {self.name}>"
@@ -148,3 +150,18 @@ class PredictedLocation(Base):
 
     def __repr__(self):
         return f"<PredictedLocation {self.vehicle_id} @ {self.timestamp} - {self.speed_kmh} km/h>"
+
+class Announcement(Base):
+    __tablename__ = "announcements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    message: Mapped[str] = mapped_column(String, nullable=False)
+    type: Mapped[str] = mapped_column(String, nullable=False) # 'info' | 'warning' | 'error'
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    # No Relationships
+
+    def __repr__(self):
+        return f"<Announcement {self.id} - {self.message}>"

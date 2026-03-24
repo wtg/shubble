@@ -21,6 +21,7 @@ type LiveLocationMapKitProps = {
   setSelectedRoute?: (route: string | null) => void;
   isFullscreen?: boolean;
   showTrueLocation?: boolean;
+  shuttleIconSize?: number;
 };
 
 export default function LiveLocationMapKit({
@@ -30,7 +31,8 @@ export default function LiveLocationMapKit({
   selectedRoute,
   setSelectedRoute,
   isFullscreen = false,
-  showTrueLocation = true
+  showTrueLocation = true,
+  shuttleIconSize = 25,
 }: LiveLocationMapKitProps) {
   const [map, setMap] = useState<(mapkit.Map | null)>(null);
   const [vehicles, setVehicles] = useState<VehicleCombinedMap | null>(null);
@@ -40,12 +42,21 @@ export default function LiveLocationMapKit({
   useEffect(() => {
     if (!displayVehicles) return;
 
+    let abortController: AbortController | null = null;
+
     const pollLocation = async () => {
+      // Cancel any in-flight request before starting a new one
+      if (abortController) {
+        abortController.abort();
+      }
+      abortController = new AbortController();
+      const { signal } = abortController;
+
       try {
         // Fetch locations and velocities in parallel
         const [locationsResponse, velocitiesResponse] = await Promise.all([
-          fetch(`${config.apiBaseUrl}/api/locations`, { cache: 'no-store' }),
-          fetch(`${config.apiBaseUrl}/api/velocities`, { cache: 'no-store' })
+          fetch(`${config.apiBaseUrl}/api/locations`, { cache: 'no-store', signal }),
+          fetch(`${config.apiBaseUrl}/api/velocities`, { cache: 'no-store', signal })
         ]);
 
         if (!locationsResponse.ok) {
@@ -79,6 +90,7 @@ export default function LiveLocationMapKit({
 
         setVehicles(combined);
       } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
         console.error('Error fetching location:', error);
       }
     }
@@ -90,6 +102,7 @@ export default function LiveLocationMapKit({
 
     return () => {
       clearInterval(refreshLocation);
+      if (abortController) abortController.abort();
     }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -137,7 +150,7 @@ export default function LiveLocationMapKit({
       })();
 
       // Render ShuttleIcon JSX to a static SVG string
-      const svgString = renderToStaticMarkup(<ShuttleIcon color={routeColor} size={25} />);
+      const svgString = renderToStaticMarkup(<ShuttleIcon color={routeColor} size={shuttleIconSize} />);
       const svgShuttle = `data:image/svg+xml;base64,${btoa(svgString)}`;
 
       // Use predicted speed if available, otherwise fall back to reported speed
@@ -160,7 +173,7 @@ export default function LiveLocationMapKit({
         title: vehicle.name,
         subtitle: `${displaySpeed.toFixed(1)} mph`,
         url: { 1: svgShuttle },
-        size: { width: 25, height: 25 },
+        size: { width: shuttleIconSize, height: shuttleIconSize },
         anchorOffset: new DOMPoint(0, -13),
 
         // AnimatedAnnotation specific
@@ -173,7 +186,7 @@ export default function LiveLocationMapKit({
     });
 
     return list;
-  }, [vehicles, routeData, showTrueLocation, flattenedRoutes, map]);
+  }, [vehicles, routeData, map, shuttleIconSize, showTrueLocation, flattenedRoutes]);
 
   return (
     <>
