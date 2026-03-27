@@ -296,6 +296,35 @@ async def clear_namespace(namespace: str) -> int:
     except Exception as e:
         logger.error(f"Error clearing namespace '{namespace}': {e}")
         return 0
+    
+async def clear_all() -> int:
+    """Clear all cache entries across all namespaces.
+    
+    Args"
+        None
+        
+    Returns:
+        Number of keys deleted
+    """
+    redis = get_redis()
+    if redis is None:
+        logger.warning("Cache not initialized, cannot clear all")
+        return 0
+    
+    pattern = f"{_prefix}:*"
+
+    try:
+        deleted = 0
+        async for key in redis.scan_iter(match=pattern):
+            await redis.delete(key)
+            deleted += 1
+        
+        if deleted > 0:
+            logger.info(f"Cleared {deleted} keys from all namespaces")
+        return deleted
+    except Exception as e:
+        logger.error(f"Error clearing all of cache: {e}")
+        return 0
 
 
 async def soft_clear_namespace(namespace: str) -> int:
