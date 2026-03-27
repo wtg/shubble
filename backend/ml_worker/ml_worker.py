@@ -2,18 +2,15 @@
 import asyncio
 import logging
 import os
-#from datetime import datetime, timezone
 
-#import httpx
 from sqlalchemy import select
-#from sqlalchemy.dialects import postgresql
 
 from backend.config import settings
-from backend.cache import init_cache, close_cache#, soft_clear_namespace
+from backend.cache import init_cache, close_cache
 from backend.database import create_async_db_engine, create_session_factory
-from backend.models import VehicleLocation#, Driver, DriverVehicleAssignment
+from backend.models import VehicleLocation
 from backend.utils import get_vehicles_in_geofence
-from backend.worker.data import generate_and_save_predictions
+from backend.ml_worker.data import generate_and_save_predictions
 from backend.cache_dataframe import update_today_dataframe
 
 # Logging config for Worker
