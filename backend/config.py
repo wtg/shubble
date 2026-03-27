@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     # Shubble settings
     CAMPUS_TZ: ZoneInfo = ZoneInfo("America/New_York")
 
+    # LSTM inference: interpolate to a uniform time grid (see ml.lstm_resample)
+    LSTM_RESAMPLE_ENABLED: bool = True
+    LSTM_RESAMPLE_INTERVAL_SECONDS: float = 10.0
+
     @field_validator("DATABASE_URL")
     @classmethod
     def fix_database_url(cls, v: str) -> str:

@@ -2,6 +2,8 @@
 import numpy as np
 import pandas as pd
 
+from ml.lstm_resample import build_lstm_sequences_from_block
+
 
 def evaluate_arima_new_segment(
     test_segment_df: pd.DataFrame,
@@ -274,7 +276,10 @@ def evaluate_lstm(
     input_columns: list[str],
     output_columns: list[str],
     sequence_length: int = 10,
-    segment_column: str = 'segment_id'
+    segment_column: str = 'segment_id',
+    resample_enabled: bool = True,
+    resample_interval_seconds: float = 10.0,
+    timestamp_column: str = 'timestamp',
 ) -> dict:
     """
     Evaluate LSTM model on test data.
@@ -289,6 +294,9 @@ def evaluate_lstm(
         output_columns: List of column names to predict
         sequence_length: Length of input sequences
         segment_column: Column name for segment IDs (sequences won't cross segments)
+        resample_enabled: Match training: uniform time grid vs raw rows
+        resample_interval_seconds: Grid step when resampling
+        timestamp_column: Time column for resampling
 
     Returns:
         Dictionary containing:
@@ -313,23 +321,22 @@ def evaluate_lstm(
         >>> print(f"Test MSE: {results['mse']:.4f}")
         >>> print(f"Test RMSE: {results['rmse']:.4f}")
     """
-    # Prepare test sequences
-    X_list = []
-    y_list = []
+    X_list: list[np.ndarray] = []
+    y_list: list[np.ndarray] = []
 
-    # Helper to process a single continuous block of data
-    def process_block(block_df):
-        data_in = block_df[input_columns].values
-        data_out = block_df[output_columns].values
+    def process_block(block_df: pd.DataFrame) -> None:
+        xa, ya = build_lstm_sequences_from_block(
+            block_df,
+            input_columns=input_columns,
+            output_columns=output_columns,
+            sequence_length=sequence_length,
+            resample_enabled=resample_enabled,
+            resample_interval_seconds=resample_interval_seconds,
+            timestamp_column=timestamp_column,
+        )
+        X_list.extend(xa)
+        y_list.extend(ya)
 
-        if len(block_df) <= sequence_length:
-            return
-
-        for i in range(len(block_df) - sequence_length):
-            X_list.append(data_in[i : i + sequence_length])
-            y_list.append(data_out[i + sequence_length])
-
-    # Group by segment to avoid crossing segment boundaries
     if segment_column and segment_column in test_df.columns:
         for _, group in test_df.groupby(segment_column):
             process_block(group)

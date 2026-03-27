@@ -17,6 +17,7 @@ from backend.config import settings
 from backend.cache import cache, soft_clear_namespace
 from backend.function_timer import timed
 from ml.cache import get_polyline_dir
+from ml.lstm_resample import min_rows_for_lstm_resample, resample_lstm_features
 from shared.stops import Stops
 
 logger = logging.getLogger(__name__)
@@ -81,6 +82,10 @@ async def _get_vehicle_data(vehicle_ids: List[str], df: Optional[pd.DataFrame] =
 async def predict_eta(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None) -> Dict[str, datetime]:
     """
     Predict ETA (absolute datetime of arrival at next stop) for a list of vehicle IDs using LSTM.
+
+    When ``settings.LSTM_RESAMPLE_ENABLED`` is True (default), inputs are linearly interpolated
+    onto a uniform grid (every ``LSTM_RESAMPLE_INTERVAL_SECONDS``) so irregular GPS cadence does
+    not change the effective sequence presented to the model.
     """
     target_df = await _get_vehicle_data(vehicle_ids, df=df)
     if target_df.empty:
@@ -89,16 +94,18 @@ async def predict_eta(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None)
     # Group by vehicle and prepare batches
     sequence_length = 10
     input_columns = ['latitude', 'longitude', 'speed_kmh']
+    resample = settings.LSTM_RESAMPLE_ENABLED
+    interval_s = float(settings.LSTM_RESAMPLE_INTERVAL_SECONDS)
+    min_rows = min_rows_for_lstm_resample(resample, sequence_length)
 
     batches: Dict[Tuple[str, int], List[Tuple[str, np.ndarray, datetime]]] = {}
 
     for vehicle_id, vehicle_df in target_df.groupby('vehicle_id'):
         vehicle_df = vehicle_df.sort_values('timestamp')
-        if len(vehicle_df) < sequence_length:
+        if len(vehicle_df) < min_rows:
             continue
 
-        sequence_df = vehicle_df.tail(sequence_length)
-        last_point = sequence_df.iloc[-1]
+        last_point = vehicle_df.iloc[-1]
 
         route = last_point.get('route')
         polyline_idx = last_point.get('polyline_idx')
@@ -109,15 +116,26 @@ async def predict_eta(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None)
         polyline_idx = int(polyline_idx)
 
         for col in input_columns:
-            if col not in sequence_df.columns:
-                sequence_df[col] = 0.0
+            if col not in vehicle_df.columns:
+                vehicle_df[col] = 0.0
 
-        features = sequence_df[input_columns].fillna(0).values.astype(np.float32)
-
-        # Get last timestamp for this vehicle
-        last_ts = pd.to_datetime(last_point['timestamp']).to_pydatetime()
-        if last_ts.tzinfo is None:
-            last_ts = last_ts.replace(tzinfo=timezone.utc)
+        if resample:
+            features, last_ts = resample_lstm_features(
+                vehicle_df,
+                sequence_length=sequence_length,
+                interval_seconds=interval_s,
+                input_columns=input_columns,
+            )
+            if features is None:
+                continue
+            if last_ts.tzinfo is None:
+                last_ts = last_ts.replace(tzinfo=timezone.utc)
+        else:
+            sequence_df = vehicle_df.tail(sequence_length)
+            features = sequence_df[input_columns].fillna(0).values.astype(np.float32)
+            last_ts = pd.to_datetime(last_point['timestamp']).to_pydatetime()
+            if last_ts.tzinfo is None:
+                last_ts = last_ts.replace(tzinfo=timezone.utc)
 
         key = (route, polyline_idx)
         if key not in batches:

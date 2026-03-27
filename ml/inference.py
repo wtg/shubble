@@ -5,7 +5,9 @@ from typing import Dict, List, Optional, Tuple, Any
 import logging
 
 from ml.deploy.lstm import load_lstm_for_route
+from ml.lstm_resample import min_rows_for_lstm_resample, resample_lstm_features
 from backend.cache_dataframe import get_today_dataframe
+from backend.config import settings
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -53,6 +55,10 @@ async def generate_eta(
     if target_df.empty:
         return {}
 
+    resample = settings.LSTM_RESAMPLE_ENABLED
+    interval_s = float(settings.LSTM_RESAMPLE_INTERVAL_SECONDS)
+    min_rows = min_rows_for_lstm_resample(resample, sequence_length)
+
     # 3. Group inputs by model (route, polyline_idx)
     # Map: (route, polyline_idx) -> list of (vehicle_id, feature_matrix)
     batches: Dict[Tuple[str, int], List[Tuple[str, np.ndarray]]] = {}
@@ -61,16 +67,10 @@ async def generate_eta(
         # Sort by timestamp to ensure correct sequence
         vehicle_df = vehicle_df.sort_values('timestamp')
 
-        # Check if enough data
-        if len(vehicle_df) < sequence_length:
-            # logger.debug(f"Insufficient data for vehicle {vehicle_id}: {len(vehicle_df)} < {sequence_length}")
+        if len(vehicle_df) < min_rows:
             continue
 
-        # Get the most recent sequence
-        sequence_df = vehicle_df.tail(sequence_length)
-
-        # Get the current route and segment from the LAST point
-        last_point = sequence_df.iloc[-1]
+        last_point = vehicle_df.iloc[-1]
 
         # Check if route info is available
         if pd.isna(last_point.get('route')) or pd.isna(last_point.get('polyline_idx')):
@@ -80,15 +80,23 @@ async def generate_eta(
         route_name = last_point['route']
         polyline_idx = int(last_point['polyline_idx'])
 
-        # Prepare input features
-        # Ensure all columns exist, fill missing with 0
         for col in input_columns:
-            if col not in sequence_df.columns:
-                sequence_df[col] = 0.0
+            if col not in vehicle_df.columns:
+                vehicle_df[col] = 0.0
 
-        features = sequence_df[input_columns].fillna(0).values.astype(np.float32)
+        if resample:
+            features, _ = resample_lstm_features(
+                vehicle_df,
+                sequence_length=sequence_length,
+                interval_seconds=interval_s,
+                input_columns=input_columns,
+            )
+            if features is None:
+                continue
+        else:
+            sequence_df = vehicle_df.tail(sequence_length)
+            features = sequence_df[input_columns].fillna(0).values.astype(np.float32)
 
-        # Verify shape
         if features.shape != (sequence_length, len(input_columns)):
             logger.warning(f"Invalid feature shape for {vehicle_id}: {features.shape}")
             continue

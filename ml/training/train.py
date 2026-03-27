@@ -9,6 +9,8 @@ from typing import Tuple, Optional
 from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
 
+from ml.lstm_resample import build_lstm_sequences_from_block
+
 
 def filter_segmented(
     df: pd.DataFrame,
@@ -233,7 +235,10 @@ def train_lstm(
     epochs: int = 100,
     device: str = "cpu",
     segment_column: Optional[str] = None,
-    verbose: bool = True
+    verbose: bool = True,
+    resample_enabled: bool = True,
+    resample_interval_seconds: float = 10.0,
+    timestamp_column: str = "timestamp",
 ):
     """
     Train an LSTM model on the provided DataFrame.
@@ -253,6 +258,9 @@ def train_lstm(
         segment_column: Optional column to use for segmenting data. 
                         If provided, sequences won't cross segment boundaries.
         verbose: Whether to print training progress.
+        resample_enabled: If True, build inputs on a uniform time grid (same as inference).
+        resample_interval_seconds: Seconds between resampled LSTM steps (default 10).
+        timestamp_column: Time column for resampling (default ``timestamp``).
 
     Returns:
         Trained LSTMModel instance
@@ -260,20 +268,21 @@ def train_lstm(
     from ml.models.lstm import LSTMModel
 
     # Prepare data
-    X_list = []
-    y_list = []
-    
-    # Define helper to process a single continuous block of data
-    def process_block(block_df):
-        data_in = block_df[input_columns].values
-        data_out = block_df[output_columns].values
-        
-        if len(block_df) <= sequence_length:
-            return
+    X_list: list[np.ndarray] = []
+    y_list: list[np.ndarray] = []
 
-        for i in range(len(block_df) - sequence_length):
-            X_list.append(data_in[i : i + sequence_length])
-            y_list.append(data_out[i + sequence_length])
+    def process_block(block_df: pd.DataFrame) -> None:
+        xa, ya = build_lstm_sequences_from_block(
+            block_df,
+            input_columns=input_columns,
+            output_columns=output_columns,
+            sequence_length=sequence_length,
+            resample_enabled=resample_enabled,
+            resample_interval_seconds=resample_interval_seconds,
+            timestamp_column=timestamp_column,
+        )
+        X_list.extend(xa)
+        y_list.extend(ya)
 
     if segment_column and segment_column in df.columns:
         for _, group in df.groupby(segment_column):

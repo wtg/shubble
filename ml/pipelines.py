@@ -682,6 +682,9 @@ def lstm_pipeline(
     verbose: bool = True,
     train: bool = True,
     limit_polylines: int = None,
+    no_lstm_resample: bool = False,
+    lstm_resample_interval_seconds: float = 10.0,
+    lstm_timestamp_column: str = "timestamp",
     **kwargs
 ) -> dict[tuple[str, int], tuple]:
     """
@@ -711,6 +714,9 @@ def lstm_pipeline(
         verbose: Whether to print progress
         train: Retrain models
         limit_polylines: Optional limit on number of polylines to process
+        no_lstm_resample: If True, use legacy row-based LSTM windows (no uniform time grid)
+        lstm_resample_interval_seconds: Seconds between resampled LSTM steps (training/eval)
+        lstm_timestamp_column: Time column for resampling
         stops: Re-compute stops preprocessing
         segment: Re-run segmentation
         preprocess: Re-run preprocessing
@@ -727,9 +733,15 @@ def lstm_pipeline(
     from ml.evaluation.evaluate import evaluate_lstm
     from ml.models.lstm import LSTMModel
 
+    lstm_resample_enabled = not no_lstm_resample
+
     logger.info("="*70)
     logger.info("LSTM PIPELINE (PER-POLYLINE TRAINING)")
     logger.info("="*70)
+    logger.info(
+        f"  LSTM time resampling: {'ON' if lstm_resample_enabled else 'OFF'} "
+        f"(interval={lstm_resample_interval_seconds}s)"
+    )
 
     # Step 1: Get stops data (segmented, stops added, polyline distances)
     stops_df = stops_pipeline(**kwargs)
@@ -834,7 +846,10 @@ def lstm_pipeline(
                     epochs=epochs,
                     batch_size=batch_size,
                     segment_column='segment_id',
-                    verbose=verbose
+                    verbose=verbose,
+                    resample_enabled=lstm_resample_enabled,
+                    resample_interval_seconds=lstm_resample_interval_seconds,
+                    timestamp_column=lstm_timestamp_column,
                 )
 
                 logger.info(f"\n  Saving model to {model_path}...")
@@ -869,7 +884,10 @@ def lstm_pipeline(
                 input_columns=input_columns,
                 output_columns=output_columns,
                 sequence_length=sequence_length,
-                segment_column='segment_id'
+                segment_column='segment_id',
+                resample_enabled=lstm_resample_enabled,
+                resample_interval_seconds=lstm_resample_interval_seconds,
+                timestamp_column=lstm_timestamp_column,
             )
 
             logger.info(f"  Test predictions: {results['num_predictions']}")
@@ -1190,6 +1208,18 @@ if __name__ == "__main__":
     lstm_parser.add_argument("--load", action="store_true", help="Re-load data from database")
     lstm_parser.add_argument("--limit-polylines", type=int, default=None)
     lstm_parser.add_argument("--window-size", type=int, default=5, help="Window size for cleaning NaN routes")
+    lstm_parser.add_argument(
+        "--no-lstm-resample",
+        action="store_true",
+        help="Use consecutive GPS rows for LSTM (legacy); default is uniform time resampling",
+    )
+    lstm_parser.add_argument(
+        "--lstm-resample-interval",
+        type=float,
+        default=10.0,
+        dest="lstm_resample_interval_seconds",
+        help="Seconds between LSTM time steps when resampling (default 10)",
+    )
 
     # ARIMA Pipeline
     arima_parser = subparsers.add_parser("arima", help="Run ARIMA pipeline")
