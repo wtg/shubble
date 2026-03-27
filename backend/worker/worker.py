@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects import postgresql
 
 from backend.config import settings
-from backend.cache import init_cache, close_cache, soft_clear_namespace
+from backend.cache import clear_namespace, init_cache, close_cache, soft_clear_namespace
 from backend.database import create_async_db_engine, create_session_factory
 from backend.models import VehicleLocation, Driver, DriverVehicleAssignment
 from backend.utils import get_vehicles_in_geofence
@@ -310,6 +310,10 @@ async def run_worker():
     try:
         await init_cache(settings.REDIS_URL)
         logger.info("Redis cache initialized")
+
+        # Clear all cached data on startup to avoid crashes due to updates
+        await clear_namespace()
+        logger.info("Cleared all cache namespaces on startup")
     except Exception as e:
         logger.error(f"Failed to initialize Redis cache: {e}")
         # Continue without cache
