@@ -665,7 +665,7 @@ def split_by_polyline_pipeline(df: pd.DataFrame = None, **kwargs) -> dict[tuple[
 
 
 # ============================================================================
-# LSTM PIPELINE
+# LSTM PIPELINE(S)
 # ============================================================================
 
 def lstm_pipeline(
@@ -895,6 +895,24 @@ def lstm_pipeline(
 
     return polyline_models
 
+def lstm_velocity_pipeline(
+    input_columns: list[str] = ['latitude', 'longitude', 'speed_kmh'],
+    output_columns: list[str] = ['next_speed_kmh'],
+    sequence_length: int = 10,
+    hidden_size: int = 50,
+    num_layers: int = 2,
+    dropout: float = 0.1,
+    epochs: int = 20,
+    batch_size: int = 64,
+    test_ratio: float = 0.2,
+    random_seed: int = 42,
+    verbose: bool = True,
+    train: bool = True,
+    limit_polylines: int = None,
+    **kwargs
+) -> dict[tuple[str, int], tuple]:
+    # Placeholder for future LSTM velocity pipeline implementation
+    return None  
 
 # ============================================================================
 # ARIMA PIPELINE
