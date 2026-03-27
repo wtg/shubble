@@ -289,7 +289,7 @@ async def update_driver_assignments(session_factory, vehicle_ids):
         logger.exception(f"Unexpected error in update_driver_assignments: {e}")
 
 
-async def run_worker():
+async def run_locations_worker():
     """Main worker loop that runs continuously."""
     logger.info("Async worker started...")
 
@@ -359,4 +359,4 @@ async def run_worker():
         logger.info("Database connections closed")
 
 if __name__ == "__main__":
-    asyncio.run(run_worker())
+    asyncio.run(run_locations_worker())
