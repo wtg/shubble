@@ -42,11 +42,6 @@ LSTM_TRAIN_CSV = LSTM_CACHE_DIR / "lstm_train.csv"
 LSTM_TEST_CSV = LSTM_CACHE_DIR / "lstm_test.csv"
 LSTM_MODEL_PATH = LSTM_CACHE_DIR / "lstm_model.pth"
 
-# LSTM-velocity specific caches
-LSTM_VELOCITY_TRAIN_CSV = LSTM_VELOCITY_CACHE_DIR / "lstm_velocity_train.csv"
-LSTM_VELOCITY_TEST_CSV = LSTM_VELOCITY_CACHE_DIR / "lstm_velocity_test.csv"
-LSTM_VELOCITY_MODEL_PATH = LSTM_VELOCITY_CACHE_DIR / "lstm_velocity_model.pth"
-
 
 def get_cache_path(base_name: str, cache_dir: Path = SHARED_CACHE_DIR, extension: str = 'csv', **params) -> Path:
     """
