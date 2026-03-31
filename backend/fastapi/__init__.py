@@ -7,7 +7,7 @@ from brotli_asgi import BrotliMiddleware
 
 from backend.config import settings
 from backend.database import create_async_db_engine, create_session_factory
-from backend.cache import clear_namespace, init_cache, close_cache
+from backend.cache import clear_namespace, init_cache, close_cache, count_cache
 
 
 # Configure logging for FastAPI
@@ -39,9 +39,17 @@ async def lifespan(app: FastAPI):
     app.state.redis = await init_cache(settings.REDIS_URL)
     logger.info("Redis cache initialized")
 
+    # Current cache size
+    numcountbefore = await count_cache()
+    logger.info(f"Before cache size: {numcountbefore}")
+
     # Clear Redis cache
-    await clear_namespace()
-    logger.info("Cleared Redis cache on startup")
+    numcleared = await clear_namespace()
+    logger.info(f"Cleared {numcleared} cache namespaces on startup from clear_namespace()")
+
+    # New cache size
+    numcountafter = await count_cache()
+    logger.info(f"After cache size: {numcountafter}")
 
     yield
 
