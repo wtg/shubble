@@ -45,6 +45,8 @@ async def _fetch_vehicle_locations_from_db() -> pd.DataFrame:
         columns=['vehicle_id', 'latitude', 'longitude', 'timestamp']
     )
 
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+
     return df
 
 
