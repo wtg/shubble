@@ -14,8 +14,9 @@ from backend.cache import cache, soft_clear_namespace
 from backend.function_timer import timed
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.orm import selectinload
 from backend.database import get_db
-from backend.models import Vehicle, GeofenceEvent, VehicleLocation, Announcement
+from backend.models import Announcement, BusSchedule, BusScheduleToDaySchedule, DaySchedule, Polyline, Route, RouteToBusSchedule, Stop, Vehicle, GeofenceEvent, VehicleLocation
 from backend.config import settings
 from backend.time_utils import get_campus_start_of_day
 from backend.utils import (
@@ -392,28 +393,107 @@ async def data_today(db: AsyncSession = Depends(get_db)):
 
     return locations_today_dict
 
-
 @router.get("/api/routes")
 @timed
-async def get_shuttle_routes():
-    """Serve routes.json file."""
-    root_dir = Path(__file__).parent.parent.parent
-    routes_file = root_dir / "shared" / "routes.json"
-    if routes_file.exists():
-        return FileResponse(routes_file)
-    raise HTTPException(status_code=404, detail="Routes file not found")
+async def get_shuttle_routes(db: AsyncSession = Depends(get_db)):
 
+    result = await db.execute(
+        select(Route)
+        .options(
+            selectinload(Route.stops)
+            .selectinload(Stop.departure_polyline)
+        )
+    )
+
+    routes = result.scalars().all()
+    response = []
+
+    #Loop through routes
+    for route in routes:
+
+        # Skip ENTRY and EXIT routes which are not real shuttle routes
+        if route.name.startswith("ENTRY") or route.name.startswith("EXIT"):
+            continue
+
+        stops = sorted(route.stops, key=lambda s: s.id)
+
+        stops_list = []
+        full_path = []
+
+        #loop through stops to build stops list and path
+        for stop in stops:
+            stops_list.append({
+                "name": stop.name,
+                "latitude": stop.latitude,
+                "longitude": stop.longitude,
+            })
+
+        #Build path from polylines
+        for stop in stops:
+            for poly in stop.departure_polyline:
+                coords = [
+                    [float(lat), float(lng)]
+                    for lat, lng in (c.split(",") for c in poly.coordinates)
+                ]
+                full_path.extend(coords)
+
+        response.append({
+            "name": route.name,
+            "color": route.route_color,
+            "stops": stops_list,
+            "path": full_path,
+        })
+
+    return response
 
 @router.get("/api/schedule")
 @timed
-async def get_shuttle_schedule():
-    """Serve schedule.json file."""
-    root_dir = Path(__file__).parent.parent.parent
-    schedule_file = root_dir / "shared" / "schedule.json"
-    if schedule_file.exists():
-        return FileResponse(schedule_file)
-    raise HTTPException(status_code=404, detail="Schedule file not found")
+async def get_shuttle_schedule(db: AsyncSession = Depends(get_db)):
 
+    result = await db.execute(
+        select(DaySchedule)
+        .options(
+            selectinload(DaySchedule.bus_schedule_to_day_schedule)
+            .selectinload(BusScheduleToDaySchedule.bus_schedule)
+            .selectinload(BusSchedule.route_to_bus_schedules)
+            .selectinload(RouteToBusSchedule.route)
+        )
+    )
+
+    day_schedules = result.scalars().all()
+    response = []
+
+    for day in day_schedules:
+
+        day_obj = {
+            "day_type": day.name,
+            "buses": []
+        }
+
+        #loop through bus schedules
+        for mapping in day.bus_schedule_to_day_schedule:
+            bus = mapping.bus_schedule
+
+            bus_obj = {
+                "name": bus.name,
+                "departures": []
+            }
+
+            #loop through times for this bus
+            for rbs in bus.route_to_bus_schedules:
+               
+                departure = {
+                    "time": rbs.time.strftime("%H:%M"),   
+                    "route": rbs.route.name   
+                }
+
+                bus_obj["departures"].append(departure)
+
+            day_obj["buses"].append(bus_obj)
+
+        response.append(day_obj)
+
+    return response
 
 @router.get("/api/aggregated-schedule")
 @timed
