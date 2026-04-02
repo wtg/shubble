@@ -279,6 +279,7 @@ def evaluate_lstm(
     segment_column: str = 'segment_id',
     resample_enabled: bool = True,
     resample_interval_seconds: float = 10.0,
+    resample_interpolation: str = "linear",
     timestamp_column: str = 'timestamp',
 ) -> dict:
     """
@@ -296,6 +297,7 @@ def evaluate_lstm(
         segment_column: Column name for segment IDs (sequences won't cross segments)
         resample_enabled: Match training: uniform time grid vs raw rows
         resample_interval_seconds: Grid step when resampling
+        resample_interpolation: ``linear``, ``quadratic``, or ``cubic``
         timestamp_column: Time column for resampling
 
     Returns:
@@ -332,6 +334,7 @@ def evaluate_lstm(
             sequence_length=sequence_length,
             resample_enabled=resample_enabled,
             resample_interval_seconds=resample_interval_seconds,
+            resample_interpolation=resample_interpolation,
             timestamp_column=timestamp_column,
         )
         X_list.extend(xa)

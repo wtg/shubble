@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     # LSTM inference: interpolate to a uniform time grid (see ml.lstm_resample)
     LSTM_RESAMPLE_ENABLED: bool = True
     LSTM_RESAMPLE_INTERVAL_SECONDS: float = 10.0
+    LSTM_RESAMPLE_INTERPOLATION: str = "linear"  # linear | quadratic | cubic
 
     @field_validator("DATABASE_URL")
     @classmethod

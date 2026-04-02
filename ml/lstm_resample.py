@@ -139,13 +139,7 @@ def resample_lstm_features(
     rows: list[np.ndarray] = []
     for col in input_columns:
         y_obs = agg[col].astype(np.float64).values
-        if len(t_obs_s) == 1:
-            y_tgt = np.full(sequence_length, float(y_obs[0]), dtype=np.float64)
-        else:
-            order = np.argsort(t_obs_s)
-            tx = t_obs_s[order]
-            yy = y_obs[order]
-            y_tgt = np.interp(t_target_s, tx, yy, left=yy[0], right=yy[-1])
+        y_tgt = _interp_column(t_obs_s, y_obs, t_target_s, kind)
         rows.append(y_tgt.astype(np.float32))
 
     features = np.stack(rows, axis=1)
@@ -167,13 +161,14 @@ def build_lstm_sequences_from_block(
     sequence_length: int,
     resample_enabled: bool,
     resample_interval_seconds: float = 10.0,
+    resample_interpolation: str = "linear",
     timestamp_column: str = "timestamp",
 ) -> tuple[list[np.ndarray], list[np.ndarray]]:
     """
     Build (X, y) training/eval sequences from one contiguous block (e.g. one segment_id).
 
     When ``resample_enabled`` is True, matches inference: ``t_ref`` is the timestamp of
-    the last row of each input window; features are linearly interpolated on a uniform
+    the last row of each input window; features are interpolated on a uniform
     grid. When False, uses the legacy sliding window over consecutive rows.
     """
     X_list: list[np.ndarray] = []
@@ -201,6 +196,7 @@ def build_lstm_sequences_from_block(
                 interval_seconds=resample_interval_seconds,
                 input_columns=input_columns,
                 timestamp_column=timestamp_column,
+                interpolation=resample_interpolation,
             )
             if feat is None:
                 continue

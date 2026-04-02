@@ -238,6 +238,7 @@ def train_lstm(
     verbose: bool = True,
     resample_enabled: bool = True,
     resample_interval_seconds: float = 10.0,
+    resample_interpolation: str = "linear",
     timestamp_column: str = "timestamp",
 ):
     """
@@ -260,6 +261,7 @@ def train_lstm(
         verbose: Whether to print training progress.
         resample_enabled: If True, build inputs on a uniform time grid (same as inference).
         resample_interval_seconds: Seconds between resampled LSTM steps (default 10).
+        resample_interpolation: ``linear``, ``quadratic``, or ``cubic`` (see ``ml.lstm_resample``).
         timestamp_column: Time column for resampling (default ``timestamp``).
 
     Returns:
@@ -279,6 +281,7 @@ def train_lstm(
             sequence_length=sequence_length,
             resample_enabled=resample_enabled,
             resample_interval_seconds=resample_interval_seconds,
+            resample_interpolation=resample_interpolation,
             timestamp_column=timestamp_column,
         )
         X_list.extend(xa)

@@ -7,6 +7,7 @@ import pandas as pd
 from ml.lstm_resample import (
     build_lstm_sequences_from_block,
     min_rows_for_lstm_resample,
+    normalize_resample_interpolation,
     resample_lstm_features,
 )
 
@@ -56,6 +57,36 @@ def test_resample_single_raw_row():
 def test_min_rows():
     assert min_rows_for_lstm_resample(True, 10) == 1
     assert min_rows_for_lstm_resample(False, 10) == 10
+
+
+def test_normalize_resample_interpolation():
+    assert normalize_resample_interpolation("LINEAR") == "linear"
+
+
+def test_resample_interpolation_kinds_produce_same_shape():
+    base = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    rows = []
+    t = base - timedelta(seconds=200)
+    while t <= base:
+        rows.append(
+            {
+                "timestamp": t,
+                "latitude": 40.0 + 0.0001 * len(rows) ** 1.2,
+                "longitude": -73.0,
+                "speed_kmh": 20.0 + len(rows) * 0.1,
+            }
+        )
+        t += timedelta(seconds=6 if len(rows) % 2 == 0 else 14)
+    df = pd.DataFrame(rows)
+    lin, _ = resample_lstm_features(
+        df, sequence_length=10, interval_seconds=10.0, interpolation="linear"
+    )
+    cub, _ = resample_lstm_features(
+        df, sequence_length=10, interval_seconds=10.0, interpolation="cubic"
+    )
+    assert lin is not None and cub is not None
+    assert lin.shape == cub.shape == (10, 3)
+    assert not np.allclose(lin, cub)
 
 
 def test_build_sequences_resample_vs_rows():

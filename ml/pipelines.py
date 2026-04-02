@@ -684,6 +684,7 @@ def lstm_pipeline(
     limit_polylines: int = None,
     no_lstm_resample: bool = False,
     lstm_resample_interval_seconds: float = 10.0,
+    lstm_resample_interpolation: str = "linear",
     lstm_timestamp_column: str = "timestamp",
     **kwargs
 ) -> dict[tuple[str, int], tuple]:
@@ -716,6 +717,7 @@ def lstm_pipeline(
         limit_polylines: Optional limit on number of polylines to process
         no_lstm_resample: If True, use legacy row-based LSTM windows (no uniform time grid)
         lstm_resample_interval_seconds: Seconds between resampled LSTM steps (training/eval)
+        lstm_resample_interpolation: linear, quadratic, or cubic (time interpolation)
         lstm_timestamp_column: Time column for resampling
         stops: Re-compute stops preprocessing
         segment: Re-run segmentation
@@ -740,7 +742,7 @@ def lstm_pipeline(
     logger.info("="*70)
     logger.info(
         f"  LSTM time resampling: {'ON' if lstm_resample_enabled else 'OFF'} "
-        f"(interval={lstm_resample_interval_seconds}s)"
+        f"(interval={lstm_resample_interval_seconds}s, interpolation={lstm_resample_interpolation})"
     )
 
     # Step 1: Get stops data (segmented, stops added, polyline distances)
@@ -849,6 +851,7 @@ def lstm_pipeline(
                     verbose=verbose,
                     resample_enabled=lstm_resample_enabled,
                     resample_interval_seconds=lstm_resample_interval_seconds,
+                    resample_interpolation=lstm_resample_interpolation,
                     timestamp_column=lstm_timestamp_column,
                 )
 
@@ -887,6 +890,7 @@ def lstm_pipeline(
                 segment_column='segment_id',
                 resample_enabled=lstm_resample_enabled,
                 resample_interval_seconds=lstm_resample_interval_seconds,
+                resample_interpolation=lstm_resample_interpolation,
                 timestamp_column=lstm_timestamp_column,
             )
 
@@ -1219,6 +1223,14 @@ if __name__ == "__main__":
         default=10.0,
         dest="lstm_resample_interval_seconds",
         help="Seconds between LSTM time steps when resampling (default 10)",
+    )
+    lstm_parser.add_argument(
+        "--lstm-resample-interpolation",
+        type=str,
+        default="linear",
+        choices=["linear", "quadratic", "cubic"],
+        dest="lstm_resample_interpolation",
+        help="Time interpolation for resampled LSTM inputs (default linear)",
     )
 
     # ARIMA Pipeline

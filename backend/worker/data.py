@@ -96,6 +96,7 @@ async def predict_eta(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None)
     input_columns = ['latitude', 'longitude', 'speed_kmh']
     resample = settings.LSTM_RESAMPLE_ENABLED
     interval_s = float(settings.LSTM_RESAMPLE_INTERVAL_SECONDS)
+    interp = settings.LSTM_RESAMPLE_INTERPOLATION
     min_rows = min_rows_for_lstm_resample(resample, sequence_length)
 
     batches: Dict[Tuple[str, int], List[Tuple[str, np.ndarray, datetime]]] = {}
@@ -125,6 +126,7 @@ async def predict_eta(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None)
                 sequence_length=sequence_length,
                 interval_seconds=interval_s,
                 input_columns=input_columns,
+                interpolation=interp,
             )
             if features is None:
                 continue

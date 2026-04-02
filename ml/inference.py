@@ -57,6 +57,7 @@ async def generate_eta(
 
     resample = settings.LSTM_RESAMPLE_ENABLED
     interval_s = float(settings.LSTM_RESAMPLE_INTERVAL_SECONDS)
+    interp = settings.LSTM_RESAMPLE_INTERPOLATION
     min_rows = min_rows_for_lstm_resample(resample, sequence_length)
 
     # 3. Group inputs by model (route, polyline_idx)
@@ -90,6 +91,7 @@ async def generate_eta(
                 sequence_length=sequence_length,
                 interval_seconds=interval_s,
                 input_columns=input_columns,
+                interpolation=interp,
             )
             if features is None:
                 continue
