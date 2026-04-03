@@ -1,6 +1,7 @@
 import { Link, Outlet } from "react-router";
 import Feedback from "./Feedback";
 import AnnouncementBanner, { Banner } from "./AnnouncementBanner";
+import AppDownloadModal from "./AppDownloadModal";
 import config from "../utils/config";
 
 export default function Navigation({ GIT_REV }: { GIT_REV: string }) {
@@ -10,6 +11,7 @@ export default function Navigation({ GIT_REV }: { GIT_REV: string }) {
 
   return (
     <>
+      <AppDownloadModal />
       <header className="title">
         <Link to='/' className='site-title'>SHUBBLE</Link>
         <nav className='big'>
