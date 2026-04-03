@@ -20,7 +20,7 @@ logging.basicConfig(
     level=numeric_level,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("locations-worker")
 logger.info(f"Worker logging level: {worker_log_level}")
 
 async def run_ml_worker():
