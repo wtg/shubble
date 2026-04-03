@@ -2,7 +2,7 @@
 import logging
 import hmac
 from hashlib import sha256
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Request, Depends, HTTPException, Response
@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import selectinload
 from backend.database import get_db
-from backend.models import BusSchedule, BusScheduleToDaySchedule, Polyline, Route, RouteToBusSchedule, Stop, Vehicle, GeofenceEvent, VehicleLocation, DaySchedule
+from backend.models import BusSchedule, BusScheduleToDaySchedule, DateToDaySchedule, Polyline, Route, RouteToBusSchedule, Stop, Vehicle, GeofenceEvent, VehicleLocation, DaySchedule
 from backend.config import settings
 from backend.time_utils import get_campus_start_of_day
 from backend.utils import (
@@ -383,9 +383,59 @@ async def data_today(db: AsyncSession = Depends(get_db)):
 
     return locations_today_dict
 
+@router.get("/api/routes2")
+async def get_shuttle_routes2(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Route)
+        .options(
+            selectinload(Route.stops)
+            .selectinload(Stop.departure_polyline)
+        )
+    )
+
+    routes = result.scalars().all()
+    response = {}
+  
+    #Loop through routes
+    for route in routes:
+
+        # Skip ENTRY and EXIT routes which are not real shuttle routes
+        if route.name.startswith("ENTRY") or route.name.startswith("EXIT"):
+            continue
+
+        stops = sorted(route.stops, key=lambda s: s.id)
+
+        stops_obj = {}
+        full_path = []
+
+        #loop through stops to build stops list and path
+        for stop in stops:
+           
+            stops_obj[stop.name] = {
+                "latitude": stop.latitude,
+                "longitude": stop.longitude,
+            }
+         
+        #Build path from polylines
+        for stop in stops:
+            for poly in stop.departure_polyline:
+                coords = [
+                    [float(lat), float(lng)]
+                    for lat, lng in (c.split(",") for c in poly.coordinates)
+                ]
+                full_path.append(coords)
+
+        response[route.name] = {
+            "color": route.route_color,
+            "stops": stops_obj,
+            "path": full_path,
+        }
+       
+
+    return response
+
 @router.get("/api/routes")
 async def get_shuttle_routes(db: AsyncSession = Depends(get_db)):
-    
     result = await db.execute(
         select(Route)
         .options(
@@ -480,6 +530,47 @@ async def get_shuttle_schedule(db: AsyncSession = Depends(get_db)):
             day_obj["buses"].append(bus_obj)
 
         response.append(day_obj)
+
+    return response
+
+@router.get("/api/week-schedule")
+async def get_week_schedule(db: AsyncSession = Depends(get_db)):
+    # Implementation for weeks schedule
+    response = {}
+    date = datetime.now().date()
+    for i in range(7):
+        date = datetime.now().date() + timedelta(days=i)
+
+        result = await db.execute(
+            select(DateToDaySchedule)
+            .where(DateToDaySchedule.date == date)
+            .options(
+                selectinload(DateToDaySchedule.day_schedule)
+                .selectinload(DaySchedule.bus_schedule_to_day_schedule)
+                .selectinload(BusScheduleToDaySchedule.bus_schedule)
+                .selectinload(BusSchedule.route_to_bus_schedules)
+                .selectinload(RouteToBusSchedule.route)
+            )
+        )
+
+        date_schedule = result.scalar_one_or_none()
+  
+        response[date.isoformat()] = {}
+
+        #loop through bus schedules
+        for mapping in date_schedule.day_schedule.bus_schedule_to_day_schedule:
+
+            bus = mapping.bus_schedule
+
+            response[date.isoformat()][bus.name] = {
+                "route": bus.route_to_bus_schedules[0].route.name if bus.route_to_bus_schedules else None,
+                "departures": []
+            }
+
+            #loop through times for this bus
+            for rbs in bus.route_to_bus_schedules:
+        
+                response[date.isoformat()][bus.name]["departures"].append(rbs.time.strftime("%H:%M"))
 
     return response
 
