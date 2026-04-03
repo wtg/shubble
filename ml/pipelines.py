@@ -510,6 +510,29 @@ def eta_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
 
 def next_speed_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
     """
+    Next Speed Pipeline: Stops -> Add next_speed_kmh.
+
+    This pipeline prepares data for velocity predictions by:
+    1. Loading stops data (if not provided)
+    2. Based on speed_kmh column, calculate the next speed by shifting 
+    the speed_kmh column up by 1 (-1) within each segment. 
+    3. Creates a new column 'next_speed_kmh', which serves as the 
+    target variable for velocity prediction models.
+
+    Args:
+        df: Optional DataFrame (with stops). If None, runs stops_pipeline.
+        next_speed: Re-compute next_speed_kmh
+        stops: Re-compute stops preprocessing
+        segment: Re-run segmentation
+        preprocess: Re-run preprocessing
+        load: Re-load from database
+
+    Note:
+        Pipeline hierarchy is applied externally via apply_pipeline_hierarchy().
+        This function only checks its own 'next_speed' flag.
+
+    Returns:
+        DataFrame with added column: 'next_speed_kmh'
     """
     next_speed = kwargs.get('next_speed', False)
     cache = kwargs.get('cache', True)
@@ -961,6 +984,46 @@ def lstm_velocity_pipeline(
     **kwargs
 ) -> dict[tuple[str, int], tuple]:
     """
+    LSTM Velocity Pipeline: Stops Pipeline -> Add next_speed_kmh -> 
+    Split by Polyline -> Train per Polyline -> Evaluate.
+
+    This pipeline mirrors lstm_pipeline but...:
+    1. Runs stops pipeline (segment, add stops, add ETAs, add polyline distances, filter)
+    2. Skips eta_pipeline and computes next_speed_kmh (speed_kmh shifted -1 within each segment)
+    as the prediction target before splitting. 
+    3. Splits data by (route, polyline_index) combinations
+    4. For each polyline: split train/test, train LSTM, evaluate
+    5. Saves all data to ml/cache/lstm/<route>_<polyline_idx>/:
+       - data.csv: Full polyline data
+       - train.csv: Training split
+       - test.csv: Test split
+       - model.pth: Trained LSTM model
+
+    Args:
+        input_columns: Features to use for prediction
+        output_columns: Targets to predict
+        sequence_length: Length of input sequences
+        hidden_size: LSTM hidden size
+        num_layers: Number of LSTM layers
+        dropout: LSTM dropout
+        epochs: Training epochs
+        batch_size: Batch size
+        test_ratio: Train/test split ratio
+        random_seed: Random seed
+        verbose: Whether to print progress
+        train: Retrain models
+        limit_polylines: Optional limit on number of polylines to process
+        stops: Re-compute stops preprocessing
+        segment: Re-run segmentation
+        preprocess: Re-run preprocessing
+        load: Re-load from database
+
+    Note:
+        Pipeline hierarchy is applied externally via apply_pipeline_hierarchy().
+        This function only checks its own 'train' flag for model training.
+
+    Returns:
+        Dictionary mapping (route, polyline_idx) to (model, results) tuples
     """
     from ml.training.train import train_lstm, segmented_train_test_split
     from ml.evaluation.evaluate import evaluate_lstm
