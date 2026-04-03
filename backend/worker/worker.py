@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects import postgresql
 
 from backend.config import settings
-from backend.cache import clear_namespace, init_cache, close_cache, soft_clear_namespace, count_cache
+from backend.cache import init_cache, close_cache, soft_clear_namespace, clear_all, count_cache
 from backend.database import create_async_db_engine, create_session_factory
 from backend.models import VehicleLocation, Driver, DriverVehicleAssignment
 from backend.utils import get_vehicles_in_geofence
@@ -316,7 +316,7 @@ async def run_worker():
         logger.info(f"Before cache size: {numcountbefore}")
 
         # Clear Redis cache
-        numcleared = await clear_namespace()
+        numcleared = await clear_all()
         logger.info(f"Cleared {numcleared} cache namespaces on startup from clear_namespace()")
 
         # New cache size
