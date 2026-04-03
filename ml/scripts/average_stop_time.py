@@ -110,7 +110,7 @@ def calculate_stop_times(df: pd.DataFrame) -> pd.DataFrame:
     stop_stats['std_stop_time_seconds'] = stop_stats['std_stop_time_seconds'].fillna(0)
 
     logger.info(f"Calculated stop times for {len(stop_stats)} unique stops")
-    return stop_stats
+    return stop_stats, visit_durations
 
 
 def save_stop_stats(stats_df: pd.DataFrame):
