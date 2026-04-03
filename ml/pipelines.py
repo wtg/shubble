@@ -1429,6 +1429,21 @@ if __name__ == "__main__":
     lstm_parser.add_argument("--limit-polylines", type=int, default=None)
     lstm_parser.add_argument("--window-size", type=int, default=5, help="Window size for cleaning NaN routes")
 
+    # LSTM Velocity Pipeline
+    lstm_velocity_parser = subparsers.add_parser("lstm_velocity", help="Run LSTM velocity pipeline (per-polyline training)")
+    lstm_velocity_parser.add_argument("--epochs", type=int, default=20)
+    lstm_velocity_parser.add_argument("--batch-size", type=int, default=64)
+    lstm_velocity_parser.add_argument("--hidden-size", type=int, default=50)
+    lstm_velocity_parser.add_argument("--num-layers", type=int, default=2)
+    lstm_velocity_parser.add_argument("--seq-len", type=int, default=10, dest="sequence_length")
+    lstm_velocity_parser.add_argument("--train", action="store_true", help="Re-train models")
+    lstm_velocity_parser.add_argument("--stops", action="store_true", help="Re-run stops processing (triggers train)")
+    lstm_velocity_parser.add_argument("--segment", action="store_true", help="Re-run segmentation (triggers stops + train)")
+    lstm_velocity_parser.add_argument("--preprocess", action="store_true", help="Re-run preprocessing (triggers all downstream stages)")
+    lstm_velocity_parser.add_argument("--load", action="store_true", help="Re-load data from database")
+    lstm_velocity_parser.add_argument("--limit-polylines", type=int, default=None)
+    lstm_velocity_parser.add_argument("--window-size", type=int, default=5, help="Window size for cleaning NaN routes")
+
     # ARIMA Pipeline
     arima_parser = subparsers.add_parser("arima", help="Run ARIMA pipeline")
     arima_parser.add_argument("--split", action="store_true", help="Re-run train/test split (triggers train + fit)")
@@ -1479,6 +1494,15 @@ if __name__ == "__main__":
             logger.info(f"  Average RMSE: {avg_rmse:.4f}, Average MAE: {avg_mae:.4f}")
         else:
             logger.info("\n✗ No models were trained successfully.")
+    elif args.pipeline == "lstm_velocity":
+        polyline_models = lstm_velocity_pipeline(**kwargs)
+        if polyline_models:
+            avg_rmse = sum(r['rmse'] for _, r in polyline_models.values()) / len(polyline_models)
+            avg_mae  = sum(r['mae']  for _, r in polyline_models.values()) / len(polyline_models)
+            logger.info(f"\n✓ Velocity LSTM complete. Trained {len(polyline_models)} models.")
+            logger.info(f"  Average RMSE: {avg_rmse:.4f}, Average MAE: {avg_mae:.4f}")
+        else:
+            logger.info("\n✗ No models trained successfully.")
     elif args.pipeline == "arima":
         results = arima_pipeline(**kwargs)
         if results:
