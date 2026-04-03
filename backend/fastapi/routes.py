@@ -445,43 +445,44 @@ async def get_shuttle_routes(db: AsyncSession = Depends(get_db)):
     )
 
     routes = result.scalars().all()
-    response = []
+    response = {}
 
-    #Loop through routes
     for route in routes:
-
-        # Skip ENTRY and EXIT routes which are not real shuttle routes
         if route.name.startswith("ENTRY") or route.name.startswith("EXIT"):
             continue
 
         stops = sorted(route.stops, key=lambda s: s.id)
 
-        stops_list = []
-        full_path = []
+        route_obj = {
+            "COLOR": route.route_color,
+            "STOPS": [],
+            "POLYLINE_STOPS": [],
+            "ROUTES": []
+        }
 
-        #loop through stops to build stops list and path
-        for stop in stops:
-            stops_list.append({
-                "name": stop.name,
-                "latitude": stop.latitude,
-                "longitude": stop.longitude,
-            })
+        # Build stops
+        for i, stop in enumerate(stops):
+            stop_key = stop.name.upper().replace(" ", "_")
 
-        #Build path from polylines
+            route_obj["STOPS"].append(stop_key)
+            route_obj["POLYLINE_STOPS"].append(stop_key)
+
+            route_obj[stop_key] = {
+                "COORDINATES": [stop.latitude, stop.longitude],
+                "OFFSET": i,
+                "NAME": stop.name
+            }
+
+        # Build ROUTES (polyline segments)
         for stop in stops:
             for poly in stop.departure_polyline:
                 coords = [
                     [float(lat), float(lng)]
                     for lat, lng in (c.split(",") for c in poly.coordinates)
                 ]
-                full_path.extend(coords)
+                route_obj["ROUTES"].append(coords)
 
-        response.append({
-            "name": route.name,
-            "color": route.route_color,
-            "stops": stops_list,
-            "path": full_path,
-        })
+        response[route.name] = route_obj
 
     return response
 
@@ -499,37 +500,44 @@ async def get_shuttle_schedule(db: AsyncSession = Depends(get_db)):
     )
 
     day_schedules = result.scalars().all()
-    response = []
+    response = {}
 
+    # Day type mapping
+    DAY_TYPE_MAP = {
+        "MONDAY": "weekday",
+        "TUESDAY": "weekday",
+        "WEDNESDAY": "weekday",
+        "THURSDAY": "weekday",
+        "FRIDAY": "weekday",
+        "SATURDAY": "saturday",
+        "SUNDAY": "sunday",
+    }
+
+    # Add mappings first
+    response.update(DAY_TYPE_MAP)
+
+    # Build schedules
     for day in day_schedules:
+        day_type = day.name
 
-        day_obj = {
-            "day_type": day.name,
-            "buses": []
-        }
+        if day_type not in response:
+            response[day_type] = {}
 
-        #loop through bus schedules
         for mapping in day.bus_schedule_to_day_schedule:
             bus = mapping.bus_schedule
+            bus_name = bus.name
 
-            bus_obj = {
-                "name": bus.name,
-                "departures": []
-            }
+            if bus_name not in response[day_type]:
+                response[day_type][bus_name] = []
 
-            #loop through times for this bus
             for rbs in bus.route_to_bus_schedules:
-               
-                departure = {
-                    "time": rbs.time.strftime("%H:%M"),   
-                    "route": rbs.route.name   
-                }
+                time_str = rbs.time.strftime("%I:%M %p")  
+                route_name = rbs.route.name
 
-                bus_obj["departures"].append(departure)
-
-            day_obj["buses"].append(bus_obj)
-
-        response.append(day_obj)
+                response[day_type][bus_name].append([
+                    time_str,
+                    route_name
+                ])
 
     return response
 
