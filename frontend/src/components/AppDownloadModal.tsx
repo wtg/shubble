@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import './styles/AppDownloadModal.css';
 
 const STORAGE_KEY = 'shubble-app-modal-dismissed';
@@ -14,26 +14,21 @@ function detectMobileDevice(): 'ios' | 'android' | null {
   return null;
 }
 
+function getInitialState() {
+  if (localStorage.getItem(STORAGE_KEY)) return { visible: false, platform: null as 'ios' | 'android' | null };
+  const platform = detectMobileDevice();
+  return { visible: platform !== null, platform };
+}
+
 export default function AppDownloadModal() {
-  const [visible, setVisible] = useState(false);
+  const [{ visible, platform }, setState] = useState(getInitialState);
   const [dismissing, setDismissing] = useState(false);
-  const [platform, setPlatform] = useState<'ios' | 'android' | null>(null);
-
-  useEffect(() => {
-    if (localStorage.getItem(STORAGE_KEY)) return;
-
-    const device = detectMobileDevice();
-    if (device) {
-      setPlatform(device);
-      setVisible(true);
-    }
-  }, []);
 
   const dismiss = useCallback(() => {
     setDismissing(true);
     setTimeout(() => {
       localStorage.setItem(STORAGE_KEY, '1');
-      setVisible(false);
+      setState({ visible: false, platform: null });
       setDismissing(false);
     }, 250);
   }, []);
