@@ -55,6 +55,13 @@ class ETADict(TypedDict):
     timestamp: str
 
 
+class StopETADict(TypedDict):
+    eta: str
+    vehicle_id: str
+    route: str
+    last_arrival: Optional[str]
+
+
 class VelocityDict(TypedDict):
     speed_kmh: float
     timestamp: str
@@ -263,19 +270,27 @@ async def get_current_driver_assignments(
 
 @timed
 @cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="etas")
-async def get_latest_etas(vehicle_ids: List[str], session_factory) -> Dict[str, ETADict]:
+async def get_latest_etas(vehicle_ids: List[str], session_factory) -> Dict[str, StopETADict]:
     """
-    Get the latest ETA for each vehicle.
+    Get per-stop ETAs: for each stop, the next shuttle to arrive.
+
+    Queries the latest ETA row per vehicle from the database, then aggregates
+    across all vehicles to find the earliest future ETA for each stop.
+    Also includes last_arrival timestamps from vehicle_locations.
 
     Args:
         vehicle_ids: List of vehicle IDs
         session_factory: Async session factory
 
     Returns:
-        Dictionary mapping vehicle_id to ETADict
+        Dictionary mapping stop_key to StopETADict
     """
     if not vehicle_ids:
         return {}
+
+    from datetime import datetime, timezone
+
+    now_utc = datetime.now(timezone.utc)
 
     async with session_factory() as db:
         # Subquery: latest ETA per vehicle
@@ -304,14 +319,38 @@ async def get_latest_etas(vehicle_ids: List[str], session_factory) -> Dict[str, 
         etas_result = await db.execute(etas_query)
         etas = etas_result.scalars().all()
 
-        etas_dict: Dict[str, ETADict] = {}
-        for eta in etas:
-            etas_dict[eta.vehicle_id] = {
-                "stop_times": eta.etas,
-                "timestamp": eta.timestamp.isoformat(),
-            }
+        # Aggregate per-stop: pick earliest future ETA across all vehicles
+        per_stop: Dict[str, StopETADict] = {}
+        for eta_row in etas:
+            if not eta_row.etas:
+                continue
+            for stop_key, stop_data in eta_row.etas.items():
+                # Handle both new format {eta, route} and legacy format (plain ISO string)
+                if isinstance(stop_data, dict):
+                    eta_iso = stop_data.get("eta", "")
+                    route = stop_data.get("route", "")
+                else:
+                    eta_iso = stop_data
+                    route = ""
 
-        return etas_dict
+                try:
+                    eta_dt = datetime.fromisoformat(eta_iso)
+                except (ValueError, TypeError):
+                    continue
+                if eta_dt <= now_utc:
+                    continue  # Skip past ETAs
+
+                last_arrival = stop_data.get("last_arrival") if isinstance(stop_data, dict) else None
+
+                if stop_key not in per_stop or eta_dt < datetime.fromisoformat(per_stop[stop_key]["eta"]):
+                    per_stop[stop_key] = {
+                        "eta": eta_iso,
+                        "vehicle_id": eta_row.vehicle_id,
+                        "route": route,
+                        "last_arrival": last_arrival,
+                    }
+
+        return per_stop
 
 
 @timed

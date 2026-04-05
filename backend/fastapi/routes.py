@@ -10,7 +10,9 @@ from fastapi import APIRouter, Request, Depends, HTTPException, Response
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import func, and_, select
 
-from backend.cache import cache, soft_clear_namespace
+import json
+
+from backend.cache import cache, get_redis, soft_clear_namespace
 from backend.function_timer import timed
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects import postgresql
@@ -120,19 +122,29 @@ async def get_locations(response: Response, request: Request):
 @cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="etas")
 async def get_etas(request: Request, response: Response):
     """
-    Returns ETA information for each vehicle currently inside the geofence.
+    Returns per-stop ETAs: for each stop, the next shuttle to arrive.
+
+    Response format:
+    {
+        "COLONIE": {"eta": "2026-04-03T14:33:00+00:00", "vehicle_id": "123", "route": "NORTH", "last_arrival": null},
+        ...
+    }
     """
-    # Get vehicle IDs currently in geofence using cached query
+    # Try worker-computed per-stop ETAs from Redis (includes last_arrival-only entries)
+    redis = get_redis()
+    if redis:
+        raw = await redis.get("shubble:per_stop_etas_live")
+        if raw:
+            return json.loads(raw)
+
+    # Fallback to DB aggregation (loses last_arrival-only entries)
     vehicle_ids_set = await get_vehicles_in_geofence(request.app.state.session_factory)
     vehicle_ids = list(vehicle_ids_set)
 
     if not vehicle_ids:
         return {}
 
-    # Get latest ETAs
-    etas_dict = await get_latest_etas(vehicle_ids, request.app.state.session_factory)
-
-    return etas_dict
+    return await get_latest_etas(vehicle_ids, request.app.state.session_factory)
 
 
 @router.get("/api/velocities")
