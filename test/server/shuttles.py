@@ -1,6 +1,12 @@
 """Shuttle-related API routes and state management for the test server."""
 import asyncio
+import json
 import logging
+import time
+import threading
+from datetime import datetime, timedelta
+from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
@@ -13,11 +19,15 @@ from shared.stops import Stops
 
 logger = logging.getLogger(__name__)
 
+CAMPUS_TZ = ZoneInfo("America/New_York")
+SCHEDULE_PATH = Path(__file__).parent.parent.parent / "shared" / "aggregated_schedule.json"
+
 # Global shuttle management
 shuttles: dict[str, Shuttle] = {}
 shuttle_counter = 1
 shuttle_lock = asyncio.Lock()
 route_names = Stops.active_routes
+_scheduler_threads: list[threading.Thread] = []
 
 router = APIRouter(prefix="/api", tags=["shuttles"])
 
@@ -165,6 +175,112 @@ async def clear_shuttle_queue(shuttle_id: str):
             raise HTTPException(status_code=404, detail="Shuttle not found")
         shuttle.clear_queue()
         return {"message": "Queue cleared"}
+
+
+@router.post("/shuttles/schedule")
+async def start_schedule_shuttles():
+    """Start schedule-based shuttles (2 per route, alternating departure times)."""
+    count = await setup_schedule_shuttles()
+    async with shuttle_lock:
+        return {
+            "shuttles": count,
+            "ids": list(shuttles.keys()),
+            "message": f"Created {count} schedule-based shuttles",
+        }
+
+
+# --- Schedule-based shuttle management ---
+
+
+def _load_today_schedule() -> dict[str, list[str]]:
+    """Load today's route schedule from aggregated_schedule.json."""
+    with open(SCHEDULE_PATH) as f:
+        schedule = json.load(f)
+    now = datetime.now(CAMPUS_TZ)
+    # aggregated_schedule indexed by JS getDay() (0=Sun)
+    # Python weekday(): Mon=0..Sun=6  →  JS: (py+1)%7
+    js_day = (now.weekday() + 1) % 7
+    return schedule[js_day]
+
+
+def _parse_schedule_time(time_str: str) -> datetime:
+    """Parse '9:00 AM' into today's datetime in campus timezone."""
+    now = datetime.now(CAMPUS_TZ)
+    parsed = datetime.strptime(time_str, "%I:%M %p")
+    result = now.replace(hour=parsed.hour, minute=parsed.minute, second=0, microsecond=0)
+    # "12:00 AM" means midnight → next day
+    if time_str.strip() == "12:00 AM":
+        result += timedelta(days=1)
+    return result
+
+
+def _schedule_worker(shuttle: Shuttle, route: str, departure_times: list[datetime]):
+    """Background thread: queues a LOOPING action at each scheduled departure."""
+    for dep_time in departure_times:
+        now = datetime.now(CAMPUS_TZ)
+        wait = (dep_time - now).total_seconds()
+        if wait > 0:
+            time.sleep(wait)
+        if not shuttle._running:
+            break
+        shuttle.push_action(ShuttleAction.LOOPING, route=route)
+        logger.info(f"Shuttle {shuttle.id}: scheduled departure on {route} at {dep_time.strftime('%I:%M %p')}")
+
+
+async def setup_schedule_shuttles() -> int:
+    """Create 2 shuttles per route with alternating departure times from the static schedule."""
+    global shuttle_counter
+
+    schedule = _load_today_schedule()
+    now = datetime.now(CAMPUS_TZ)
+
+    async with shuttle_lock:
+        # Tear down any existing shuttles
+        stop_all_shuttles()
+        for t in _scheduler_threads:
+            t.join(timeout=0.1)
+        _scheduler_threads.clear()
+        shuttle_counter = 1
+
+        for route_name in sorted(schedule.keys()):
+            times = schedule[route_name]
+            dep_times = [_parse_schedule_time(t) for t in times]
+            future_deps = [t for t in dep_times if t > now]
+
+            if len(future_deps) < 2:
+                logger.warning(f"Route {route_name}: fewer than 2 future departures, skipping")
+                continue
+
+            # Shuttle A gets even-indexed departures, Shuttle B gets odd-indexed
+            for shuttle_deps in [future_deps[0::2], future_deps[1::2]]:
+                if not shuttle_deps:
+                    continue
+
+                shuttle_id = str(shuttle_counter).zfill(15)
+                shuttle = Shuttle(shuttle_id)
+                shuttle.push_action(ShuttleAction.ENTERING)
+                shuttle.start()
+                shuttles[shuttle_id] = shuttle
+                shuttle_counter += 1
+
+                thread = threading.Thread(
+                    target=_schedule_worker,
+                    args=(shuttle, route_name, shuttle_deps),
+                    daemon=True,
+                    name=f"sched-{shuttle_id}-{route_name}",
+                )
+                thread.start()
+                _scheduler_threads.append(thread)
+
+                logger.info(
+                    f"Shuttle {shuttle_id}: {route_name}, "
+                    f"{len(shuttle_deps)} departures, "
+                    f"first at {shuttle_deps[0].strftime('%I:%M %p')}"
+                )
+
+    count = len(shuttles)
+    logger.info(f"Created {count} schedule-based shuttles")
+    return count
 
 
 @router.get("/routes")

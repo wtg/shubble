@@ -14,6 +14,7 @@ from .shuttles import (
     shuttles,
     stop_all_shuttles,
     setup_shuttles,
+    setup_schedule_shuttles,
 )
 from .events import router as events_router
 from .mock_samsara import router as mock_samsara_router
@@ -34,9 +35,13 @@ async def lifespan(app: FastAPI):
     app.state.session_factory = create_session_factory(app.state.db_engine)
     logger.info("Database initialized")
 
-    # Setup shuttles from database
+    # Try DB-based shuttle restore first; if none found, start schedule-based
     await setup_shuttles(app.state.session_factory)
-    logger.info(f"Initialized {len(shuttles)} shuttles from database")
+    if not shuttles:
+        count = await setup_schedule_shuttles()
+        logger.info(f"Started {count} schedule-based shuttles")
+    else:
+        logger.info(f"Restored {len(shuttles)} shuttles from database")
 
     yield
 
