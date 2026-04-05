@@ -7,6 +7,7 @@ import config from "../../utils/config";
 import type { ShuttleRouteData } from "../../types/route";
 import type { VehicleLocationMap, VehicleVelocityMap, VehicleCombinedMap } from "../../types/vehicleLocation";
 import type { Coordinate } from "../../utils/mapUtils";
+import type { StopETAs, StopETADetails } from "../../hooks/useStopETAs";
 
 import MapKitCanvas from "../../mapkit/MapKitCanvas";
 import MapKitAnimation from "../../mapkit/MapKitAnimation";
@@ -22,6 +23,8 @@ type LiveLocationMapKitProps = {
   isFullscreen?: boolean;
   showTrueLocation?: boolean;
   shuttleIconSize?: number;
+  stopETAs?: StopETAs;
+  stopETADetails?: StopETADetails;
 };
 
 export default function LiveLocationMapKit({
@@ -33,6 +36,8 @@ export default function LiveLocationMapKit({
   isFullscreen = false,
   showTrueLocation = true,
   shuttleIconSize = 25,
+  stopETAs,
+  stopETADetails,
 }: LiveLocationMapKitProps) {
   const [map, setMap] = useState<(mapkit.Map | null)>(null);
   const [vehicles, setVehicles] = useState<VehicleCombinedMap | null>(null);
@@ -197,6 +202,8 @@ export default function LiveLocationMapKit({
         setSelectedRoute={setSelectedRoute}
         isFullscreen={isFullscreen}
         onMapReady={setMap}
+        stopETAs={stopETAs}
+        stopETADetails={stopETADetails}
       />
       <MapKitOverlays
         map={map}

@@ -3,6 +3,7 @@ import '../locations/styles/MapKitMap.css';
 import config from "../utils/config";
 
 import type { ShuttleRouteData, ShuttleStopData } from "../types/route";
+import type { StopETAs, StopETADetails } from "../hooks/useStopETAs";
 
 type MapKitCanvasProps = {
   routeData: ShuttleRouteData | null;
@@ -11,6 +12,8 @@ type MapKitCanvasProps = {
   setSelectedRoute?: (route: string | null) => void;
   isFullscreen?: boolean;
   onMapReady?: (map: mapkit.Map) => void;
+  stopETAs?: StopETAs;
+  stopETADetails?: StopETADetails;
 };
 
 async function generateRoutePolylines(updatedRouteData: ShuttleRouteData) {
@@ -100,7 +103,7 @@ async function generateRoutePolylines(updatedRouteData: ShuttleRouteData) {
 
 // @ts-expect-error selectedRoutes is never used
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-export default function MapKitCanvas({ routeData, generateRoutes = false, selectedRoute, setSelectedRoute, isFullscreen = false, onMapReady }: MapKitCanvasProps) {
+export default function MapKitCanvas({ routeData, generateRoutes = false, selectedRoute, setSelectedRoute, isFullscreen = false, onMapReady, stopETAs, stopETADetails }: MapKitCanvasProps) {
   const mapRef = useRef(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [map, setMap] = useState<(mapkit.Map | null)>(null);
@@ -173,8 +176,19 @@ export default function MapKitCanvas({ routeData, generateRoutes = false, select
           thisMap.removeAnnotation(selectedMarkerRef.current);
           selectedMarkerRef.current = null;
         }
+
+        // Build subtitle with ETA info
+        let subtitle = '';
+        const stopKey = overlay.stopKey;
+        if (stopKey && stopETAs?.[stopKey]) {
+          subtitle = `Next shuttle: ${stopETAs[stopKey]}`;
+        } else if (stopKey && stopETADetails?.[stopKey]?.lastArrival) {
+          subtitle = `Last arrived: ${stopETADetails[stopKey].lastArrival}`;
+        }
+
         const marker = new mapkit.MarkerAnnotation(overlay.coordinate, {
           title: overlay.stopName,
+          subtitle,
           glyphImage: { 1: "map-marker.png" },
         });
         thisMap.addAnnotation(marker);

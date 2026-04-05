@@ -20,7 +20,12 @@ import ApplePrivacyPolicy from './privacy/ApplePrivacyPolicy';
 import AppleAppSupport from './support/AppleAppSupport';
 
 function App() {
-  const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
+  const [selectedRoute, setSelectedRoute] = useState<string | null>(
+    () => localStorage.getItem('shubble-route')
+  );
+  useEffect(() => {
+    if (selectedRoute) localStorage.setItem('shubble-route', selectedRoute);
+  }, [selectedRoute]);
   const GIT_REV = (import.meta.env.GIT_REV || 'unknown') as string;
   const routeData = rawRouteData as unknown as ShuttleRouteData;
 
