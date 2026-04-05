@@ -13,10 +13,8 @@ from ml.deploy.arima import load_arima
 from ml.training.train import fit_arima
 from backend.models import ETA, PredictedLocation
 from backend.database import get_db
-from backend.config import settings
-from backend.cache import cache, soft_clear_namespace
+from backend.cache import cache, soft_clear_namespace, get_redis
 from backend.function_timer import timed
-from ml.cache import get_polyline_dir
 from shared.stops import Stops
 
 logger = logging.getLogger(__name__)
@@ -25,37 +23,9 @@ P = 3
 D = 0
 Q = 2
 
-# Cache for loaded models: (route_name, polyline_idx) -> LSTMModel
+# Cache for loaded models: (route_name, polyline_idx) -> LSTMModel | None
+# None sentinel means "load was attempted and failed — don't retry"
 _MODEL_CACHE: Dict[Tuple[str, int], Any] = {}
-
-@timed
-@cache(soft_ttl=300, hard_ttl=3600, namespace="average_travel_time")
-async def load_average_travel_time(route: str, polyline_idx: int) -> Optional[float]:
-    """Load average travel time for a polyline from CSV.
-
-    Cached for 5 minutes.
-
-    Args:
-        route: Route name
-        polyline_idx: Polyline index
-
-    Returns:
-        Average travel time in seconds, or None if not found
-    """
-    polyline_dir = get_polyline_dir(route, polyline_idx)
-    csv_path = polyline_dir / "average_travel_time.csv"
-
-    if not csv_path.exists():
-        return None
-
-    try:
-        df = pd.read_csv(csv_path)
-        if len(df) == 0:
-            return None
-        return float(df.iloc[0]['avg_travel_time_seconds'])
-    except Exception as e:
-        logger.warning(f"Failed to load average travel time for {route} polyline {polyline_idx}: {e}")
-        return None
 
 @timed
 async def _get_vehicle_data(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
@@ -127,15 +97,21 @@ async def predict_eta(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None)
     results = {}
 
     for (route, idx), batch_items in batches.items():
-        model = _MODEL_CACHE.get((route, idx))
-        if not model:
+        key = (route, idx)
+        if key in _MODEL_CACHE:
+            model = _MODEL_CACHE[key]
+            if model is None:
+                continue  # Previously failed — skip
+        else:
             try:
                 model = load_lstm_for_route(route, idx, input_columns=input_columns)
-                _MODEL_CACHE[(route, idx)] = model
+                _MODEL_CACHE[key] = model
             except FileNotFoundError:
+                _MODEL_CACHE[key] = None  # Cache the miss
                 continue
             except Exception as e:
                 logger.error(f"Error loading LSTM model for {route} segment {idx}: {e}")
+                _MODEL_CACHE[key] = None  # Cache the failure
                 continue
 
         vehicle_ids_in_batch = [item[0] for item in batch_items]
@@ -157,53 +133,54 @@ async def predict_eta(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None)
     return results
 
 @timed
-async def get_all_stop_times(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None) -> Dict[str, List[Tuple[str, datetime]]]:
+async def compute_per_stop_etas(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None) -> Dict[str, Dict]:
     """
-    Get all stop times for a list of vehicle IDs: historical, predicted, and future.
+    Compute per-stop ETAs: for each stop, the next shuttle to arrive.
 
-    For each vehicle, returns:
-    1. Historical: Last time the vehicle was at each stop before its current destination
-    2. Predicted: LSTM prediction for the stop it's currently going to
-    3. Future: Average time predictions for subsequent stops
-
-    Polyline indices map to stop transitions in routes_data['STOPS']:
-    - polyline_idx 0: transition from STOPS[0] to STOPS[1]
-    - polyline_idx 1: transition from STOPS[1] to STOPS[2]
-    - etc.
+    Three-layer approach:
+    1. LSTM predicts time to the immediate next stop (fallback: distance / avg speed)
+    2. Static OFFSET diffs from routes.json for all subsequent stops
+    3. Historical arrivals for stops already passed
 
     Args:
         vehicle_ids: List of vehicle IDs to predict for
         df: Optional pre-loaded dataframe
 
     Returns:
-        Dictionary mapping vehicle_id to list of (stop_key, datetime) tuples
-        for all stops on the route (past, present, and future).
+        Per-stop dictionary:
+        {
+            "COLONIE": {
+                "eta": "2026-04-03T14:33:00+00:00",
+                "vehicle_id": "123",
+                "route": "NORTH"
+            },
+            ...
+        }
     """
+    from backend.worker.velocity import get_velocity_predictor
 
-    # Get full vehicle dataframe to find historical stop times and current position
     full_df = df
     if full_df is None:
         try:
             full_df = await get_today_dataframe()
         except Exception as e:
-            logger.error(f"Failed to load dataframe for get_all_stop_times: {e}")
+            logger.error(f"Failed to load dataframe for compute_per_stop_etas: {e}")
             return {}
 
     if full_df is None or full_df.empty:
         return {}
 
-    # Load routes data from Stops class
     routes = Stops.routes_data
+    velocity_predictor = get_velocity_predictor()
 
-    # Get ML prediction for next stop (current transition)
+    # Get LSTM predictions for next stop (best effort — may be empty)
     next_stop_etas = await predict_eta(vehicle_ids, df=full_df)
-    if not next_stop_etas:
-        return {}
 
-    results: Dict[str, List[Tuple[str, datetime]]] = {}
+    # Per-vehicle: compute next_stop_eta and all subsequent stop ETAs
+    # Structure: {vehicle_id: {route, next_stop_eta, stops: [(stop_key, eta)]}}
+    vehicle_stop_etas: Dict[str, Dict] = {}
 
     for vehicle_id in vehicle_ids:
-        # Get all data for this vehicle
         vehicle_df = full_df[full_df['vehicle_id'] == str(vehicle_id)].sort_values('timestamp')
         if vehicle_df.empty:
             continue
@@ -217,87 +194,149 @@ async def get_all_stop_times(vehicle_ids: List[str], df: Optional[pd.DataFrame] 
             continue
 
         current_polyline_idx = int(current_polyline_idx)
+        route = str(route)
 
-        # Check if route exists in routes data
         if route not in routes:
-            logger.warning(f"Route {route} not found in routes.json")
             continue
 
         route_data = routes[route]
         if 'STOPS' not in route_data:
-            logger.warning(f"STOPS not found for route {route}")
             continue
 
-        stops = route_data['STOPS']  # List of stop keys like ["STUDENT_UNION", "COLONIE", ...]
+        stops = route_data['STOPS']
 
-        # Polyline index N represents transition from STOPS[N] to STOPS[N+1]
-        # So if current_polyline_idx = 0, vehicle is going from STOPS[0] to STOPS[1]
-
-        if not pd.isna(now_stop_key):
-            now_stop_idx = stops.index(now_stop_key)
-            if now_stop_idx == current_polyline_idx:
-                # Vehicle is at the stop it's going to, increment to next
+        # Polyline index N = transition from STOPS[N] to STOPS[N+1]
+        # If vehicle is AT the destination stop, advance to next transition
+        if not pd.isna(now_stop_key) and str(now_stop_key) in stops:
+            now_stop_idx = stops.index(str(now_stop_key))
+            if now_stop_idx == current_polyline_idx + 1:
                 current_polyline_idx += 1
 
-        # Safety check
-        if current_polyline_idx < 0 or current_polyline_idx >= len(stops):
-            continue
-
-        # Determine which stop we're heading to (destination of current transition)
+        # Next stop is the destination of current transition
         next_stop_idx = current_polyline_idx + 1
-
         if next_stop_idx >= len(stops):
-            # Vehicle is past all stops (end of route)
             continue
 
-        # Build complete list of stop times: historical + predicted + future
-        stop_times: List[Tuple[str, datetime]] = []
-
-        # 1. Add historical stop times (stops before the one we're going to)
-        for i in range(next_stop_idx):
-            stop_key = stops[i]
-
-            # Find last time vehicle was at this stop (where stop_name matches)
-            at_stop = vehicle_df[vehicle_df['stop_name'] == stop_key]
-            if not at_stop.empty:
-                last_at_stop = at_stop.iloc[-1]
-                stop_timestamp = pd.to_datetime(last_at_stop['timestamp']).to_pydatetime()
-                if stop_timestamp.tzinfo is None:
-                    stop_timestamp = stop_timestamp.replace(tzinfo=timezone.utc)
-                stop_times.append((stop_key, stop_timestamp))
-
-        # 2. Add ML prediction for the stop we're currently going to
+        # --- Layer 1: ETA to next stop ---
         next_stop_eta = next_stop_etas.get(vehicle_id)
-        if not next_stop_eta:
-            continue
+
+        if next_stop_eta is None:
+            # Fallback: distance / average speed
+            last_lat = last_point.get('latitude')
+            last_lon = last_point.get('longitude')
+            if pd.isna(last_lat) or pd.isna(last_lon):
+                continue
+
+            try:
+                closest = Stops.get_closest_point(
+                    (float(last_lat), float(last_lon)),
+                    target_polyline=(route, current_polyline_idx)
+                )
+                if closest is None:
+                    continue
+                _, dist_to_end, _ = Stops.get_polyline_distances(
+                    (float(last_lat), float(last_lon)),
+                    closest_point_result=closest
+                )
+                if dist_to_end is None or dist_to_end <= 0:
+                    dist_to_end = 0.1  # minimum 100m
+
+                speed_kmh = velocity_predictor.predict_speed_kmh(str(vehicle_id), route)
+                if speed_kmh <= 0:
+                    speed_kmh = 20.0
+                eta_seconds = (dist_to_end / speed_kmh) * 3600
+            except Exception as e:
+                logger.warning(f"Fallback ETA failed for vehicle {vehicle_id}: {e}")
+                continue
+
+            last_ts = pd.to_datetime(last_point['timestamp']).to_pydatetime()
+            if last_ts.tzinfo is None:
+                last_ts = last_ts.replace(tzinfo=timezone.utc)
+            next_stop_eta = last_ts + timedelta(seconds=eta_seconds)
 
         next_stop_key = stops[next_stop_idx]
-        stop_times.append((next_stop_key, next_stop_eta))
+        next_stop_data = route_data.get(next_stop_key)
+        if not next_stop_data or 'OFFSET' not in next_stop_data:
+            logger.warning(f"Missing OFFSET for stop {next_stop_key} on route {route}")
+            continue
+        next_stop_offset = next_stop_data['OFFSET']
 
-        # 3. Calculate ETAs for subsequent stops using average travel times
-        cumulative_eta = next_stop_eta
+        # Build this vehicle's complete stop ETA list (preserves ordering)
+        vehicle_stops: List[Tuple[str, datetime]] = []
+        vehicle_stops.append((next_stop_key, next_stop_eta))
 
+        # --- Layer 2: Subsequent stops via OFFSET diffs ---
         for i in range(next_stop_idx + 1, len(stops)):
-            curr_stop_key = stops[i]
-            # Polyline index for transition TO this stop (from previous stop)
-            polyline_idx_for_transition = i - 1
+            stop_key = stops[i]
+            stop_data_entry = route_data.get(stop_key)
+            if not stop_data_entry or 'OFFSET' not in stop_data_entry:
+                continue
+            stop_offset = stop_data_entry['OFFSET']
+            offset_diff_seconds = (stop_offset - next_stop_offset) * 60
+            stop_eta = next_stop_eta + timedelta(seconds=offset_diff_seconds)
+            vehicle_stops.append((stop_key, stop_eta))
 
-            # Load average travel time for this transition
-            avg_time = await load_average_travel_time(route, polyline_idx_for_transition)
+        vehicle_stop_etas[str(vehicle_id)] = {
+            "route": route,
+            "next_stop_eta": next_stop_eta,
+            "stops": vehicle_stops,
+        }
 
-            if avg_time is None:
-                logger.warning(f"Missing average travel time for {route} polyline {polyline_idx_for_transition}")
-                # Skip remaining stops if we don't have complete data
-                break
+    # Aggregate per-route: for each route, pick the vehicle arriving soonest
+    # at its next stop, then use ALL of that vehicle's ETAs for that route.
+    # This preserves stop ordering (no impossible ETAs).
+    now_utc = datetime.now(timezone.utc)
+    best_per_route: Dict[str, Tuple[str, datetime, List[Tuple[str, datetime]]]] = {}
+    # route -> (vehicle_id, next_stop_eta, stops_list)
 
-            # Calculate ETA for this stop
-            cumulative_eta = cumulative_eta + timedelta(seconds=avg_time)
-            stop_times.append((curr_stop_key, cumulative_eta))
+    for vid, vdata in vehicle_stop_etas.items():
+        route = vdata["route"]
+        next_eta = vdata["next_stop_eta"]
+        if next_eta <= now_utc:
+            continue
 
-        if stop_times:
-            results[vehicle_id] = stop_times
+        if route not in best_per_route or next_eta < best_per_route[route][1]:
+            best_per_route[route] = (vid, next_eta, vdata["stops"])
 
-    return results
+    # Compute last_arrival for each stop from today's data
+    last_arrivals: Dict[str, str] = {}
+    if full_df is not None and not full_df.empty and 'stop_name' in full_df.columns:
+        stops_df = full_df.dropna(subset=['stop_name'])
+        if not stops_df.empty:
+            for stop_key, group in stops_df.groupby('stop_name'):
+                latest = group['timestamp'].max()
+                ts = pd.to_datetime(latest).to_pydatetime()
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                last_arrivals[str(stop_key)] = ts.isoformat()
+
+    # Build final per-stop result from the best vehicle per route
+    result: Dict[str, Dict] = {}
+    for route, (vid, _, stops_list) in best_per_route.items():
+        for stop_key, eta_dt in stops_list:
+            if eta_dt <= now_utc:
+                continue
+            entry = {
+                "eta": eta_dt.isoformat(),
+                "vehicle_id": vid,
+                "route": route,
+                "last_arrival": last_arrivals.get(stop_key),
+            }
+            # For stops shared across routes (e.g. STUDENT_UNION), keep earliest
+            if stop_key not in result or eta_dt < datetime.fromisoformat(result[stop_key]["eta"]):
+                result[stop_key] = entry
+
+    # Add last_arrival for stops that have no future ETA
+    for stop_key, last_iso in last_arrivals.items():
+        if stop_key not in result:
+            result[stop_key] = {
+                "eta": None,
+                "vehicle_id": None,
+                "route": "",
+                "last_arrival": last_iso,
+            }
+
+    return result
 
 @timed
 async def predict_next_state(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None) -> Dict[str, Dict]:
@@ -373,23 +412,37 @@ async def predict_next_state(vehicle_ids: List[str], df: Optional[pd.DataFrame] 
     return results
 
 @timed
-async def save_predictions(etas: Dict[str, List[Tuple[str, datetime]]], next_states: Dict[str, Dict]):
+async def save_predictions(per_stop_etas: Dict[str, Dict], next_states: Dict[str, Dict]):
     """Save predictions to database.
 
     Args:
-        etas: Dictionary mapping vehicle_id to list of (stop_key, eta_datetime) tuples
+        per_stop_etas: Per-stop ETA dict from compute_per_stop_etas().
+            Each value has "eta", "vehicle_id", "route".
+            Saved as one ETA row per vehicle with its contributed stops.
         next_states: Dictionary mapping vehicle_id to predicted next state (speed, timestamp)
     """
-    if not etas and not next_states:
+    if not per_stop_etas and not next_states:
         return
 
     async with aclosing(get_db()) as gen:
         session = await anext(gen)
-        # Save ETAs (as ISO format strings for JSON storage)
-        for vid, stop_etas in etas.items():
-            # Convert list of (stop_key, datetime) tuples to dict
-            etas_dict = {stop_key: eta_datetime.isoformat() for stop_key, eta_datetime in stop_etas}
 
+        # Group per-stop ETAs back by vehicle_id for DB storage
+        # Skip last_arrival-only entries (vehicle_id is None)
+        vehicle_etas: Dict[str, Dict[str, Any]] = {}
+        for stop_key, stop_info in per_stop_etas.items():
+            vid = stop_info.get("vehicle_id")
+            if vid is None:
+                continue  # last_arrival-only entry, stored via Redis
+            if vid not in vehicle_etas:
+                vehicle_etas[vid] = {}
+            vehicle_etas[vid][stop_key] = {
+                "eta": stop_info["eta"],
+                "route": stop_info["route"],
+                "last_arrival": stop_info.get("last_arrival"),
+            }
+
+        for vid, etas_dict in vehicle_etas.items():
             new_eta = ETA(
                 vehicle_id=vid,
                 etas=etas_dict,
@@ -418,25 +471,33 @@ async def generate_and_save_predictions(vehicle_ids: List[str]):
 
     logger.info(f"Generating predictions for {len(vehicle_ids)} vehicles...")
 
-    # Load dataframe once to avoid unpickling overhead twice
+    # Load dataframe once to avoid repeated overhead
     try:
         df = await get_today_dataframe()
     except Exception as e:
         logger.error(f"Failed to load dataframe for predictions: {e}")
         return
 
-    # Run in parallel, passing the pre-loaded dataframe
-    results = await asyncio.gather(
-        get_all_stop_times(vehicle_ids, df=df),
-        predict_next_state(vehicle_ids, df=df)
-    )
+    # Compute per-stop ETAs (uses LSTM for next stop, OFFSET diffs for rest)
+    per_stop_etas = await compute_per_stop_etas(vehicle_ids, df=df)
 
-    etas = results[0]
-    next_states = results[1]
+    # Store complete per-stop result in Redis for direct API access
+    # (preserves last_arrival-only entries that don't survive the DB round-trip)
+    redis = get_redis()
+    if redis and per_stop_etas:
+        import json as _json
+        await redis.set(
+            "shubble:per_stop_etas_live",
+            _json.dumps(per_stop_etas).encode(),
+            ex=120,
+        )
 
-    await save_predictions(etas, next_states)
+    # Predict next state separately (for /api/velocities endpoint)
+    next_states = await predict_next_state(vehicle_ids, df=df)
 
-    count_etas = len(etas)
+    await save_predictions(per_stop_etas, next_states)
+
+    count_stops = len(per_stop_etas)
     count_locs = len(next_states)
-    if count_etas > 0 or count_locs > 0:
-        logger.info(f"Saved {count_etas} ETAs and {count_locs} predicted locations")
+    if count_stops > 0 or count_locs > 0:
+        logger.info(f"Saved ETAs for {count_stops} stops and {count_locs} predicted locations")
