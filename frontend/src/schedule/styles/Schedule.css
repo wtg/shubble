@@ -289,6 +289,93 @@
   font-style: italic;
 }
 
+.last-arrival {
+  color: #95a5a6;
+  font-size: 0.85em;
+}
+
+.eta-early {
+  color: #578FCA;
+  font-size: 0.8em;
+  margin-left: 4px;
+}
+
+.eta-late {
+  color: #E67E22;
+  font-size: 0.8em;
+  margin-left: 4px;
+}
+
+.scheduled-fallback {
+  color: #95a5a6;
+  font-style: italic;
+  font-size: 0.9em;
+}
+
+/* Next Shuttle Summary */
+.next-shuttle-summary {
+  font-size: 15px;
+  color: #2c3e50;
+  padding: 10px 0;
+  margin-bottom: 4px;
+  border-bottom: 1px solid #e1e8ed;
+}
+
+.summary-stop {
+  color: #578FCA;
+  font-weight: 600;
+}
+
+.summary-time {
+  color: #7f8c8d;
+  font-size: 14px;
+}
+
+/* Relative Time Labels */
+.relative-time {
+  color: #578FCA;
+  font-size: 14px;
+  font-weight: 500;
+  margin-left: 8px;
+}
+
+/* Expand Indicator */
+.expand-indicator {
+  color: #bdc3c7;
+  font-size: 12px;
+  margin-left: 8px;
+}
+
+/* Show Full Schedule Link */
+.show-full-schedule {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  margin-top: 8px;
+  background: none;
+  border: none;
+  color: #578FCA;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: center;
+}
+
+.show-full-schedule:hover {
+  text-decoration: underline;
+}
+
+/* Selected Stop Highlight */
+.secondary-timeline-item.selected-stop .secondary-timeline-dot {
+  background: #578FCA;
+  box-shadow: 0 0 0 3px rgba(87, 143, 202, 0.2);
+}
+
+.secondary-timeline-item.selected-stop .secondary-timeline-content {
+  border-color: #578FCA;
+  background: rgba(87, 143, 202, 0.04);
+}
+
 .secondary-timeline-item.has-eta .secondary-timeline-dot {
   background: #578FCA;
 }
