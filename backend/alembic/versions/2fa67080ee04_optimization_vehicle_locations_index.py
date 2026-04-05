@@ -1,7 +1,7 @@
 """optimization vehicle_locations index
 
 Revision ID: 2fa67080ee04
-Revises: 80692b8f8d92
+Revises: aba8cad5405a
 Create Date: 2026-02-28 13:14:05.710512
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '2fa67080ee04'
-down_revision: Union[str, None] = '80692b8f8d92'
+down_revision: Union[str, None] = 'aba8cad5405a'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
