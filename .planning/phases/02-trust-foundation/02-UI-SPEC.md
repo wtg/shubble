@@ -1,7 +1,8 @@
 ---
 phase: 2
 slug: trust-foundation
-status: draft
+status: approved
+reviewed_at: 2026-04-06
 shadcn_initialized: false
 preset: none
 created: 2026-04-06
