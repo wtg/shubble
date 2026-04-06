@@ -308,17 +308,19 @@ const getMissingDataMessage = (routeName: string, dayIndex: number): string => {
 | A3 | Badge styling (font-size, padding, border-radius) | Code Examples | None — explicitly Claude's discretion |
 | A4 | The `--:--` case at line 391 only fires when the stop has no scheduled time AND no live data | Pitfall 2 | Could cause wrong missing data messages if assumption is wrong about `computeStaticETAs` coverage |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **How should the countdown summary (line 284-291) handle trust signals?**
    - What we know: The summary shows "Next at [stop] in X min (time)" but doesn't indicate live vs scheduled
    - What's unclear: Whether TRUST-01 applies to the summary or only the secondary timeline
    - Recommendation: Add a small LIVE/SCHED indicator to the summary too for consistency, but this is secondary to the timeline work
+   - RESOLVED: Summary not modified in this phase (Phase 3 scope). D-02 specifies "every stop row in the expanded secondary timeline" — summary is outside that scope.
 
 2. **Should the first-stop main timeline item (line 328-329) also get a source badge?**
    - What we know: D-02 says "every stop row in the expanded secondary timeline" — the first stop line is part of the main timeline
    - What's unclear: Whether the first stop's ETA display (`- ETA: {activeETAs[firstStop]}`) needs a badge
    - Recommendation: Yes, for consistency — but at minimum the secondary timeline must have badges per D-02
+   - RESOLVED: Yes, first-stop gets LIVE badge for consistency. Implemented in Plan 01 Task 2 section C.
 
 ## Environment Availability
 
