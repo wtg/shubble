@@ -296,14 +296,49 @@
 
 .eta-early {
   color: #578FCA;
-  font-size: 0.8em;
+  font-size: 12px;
+  font-weight: 700;
   margin-left: 4px;
 }
 
 .eta-late {
   color: #E67E22;
-  font-size: 0.8em;
+  font-size: 12px;
+  font-weight: 700;
   margin-left: 4px;
+}
+
+/* Source Badges (LIVE/SCHED) */
+.source-badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 4px 4px;
+  border-radius: 4px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.source-badge.source-live {
+  color: #578FCA;
+  background: rgba(87, 143, 202, 0.12);
+  border: 1px solid rgba(87, 143, 202, 0.3);
+}
+
+.source-badge.source-sched {
+  color: #95a5a6;
+  background: rgba(149, 165, 166, 0.12);
+  border: 1px solid rgba(149, 165, 166, 0.3);
+}
+
+/* Missing Data Messages */
+.no-service-message {
+  color: #95a5a6;
+  font-style: italic;
+  font-size: 14px;
+  font-weight: 400;
 }
 
 .scheduled-fallback {
