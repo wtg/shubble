@@ -189,6 +189,54 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
     return dates;
   };
 
+  // Determine contextual message when no ETA data is available (D-08)
+  const getMissingDataMessage = (routeName: string): string => {
+    const daySchedule = aggregatedSchedule[selectedDay];
+    const routeTimes = daySchedule?.[routeName as Route];
+
+    if (!routeTimes || routeTimes.length === 0) {
+      return 'No shuttle in service';
+    }
+
+    const firstDeparture = timeToDate(routeTimes[0]);
+    const lastDeparture = timeToDate(routeTimes[routeTimes.length - 1]);
+
+    if (now < firstDeparture) {
+      return `Service starts at ${routeTimes[0]}`;
+    }
+
+    if (now > lastDeparture) {
+      return 'No shuttle in service';
+    }
+
+    // During service hours but no data for this stop
+    return 'No shuttle in service';
+  };
+
+  // Compute early/late deviation for live ETAs (D-05, D-06, D-07, D-11, D-12)
+  const computeDeviation = (
+    stopKey: string,
+    loopStaticDatesForStop: Record<string, Date>
+  ): { text: string; className: string } | null => {
+    const detail = liveETADetails[stopKey];
+    if (!detail?.etaISO) return null;
+
+    const scheduledDate = loopStaticDatesForStop[stopKey];
+    if (!scheduledDate) return null;
+
+    const liveDate = new Date(detail.etaISO);
+    const diffMinutes = Math.round((liveDate.getTime() - scheduledDate.getTime()) / 60_000);
+
+    // D-11: 2-minute dead zone (inclusive)
+    if (Math.abs(diffMinutes) <= 2) return null;
+
+    if (diffMinutes > 0) {
+      return { text: `+${diffMinutes} min late`, className: 'eta-late' };
+    } else {
+      return { text: `${diffMinutes} min early`, className: 'eta-early' };
+    }
+  };
+
   const activeETAs = config.staticETAs ? computeStaticETAs(currentLoopIndex) : liveETAs;
   const staticETAs = computeStaticETAs(currentLoopIndex);
   const staticETADates = computeStaticETADates(currentLoopIndex);
@@ -326,7 +374,10 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
                       {time}
                       {showRelative && <span className="relative-time">in {minutesUntil} min</span>}
                       {isCurrentLoop && activeETAs[firstStop] && (
-                        <span className="live-eta"> - ETA: {activeETAs[firstStop]}</span>
+                        <>
+                          <span className="live-eta"> - ETA: {activeETAs[firstStop]}</span>
+                          <span className="source-badge source-live">LIVE</span>
+                        </>
                       )}
                       {!isCurrentLoop && !isPastTime && (
                         <span className="expand-indicator">{isExpanded ? '\u25B4' : '\u25BE'}</span>
@@ -346,16 +397,6 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
                       const lastArrival = isCurrentLoop ? details?.lastArrival : undefined;
                       const isSelected = stop === selectedStop;
 
-                      // Compute deviation (live vs scheduled) in minutes
-                      let deviationMinutes = 0;
-                      const liveISO = details?.etaISO;
-                      const scheduledDate = loopStaticDates[stop];
-                      if (hasLiveETA && liveISO && scheduledDate) {
-                        deviationMinutes = Math.round(
-                          (new Date(liveISO).getTime() - scheduledDate.getTime()) / 60_000
-                        );
-                      }
-
                       return (
                         <div
                           key={stopIndex}
@@ -369,19 +410,24 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
                               {hasLiveETA ? (
                                 <>
                                   <span className="live-eta">{activeETAs[stop]}</span>
-                                  {deviationMinutes >= 2 && (
-                                    <span className="eta-late">{deviationMinutes}m late</span>
-                                  )}
-                                  {deviationMinutes <= -2 && (
-                                    <span className="eta-early">{Math.abs(deviationMinutes)}m early</span>
-                                  )}
+                                  <span className="source-badge source-live">LIVE</span>
+                                  {(() => {
+                                    const dev = computeDeviation(stop, loopStaticDates);
+                                    return dev ? <span className={dev.className}>{dev.text}</span> : null;
+                                  })()}
                                 </>
                               ) : lastArrival ? (
-                                <span className="last-arrival">Last: {lastArrival}</span>
+                                <>
+                                  <span className="last-arrival">Last: {lastArrival}</span>
+                                  <span className="source-badge source-live">LIVE</span>
+                                </>
                               ) : (isCurrentLoop || isExpanded) && (loopETAs[stop] || loopStaticETAs[stop]) ? (
-                                <span className="scheduled-fallback">Sched: {loopETAs[stop] || loopStaticETAs[stop]}</span>
+                                <>
+                                  <span className="scheduled-fallback">Sched: {loopETAs[stop] || loopStaticETAs[stop]}</span>
+                                  <span className="source-badge source-sched">SCHED</span>
+                                </>
                               ) : (
-                                <span className="no-eta">--:--</span>
+                                <span className="no-service-message">{getMissingDataMessage(safeSelectedRoute)}</span>
                               )}
                             </div>
                             <div className="secondary-timeline-stop">{stopData?.NAME || stop}</div>
