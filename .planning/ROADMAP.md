@@ -44,7 +44,7 @@ Plans:
 **UI hint**: yes
 
 Plans:
-- [ ] 02-01-PLAN.md -- Trust signal badges, deviation display, and missing data messages
+- [x] 02-01-PLAN.md -- Trust signal badges, deviation display, and missing data messages
 
 ### Phase 3: Countdown & Freshness
 **Goal**: Students see a ticking countdown to the next shuttle and know whether the data powering it is fresh

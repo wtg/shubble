@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planning
-stopped_at: Phase 2 context gathered
-last_updated: "2026-04-06T05:32:03.346Z"
-last_activity: 2026-04-05 -- Roadmap created. Phase 1 (Test Server) already complete.
+status: executing
+stopped_at: Completed 02-01-PLAN.md
+last_updated: "2026-04-06T06:00:00.000Z"
+last_activity: 2026-04-06 -- Completed Plan 02-01 trust signal badges
 progress:
   total_phases: 4
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 25
+  total_plans: 1
+  completed_plans: 1
+  percent: 30
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-04-05)
 ## Current Position
 
 Phase: 2 of 4 (Trust Foundation)
-Plan: 0 of ? in current phase
-Status: Ready to plan
-Last activity: 2026-04-05 -- Roadmap created. Phase 1 (Test Server) already complete.
+Plan: 1 of 1 in current phase (completed)
+Status: Executing phase 02
+Last activity: 2026-04-06 -- Completed Plan 02-01 trust signal badges
 
-Progress: [==........] 25%
+Progress: [===.......] 30%
 
 ## Performance Metrics
 
@@ -45,6 +45,7 @@ Progress: [==........] 25%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1. Test Server | 1 | N/A | N/A |
+| 2. Trust Foundation | 1 | ~15min | ~15min |
 
 **Recent Trend:**
 
@@ -60,6 +61,9 @@ Recent decisions affecting current work:
 
 - [Phase 1]: Removed CSV replay/DB restore from test server; replaced with upfront action queuing
 - [Roadmap]: Zero new runtime dependencies -- custom hooks + CSS + Intl.RelativeTimeFormat only
+- [02-01]: lastArrival gets LIVE badge but no deviation badge (historical GPS, not predictive)
+- [02-01]: 2-minute dead zone inclusive (Math.abs <= 2) per design contract D-11
+- [02-01]: No red tier for deviations -- only early (blue) and late (orange) per D-13
 
 ### Pending Todos
 
@@ -72,6 +76,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-06T05:32:03.335Z
-Stopped at: Phase 2 context gathered
-Resume file: .planning/phases/02-trust-foundation/02-CONTEXT.md
+Last session: 2026-04-06T06:00:00.000Z
+Stopped at: Completed 02-01-PLAN.md
+Resume file: .planning/phases/02-trust-foundation/02-01-SUMMARY.md

@@ -7,9 +7,9 @@
 
 ### Trust Signals
 
-- [ ] **TRUST-01**: ETA displays show "Live" or "Scheduled" label indicating data source
-- [ ] **TRUST-02**: Early/late deviation shown when live ETA differs from schedule (with 2-min dead zone to avoid false signals)
-- [ ] **TRUST-03**: Missing data states show contextual messages ("No shuttle in service", "Service starts at 9:00 AM", "En route to first stop") instead of "--:--"
+- [x] **TRUST-01**: ETA displays show "Live" or "Scheduled" label indicating data source
+- [x] **TRUST-02**: Early/late deviation shown when live ETA differs from schedule (with 2-min dead zone to avoid false signals)
+- [x] **TRUST-03**: Missing data states show contextual messages ("No shuttle in service", "Service starts at 9:00 AM", "En route to first stop") instead of "--:--"
 - [ ] **TRUST-04**: Freshness indicator pulses when live data is current, warns when stale (>120s since last update)
 
 ### Countdown & Display
@@ -48,9 +48,9 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TRUST-01 | Phase 2 | Pending |
-| TRUST-02 | Phase 2 | Pending |
-| TRUST-03 | Phase 2 | Pending |
+| TRUST-01 | Phase 2 | Complete |
+| TRUST-02 | Phase 2 | Complete |
+| TRUST-03 | Phase 2 | Complete |
 | TRUST-04 | Phase 3 | Pending |
 | DISP-01 | Phase 3 | Pending |
 | DISP-02 | Phase 4 | Pending |
