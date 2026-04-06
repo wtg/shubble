@@ -423,7 +423,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
                                 </>
                               ) : (isCurrentLoop || isExpanded) && (loopETAs[stop] || loopStaticETAs[stop]) ? (
                                 <>
-                                  <span className="scheduled-fallback">Sched: {loopETAs[stop] || loopStaticETAs[stop]}</span>
+                                  <span className="scheduled-fallback">{loopETAs[stop] || loopStaticETAs[stop]}</span>
                                   <span className="source-badge source-sched">SCHED</span>
                                 </>
                               ) : (
