@@ -20,12 +20,11 @@ Students trust the ETA numbers. They know if it's a live GPS estimate or a sched
 - ✓ 30-second auto-refresh of ETA data — existing
 - ✓ Route polyline display on map — existing
 - ✓ Two shuttles per route alternating on schedule (test server) — existing
+- ✓ Early/late indicators — deviation from schedule with 2-min dead zone. Validated in Phase 2: Trust Foundation
+- ✓ Data source transparency — LIVE/SCHED badges on every stop row. Validated in Phase 2: Trust Foundation
+- ✓ Missing data explanation — contextual messages replacing "--:--". Validated in Phase 2: Trust Foundation
 
 ### Active
-
-- [ ] Early/late indicators — show deviation from schedule (CSS classes exist, not wired up)
-- [ ] Data source transparency — visual distinction between live GPS ETA vs schedule fallback
-- [ ] Missing data explanation — replace "--:--" with contextual status ("No shuttle in service", "En route", etc.)
 - [ ] Test server timing fix — shuttles wait at Student Union between loops, enter/exit once per service day
 - [ ] Schedule-to-live handoff — smooth transition when live data appears or disappears mid-session
 
