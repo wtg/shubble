@@ -1,7 +1,7 @@
 # Requirements: Shubble ETA UX Polish
 
 **Defined:** 2026-04-06
-**Core Value:** Students trust the ETA numbers — they know if data is live or scheduled, see early/late status, and never face unexplained missing data.
+**Core Value:** Students trust the ETA numbers -- they know if data is live or scheduled, see early/late status, and never face unexplained missing data.
 
 ## v1 Requirements
 
@@ -20,9 +20,9 @@
 
 ### Test Server
 
-- [ ] **TEST-01**: Shuttles enter campus once at start of service, loop on schedule with waits at Student Union between departures, exit once after last loop
-- [ ] **TEST-02**: Two shuttles per route with alternating departures from static schedule
-- [ ] **TEST-03**: Gaussian noise model varies loop speed for realistic timing deviation
+- [x] **TEST-01**: Shuttles enter campus once at start of service, loop on schedule with waits at Student Union between departures, exit once after last loop
+- [x] **TEST-02**: Two shuttles per route with alternating departures from static schedule
+- [x] **TEST-03**: Gaussian noise model varies loop speed for realistic timing deviation
 
 ## v2 Requirements
 
@@ -48,22 +48,22 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TRUST-01 | TBD | Pending |
-| TRUST-02 | TBD | Pending |
-| TRUST-03 | TBD | Pending |
-| TRUST-04 | TBD | Pending |
-| DISP-01 | TBD | Pending |
-| DISP-02 | TBD | Pending |
-| DISP-03 | TBD | Pending |
-| TEST-01 | TBD | Pending |
-| TEST-02 | TBD | Pending |
-| TEST-03 | TBD | Pending |
+| TRUST-01 | Phase 2 | Pending |
+| TRUST-02 | Phase 2 | Pending |
+| TRUST-03 | Phase 2 | Pending |
+| TRUST-04 | Phase 3 | Pending |
+| DISP-01 | Phase 3 | Pending |
+| DISP-02 | Phase 4 | Pending |
+| DISP-03 | Phase 4 | Pending |
+| TEST-01 | Phase 1 | Complete |
+| TEST-02 | Phase 1 | Complete |
+| TEST-03 | Phase 1 | Complete |
 
 **Coverage:**
 - v1 requirements: 10 total
-- Mapped to phases: 0
-- Unmapped: 10
+- Mapped to phases: 10
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-06*
-*Last updated: 2026-04-06 after initial definition*
+*Last updated: 2026-04-05 after roadmap creation*
