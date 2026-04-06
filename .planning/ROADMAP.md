@@ -40,8 +40,11 @@ Plans:
   2. When a live ETA deviates from the schedule by more than 2 minutes, the deviation is displayed (e.g., "3 min late") with appropriate color coding
   3. Where ETAs were previously "--:--", a contextual message explains the state ("No shuttle in service", "Service starts at 9:00 AM", "En route to first stop")
   4. Color-coded deviation always includes text labels (not color alone) for accessibility
-**Plans**: TBD
+**Plans**: 1 plan
 **UI hint**: yes
+
+Plans:
+- [ ] 02-01-PLAN.md -- Trust signal badges, deviation display, and missing data messages
 
 ### Phase 3: Countdown & Freshness
 **Goal**: Students see a ticking countdown to the next shuttle and know whether the data powering it is fresh
@@ -73,6 +76,6 @@ Phases execute in numeric order: 1 (complete) -> 2 -> 3 -> 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Test Server Simulation | 1/1 | Complete | 2026-04-05 |
-| 2. Trust Foundation | 0/? | Not started | - |
+| 2. Trust Foundation | 0/1 | Not started | - |
 | 3. Countdown & Freshness | 0/? | Not started | - |
 | 4. Transition & Polish | 0/? | Not started | - |
