@@ -109,7 +109,7 @@ Source: Decisions D-03, D-12 from CONTEXT.md. Badge background/border from RESEA
 | Font weight | `700` |
 | Text transform | `uppercase` |
 | Letter spacing | `0.5px` |
-| Padding | `2px 4px` |
+| Padding | `4px 4px` |
 | Border radius | `4px` |
 | Margin left | `8px` |
 | Vertical align | `middle` |
