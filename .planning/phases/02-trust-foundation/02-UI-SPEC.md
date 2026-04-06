@@ -34,13 +34,11 @@ Declared values (must be multiples of 4):
 | Token | Value | Usage |
 |-------|-------|-------|
 | xs | 4px | Inline badge padding vertical, icon gaps |
-| sm | 8px | Badge horizontal padding, compact element spacing |
-| md | 12px | Secondary timeline item gap, content padding |
-| lg | 16px | Timeline content padding, default element spacing |
-| xl | 20px | Container padding, timeline item margins |
-| 2xl | 24px | Section padding |
+| sm | 8px | Badge horizontal padding, compact element spacing, secondary timeline item gap |
+| lg | 16px | Timeline content padding, default element spacing, container padding |
+| 2xl | 24px | Section padding, timeline item margins |
 
-Exceptions: Existing `Schedule.css` uses non-8pt values (5px, 6px, 10px, 12px, 14px, 15px, 20px, 25px, 30px). New badge styles will use values consistent with existing patterns (1px, 5px, 6px border/padding) rather than forcing an 8pt grid that conflicts with the established component. All new spacing values documented below.
+Exceptions: Existing `Schedule.css` uses non-8pt values (5px, 6px, 10px, 12px, 14px, 15px, 20px, 25px, 30px). Existing values are left as-is. All NEW spacing introduced by this phase uses only the tokens above.
 
 ---
 
@@ -48,16 +46,20 @@ Exceptions: Existing `Schedule.css` uses non-8pt values (5px, 6px, 10px, 12px, 1
 
 | Role | Size | Weight | Line Height | Font Family |
 |------|------|--------|-------------|-------------|
-| Body | 14px | 400 | 1.5 | System stack |
-| ETA time (primary) | 18px | 600 | 1.3 | System stack |
-| ETA time (secondary) | 14px | 500 | 1.4 | System stack |
-| Source badge (LIVE/SCHED) | 10px (0.65em of 15px context) | 700 | 1.0 | System stack |
-| Deviation badge | 12px (0.8em of 15px context) | 400 | 1.2 | System stack |
-| Missing data message | 13px (0.85em of 15px context) | 400 | 1.4 | System stack |
-| Control label | 14px | 500 | 1.4 | Karla |
-| Page heading | 28px | 600 | 1.2 | Karla |
+| Body / Missing data message | 14px | 400 | 1.5 | System stack |
+| ETA time (primary) | 18px | 700 | 1.3 | System stack |
+| Source badge (LIVE/SCHED) / Deviation badge | 12px | 700 | 1.2 | System stack |
+| Page heading | 28px | 400 | 1.2 | Karla |
 
-Source: Existing `Schedule.css` values (lines 8, 19-22, 39-43, 187-197, 269-279). Badge sizes from RESEARCH.md code examples (Claude's discretion per CONTEXT.md).
+**Declared sizes (4):** 12px, 14px, 18px, 28px
+**Declared weights (2):** 400, 700
+
+Design rationale:
+- 13px missing data message merged to 14px body; italic style provides sufficient visual distinction.
+- 10px badge merged to 12px for readability and scale compliance.
+- Weights collapsed to 400 (normal) and 700 (bold). ETA primary promoted to 700 for emphasis. Former 500/600 intermediates dropped.
+
+Source: Existing `Schedule.css` values. Badge sizes from RESEARCH.md code examples (Claude's discretion per CONTEXT.md).
 
 ---
 
@@ -90,6 +92,12 @@ Source: Decisions D-03, D-12 from CONTEXT.md. Badge background/border from RESEA
 
 ---
 
+## Visual Hierarchy
+
+**Focal point:** The ETA time string (18px, weight 700) is the primary visual anchor on every stop row. All other elements (source badge, deviation badge, stop name) are subordinate.
+
+---
+
 ## Component Specifications
 
 ### Source Badge (`<span class="source-badge source-{live|sched}">`)
@@ -97,24 +105,25 @@ Source: Decisions D-03, D-12 from CONTEXT.md. Badge background/border from RESEA
 | Property | Value |
 |----------|-------|
 | Display | `inline-block` |
-| Font size | `0.65em` (relative to parent context) |
+| Font size | `12px` |
 | Font weight | `700` |
 | Text transform | `uppercase` |
 | Letter spacing | `0.5px` |
-| Padding | `1px 5px` |
-| Border radius | `3px` |
-| Margin left | `6px` |
+| Padding | `2px 4px` |
+| Border radius | `4px` |
+| Margin left | `8px` |
 | Vertical align | `middle` |
 | Content (live) | `LIVE` |
 | Content (sched) | `SCHED` |
 
-Placement: After every ETA time string in the secondary timeline (D-02). Also after the first-stop ETA in the main timeline for consistency.
+Placement: After every ETA time string in the secondary timeline (D-02). Also after the first-stop ETA in the main timeline for consistency -- uses the same 12px size and styling as secondary timeline badges (no distinct sizing needed; the ETA time's own 18px weight-700 treatment provides the visual hierarchy).
 
 ### Deviation Badge (`<span class="eta-early|eta-late">`)
 
 | Property | Value | Source |
 |----------|-------|--------|
-| Font size | `0.8em` | Existing `.eta-early` / `.eta-late` CSS |
+| Font size | `12px` | Replaces existing `.eta-early` / `.eta-late` 0.8em |
+| Font weight | `700` | Consistent with badge weight |
 | Margin left | `4px` | Existing CSS |
 | Format (late) | `+{N} min late` | D-05 |
 | Format (early) | `-{N} min early` | D-05 |
@@ -128,7 +137,8 @@ Placement: After every ETA time string in the secondary timeline (D-02). Also af
 |----------|-------|
 | Color | `#95a5a6` |
 | Font style | `italic` |
-| Font size | `0.85em` |
+| Font size | `14px` |
+| Font weight | `400` |
 
 ---
 
@@ -182,7 +192,7 @@ Placement: After every ETA time string in the secondary timeline (D-02). Also af
 | Deviation text labels | "+3 min late" / "-1 min early" text, not just orange/blue color | D-04 |
 | Color contrast (LIVE badge) | `#578FCA` on white = 3.5:1 (supplementary, text provides meaning) | WCAG AA for non-text |
 | Color contrast (SCHED badge) | `#95a5a6` on white = 2.7:1 (supplementary, text provides meaning) | WCAG AA for non-text |
-| Missing data messages | Italic text at `0.85em` with `#95a5a6` color; semantic meaning conveyed by text content | D-08 |
+| Missing data messages | Italic text at 14px with `#95a5a6` color; semantic meaning conveyed by text content | D-08 |
 
 ---
 
@@ -208,8 +218,8 @@ This phase adds zero new dependencies. All changes are plain CSS classes and inl
 Existing classes applied (currently defined but unused):
 | Class | Purpose | Current Status |
 |-------|---------|---------------|
-| `.eta-early` | Early deviation text (blue, 0.8em) | Defined at line 297, never applied in JSX |
-| `.eta-late` | Late deviation text (orange, 0.8em) | Defined at line 303, never applied in JSX |
+| `.eta-early` | Early deviation text (blue, 12px) | Defined at line 297, never applied in JSX |
+| `.eta-late` | Late deviation text (orange, 12px) | Defined at line 303, never applied in JSX |
 
 ---
 
