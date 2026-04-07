@@ -252,13 +252,23 @@ async def setup_schedule_shuttles() -> int:
                 continue
 
             # Shuttle A gets even-indexed departures, Shuttle B gets odd-indexed
+            is_first_shuttle = True
             for shuttle_deps in [future_deps[0::2], future_deps[1::2]]:
                 if not shuttle_deps:
                     continue
 
                 shuttle_id = str(shuttle_counter).zfill(15)
                 shuttle = Shuttle(shuttle_id)
-                shuttle.push_action(ShuttleAction.ENTERING)
+
+                if is_first_shuttle:
+                    # First shuttle per route: skip entering, start looping immediately
+                    # so route colors and ETAs appear without waiting
+                    shuttle.push_action(ShuttleAction.LOOPING, route=route_name)
+                    shuttle._send_webhook(entry=True)  # notify backend of geofence entry
+                    is_first_shuttle = False
+                else:
+                    shuttle.push_action(ShuttleAction.ENTERING)
+
                 shuttle.start()
                 shuttles[shuttle_id] = shuttle
                 shuttle_counter += 1
