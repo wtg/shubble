@@ -167,6 +167,10 @@ async def get_velocities(request: Request, response: Response):
     # Get route matching data from cached dataframe
     closest_points = await smart_closest_point(vehicle_ids)
 
+    # Get latest locations for real-time route matching fallback
+    locations_dict = await get_latest_vehicle_locations(request.app.state.session_factory)
+    locations_by_id = {loc["vehicle_id"]: loc for loc in locations_dict}
+
     # Format response
     response_data = {}
     for vehicle_id in vehicle_ids:
@@ -180,6 +184,15 @@ async def get_velocities(request: Request, response: Response):
         )
 
         route_name = closest_route_name if closest_distance is not None and closest_distance < 0.050 else None
+
+        # Fallback: real-time route matching when dataframe has no route data
+        if route_name is None:
+            loc = locations_by_id.get(vehicle_id)
+            if loc:
+                from shared.stops import Stops
+                rt = Stops.get_closest_point((loc["latitude"], loc["longitude"]))
+                if rt[0] is not None and rt[0] < 0.050:
+                    closest_distance, _, route_name, polyline_index, _ = rt[0], rt[1], rt[2], rt[3], rt[4]
 
         # Determine if vehicle is at a stop
         is_at_stop = stop_name is not None

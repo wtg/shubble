@@ -51,6 +51,8 @@ function App() {
   const [devTime, setDevTime] = useState(devNow().toLocaleTimeString());
   useEffect(() => {
     if (!import.meta.env.DEV) return;
+    // Reset test server shuttles on page load so simulation starts fresh
+    fetch('http://localhost:4000/api/shuttles/schedule', { method: 'POST' }).catch(() => {});
     const id = setInterval(() => setDevTime(devNow().toLocaleTimeString()), 1000);
     return () => clearInterval(id);
   }, []);

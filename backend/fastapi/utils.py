@@ -120,6 +120,18 @@ async def smart_closest_point(
             closest_lon = latest.get('closest_lon')
             stop_name = latest.get('stop_name')  # From stops pipeline
 
+            # Fallback: if dataframe has no route data, use real-time route matching
+            if (route_name is None or (isinstance(route_name, float) and pd.isna(route_name))):
+                lat = latest.get('latitude')
+                lon = latest.get('longitude')
+                if lat is not None and lon is not None:
+                    from shared.stops import Stops
+                    rt_result = Stops.get_closest_point((float(lat), float(lon)))
+                    if rt_result[0] is not None:
+                        distance, closest_point_arr, route_name, polyline_idx, segment_idx = rt_result
+                        closest_lat = closest_point_arr[0] if closest_point_arr is not None else None
+                        closest_lon = closest_point_arr[1] if closest_point_arr is not None else None
+
             # Build closest_point tuple if coordinates are available
             if closest_lat is not None and closest_lon is not None:
                 closest_point = (float(closest_lat), float(closest_lon))
