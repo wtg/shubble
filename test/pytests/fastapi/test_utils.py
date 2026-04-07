@@ -423,7 +423,71 @@ def make_driver(
     d.id = id
     d.name = name
     return d
+
+Driver_Cases = [
+    pytest.param(
+        [[make_driver(id="driver1", name="John Doe")],
+        [
+            {
+                "id": "driver1",
+                "name": "John Doe",
+            }
+        ]],
+        id="1driver",
+    ),
+    pytest.param(
+        [make_driver(id="driver1", name="Jane Doe"),
+        make_driver(id="driver2", name="DriverF DriverL")],
+        [
+            {
+                "id": "driver1",
+                "name": "Jane Doe",
+            },
+            {
+                "id": "driver2",
+                "name": "DriverF DriverL",
+            }
+        ],
+        id="multiDriver",
+    ),
+    pytest.param(
+        [make_driver(id="driver1", name="Shubble Bot")],
+        [
+            {
+                "id": "driver1",
+                "name": "Shubble Bot",
+            }
+        ],
+        id="driverTestBot",
+    )
+]
  
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("rows, expected", Driver_Cases)
+async def confirm_driver_info_dict(rows, expected):
+    db = make_db(rows)
+    with patch("backend.fastapi.utils.get_vehicles_in_geofence_query", return_value=make_geofence()):
+        result = await get_current_driver_assignments(make_session_factory(db))
+    
+    drivers = [make_driver(id=driver["id"], name=driver["name"]) for driver in rows]
+    for actual_driver, expected_driver in zip(drivers, expected):
+        assert actual_driver.id == expected_driver["id"]
+        assert actual_driver.name == expected_driver["name"]
+
+
+#Tests to do 
+# async def smart_closest_point(
+#     vehicle_ids: List[str]
+# ) -> Dict[str, Tuple[Optional[float], Optional[Tuple[float, float]], Optional[str], Optional[int], Optional[int], Optional[str]]]:
+
+# async def get_current_driver_assignments(
+#     vehicle_ids: List[str], session_factory
+# ) -> Dict[str, DriverAssignmentDict]:
+
+# async def get_latest_etas(vehicle_ids: List[str], session_factory) -> Dict[str, ETADict]:
+
+#async def get_latest_velocities(vehicle_ids: List[str], session_factory) -> Dict[str, VelocityDict]:
 
 # Tests 
 @pytest.mark.asyncio
