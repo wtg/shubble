@@ -8,7 +8,7 @@ from backend.cache import cache
 from backend.function_timer import timed
 
 from backend.models import VehicleLocation, DriverVehicleAssignment, ETA, PredictedLocation
-from backend.cache_dataframe import get_today_dataframe
+from backend.cache_dataframe import get_horizon_dataframe
 from backend.utils import get_vehicles_in_geofence_query
 from backend.time_utils import get_campus_start_of_day
 
@@ -82,8 +82,8 @@ async def smart_closest_point(
     results = {}
 
     try:
-        # Load cached dataframe with preprocessed route information
-        df = await get_today_dataframe()
+        # Load horizon dataframe (recent rows only — sufficient for latest per vehicle)
+        df = await get_horizon_dataframe()
 
         if df.empty:
             # No cached data, return None for all vehicles

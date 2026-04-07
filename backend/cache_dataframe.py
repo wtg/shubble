@@ -28,9 +28,36 @@ from ml.pipelines import preprocess_pipeline, segment_pipeline, stops_pipeline
 logger = logging.getLogger(__name__)
 
 
+HORIZON_PER_VEHICLE = 200  # Max rows per vehicle in the horizon dataframe
+
+
 def get_cache_and_timestamp_key(date_str: str) -> tuple[str, str]:
     """Get Redis cache keys for data and timestamp."""
     return f"locations:{date_str}", f"locations:{date_str}:last_updated"
+
+
+def get_horizon_cache_key(date_str: str) -> str:
+    """Get Redis cache key for the horizon dataframe."""
+    return f"locations:{date_str}:horizon"
+
+
+def _build_horizon(df: pd.DataFrame) -> pd.DataFrame:
+    """Build a horizon dataframe containing only the last N rows per vehicle.
+
+    Args:
+        df: Full processed dataframe.
+
+    Returns:
+        DataFrame with at most HORIZON_PER_VEHICLE rows per vehicle_id.
+    """
+    if df.empty:
+        return df
+    return (
+        df.sort_values('timestamp')
+        .groupby('vehicle_id', sort=False)
+        .tail(HORIZON_PER_VEHICLE)
+        .reset_index(drop=True)
+    )
 
 
 def process_raw_dataframe(raw_df: pd.DataFrame) -> pd.DataFrame:
@@ -208,11 +235,52 @@ async def get_today_dataframe() -> pd.DataFrame:
         pipe.set(timestamp_key, datetime.now(timezone.utc).isoformat(), ex=86400)
         await pipe.execute()
 
+    # Update horizon cache
+    await _save_horizon(redis, today_str, processed_df)
+
     # Invalidate smart_closest_point cache since dataframe was updated
     await soft_clear_namespace("smart_closest_point")
 
     logger.info(f"Saved {today_str} processed data to Redis cache")
     return processed_df
+
+
+async def get_horizon_dataframe() -> pd.DataFrame:
+    """Get the short-horizon dataframe (last N rows per vehicle) from Redis.
+
+    Falls back to building from the full today_dataframe if the horizon
+    cache doesn't exist yet.
+
+    Returns:
+        Processed DataFrame with at most HORIZON_PER_VEHICLE rows per vehicle.
+    """
+    today_str = get_campus_start_of_day().strftime('%Y-%m-%d')
+    horizon_key = get_horizon_cache_key(today_str)
+
+    redis = get_redis()
+    cached_data = await redis.get(horizon_key)
+    if cached_data:
+        logger.info(f"Loaded {today_str} horizon data from Redis cache")
+        return pickle.loads(cached_data)
+
+    # Fallback: build from the full dataframe
+    logger.info(f"Horizon cache miss for {today_str}, building from full dataframe")
+    full_df = await get_today_dataframe()
+    horizon_df = _build_horizon(full_df)
+
+    # Cache it
+    pickled = pickle.dumps(horizon_df)
+    await redis.set(horizon_key, pickled, ex=86400)
+
+    return horizon_df
+
+
+async def _save_horizon(redis, today_str: str, full_df: pd.DataFrame) -> None:
+    """Build and save the horizon dataframe to Redis."""
+    horizon_df = _build_horizon(full_df)
+    pickled = pickle.dumps(horizon_df)
+    await redis.set(get_horizon_cache_key(today_str), pickled, ex=86400)
+    logger.info(f"Updated horizon cache: {len(horizon_df)} rows")
 
 
 async def update_today_dataframe(window_size: int = 5) -> pd.DataFrame:
@@ -345,6 +413,9 @@ async def update_today_dataframe(window_size: int = 5) -> pd.DataFrame:
         pipe.set(cache_key, pickled_df, ex=86400)
         pipe.set(timestamp_key, datetime.now(timezone.utc).isoformat(), ex=86400)
         await pipe.execute()
+
+    # Update horizon cache
+    await _save_horizon(redis, today_str, updated_processed_df)
 
     # Invalidate smart_closest_point cache since dataframe was updated
     await soft_clear_namespace("smart_closest_point")

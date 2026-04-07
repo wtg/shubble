@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Tuple, Any
 import logging
 
 from ml.deploy.lstm import load_lstm_for_route
-from backend.cache_dataframe import get_today_dataframe
+from backend.cache_dataframe import get_horizon_dataframe
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -36,7 +36,7 @@ async def generate_eta(
     """
     # 1. Get cached dataframe (processed)
     try:
-        df = await get_today_dataframe()
+        df = await get_horizon_dataframe()
     except Exception as e:
         logger.error(f"Failed to get dataframe for inference: {e}")
         return {}

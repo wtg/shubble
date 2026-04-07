@@ -7,7 +7,7 @@ import pandas as pd
 from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime, timezone, timedelta
 
-from backend.cache_dataframe import get_today_dataframe
+from backend.cache_dataframe import get_today_dataframe, get_horizon_dataframe
 from ml.deploy.lstm import load_lstm_for_route
 from ml.deploy.arima import load_arima
 from ml.training.train import fit_arima
@@ -62,7 +62,7 @@ async def _get_vehicle_data(vehicle_ids: List[str], df: Optional[pd.DataFrame] =
     """Helper to get and filter vehicle data."""
     if df is None:
         try:
-            df = await get_today_dataframe()
+            df = await get_horizon_dataframe()
         except Exception as e:
             logger.error(f"Failed to load dataframe for prediction: {e}")
             return pd.DataFrame()
@@ -418,17 +418,21 @@ async def generate_and_save_predictions(vehicle_ids: List[str]):
 
     logger.info(f"Generating predictions for {len(vehicle_ids)} vehicles...")
 
-    # Load dataframe once to avoid unpickling overhead twice
+    # Load horizon dataframe for predictions (small, fast to unpickle)
+    # and full dataframe only for stop times (needs historical data)
     try:
-        df = await get_today_dataframe()
+        horizon_df, full_df = await asyncio.gather(
+            get_horizon_dataframe(),
+            get_today_dataframe(),
+        )
     except Exception as e:
-        logger.error(f"Failed to load dataframe for predictions: {e}")
+        logger.error(f"Failed to load dataframes for predictions: {e}")
         return
 
-    # Run in parallel, passing the pre-loaded dataframe
+    # Run in parallel: stop times needs full history, predictions use horizon
     results = await asyncio.gather(
-        get_all_stop_times(vehicle_ids, df=df),
-        predict_next_state(vehicle_ids, df=df)
+        get_all_stop_times(vehicle_ids, df=full_df),
+        predict_next_state(vehicle_ids, df=horizon_df)
     )
 
     etas = results[0]
