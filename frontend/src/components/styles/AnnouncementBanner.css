@@ -1,4 +1,16 @@
+@keyframes banner-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .announcement-banner {
+  animation: banner-enter 0.35s ease;
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -75,3 +87,119 @@
 .announcement-banner.info .reload-btn:hover {
   background: #4a7db5;
 }
+
+/* ── Container & three-dot button ─────────────────────────────────────── */
+
+.announcement-container {
+  position: relative;
+  width: 100%;
+}
+
+.announcement-menu-btn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 6px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  line-height: 0;
+}
+
+.announcement-menu-btn.info {
+  color: #666;
+}
+
+.announcement-menu-btn.info:hover {
+  background: rgba(0, 0, 0, 0.07);
+}
+
+.announcement-menu-btn.warning,
+.announcement-menu-btn.error {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.announcement-menu-btn.warning:hover,
+.announcement-menu-btn.error:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* ── Dropdown menu ────────────────────────────────────────────────────── */
+
+.announcement-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 200;
+  background: #ffffff;
+  border: 1px solid #e2e2e2;
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.13);
+  min-width: 300px;
+  max-width: 480px;
+  overflow: hidden;
+  font-family: "Karla", sans-serif;
+}
+
+/* ── Individual announcement rows ─────────────────────────────────────── */
+
+.announcement-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #f0f0f0;
+  color: #222;
+  font-size: 14px;
+}
+
+.announcement-menu-row-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.announcement-menu-row-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.reaction-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 15px;
+  padding: 3px 6px;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+  line-height: 1;
+}
+
+.reaction-btn:hover {
+  background: #f4f4f4;
+  border-color: #ddd;
+}
+
+.reaction-btn.active {
+  background: #eef4ff;
+  border-color: #578FCA;
+}
+
+.reaction-count {
+  font-size: 12px;
+  font-family: "Karla", sans-serif;
+  color: #666;
+  margin-left: 2px;
+  vertical-align: middle;
+}
+
+.reaction-btn.active .reaction-count {
+  color: #578FCA;
+}
+

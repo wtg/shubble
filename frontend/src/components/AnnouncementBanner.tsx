@@ -1,9 +1,10 @@
 import './styles/AnnouncementBanner.css';
 import type { Announcement} from '../types/announcement';
-import { 
+import {
     useState,
     useEffect,
-    type ReactNode 
+    useRef,
+    type ReactNode
 } from 'react';
 import config from '../utils/config';
 
@@ -85,39 +86,143 @@ export function Banner({ message, type, showReload = false }: BannerProps) {
 }
 
 /**
- * Displays announcements loaded from the JSON file.
- * Only shows active, non-expired announcements.
+ * Filters announcements to only return active, non-expired ones.
+ */
+async function getActiveAnnouncements(): Promise<Announcement[]> {
+    try{
+        const response = await fetch(`${config.apiBaseUrl}/api/announcements`);
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+        const data = await response.json() as Announcement[];
+        return data
+    } catch (error) {
+        console.error('Error fetching announcements:', error);
+        return [];
+    }
+}
+
+async function postVote(
+    id: string,
+    direction: 'up' | 'down' | null,
+    previousDirection: 'up' | 'down' | null,
+): Promise<{ upvotes: number; downvotes: number } | null> {
+    try {
+        const response = await fetch(`${config.apiBaseUrl}/api/announcements/${id}/vote`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ direction, previous_direction: previousDirection }),
+        });
+        if (!response.ok) return null;
+        return await response.json() as { upvotes: number; downvotes: number };
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Displays announcements one at a time, rotating every 4 seconds when there are multiple.
+ * A three-dot menu on the right lists all announcements with thumbs up/down reactions.
  */
 export default function AnnouncementBanner() {
+    const [activeAnnouncements, setAnnouncements] = useState<Announcement[] | null>(null);
+    const [currentIndex, setCurrentIndex] = useState(0);
+    const [menuOpen, setMenuOpen] = useState(false);
+    const [reactions, setReactions] = useState<Record<string, 'up' | 'down' | null>>({});
+    const containerRef = useRef<HTMLDivElement>(null);
 
-    const [announcementData, setAnnouncementData] = useState<Announcement[] | null>(null);
-    
-    const fetchAnnouncementData = async () => {
-        try {
-            const response = await fetch(`${config.apiBaseUrl}/api/announcements`);
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            const data = await response.json() as Announcement[];
-            setAnnouncementData(data);
-        } catch (error) {
-            console.error('Error fetching announcementData:', error);
-        }
-    }
-    
     useEffect(() => {
-        fetchAnnouncementData();
+        getActiveAnnouncements().then(setAnnouncements);
+
+        const interval = setInterval(() => {
+            getActiveAnnouncements().then(setAnnouncements);
+        }, 60_000);
+
+        return () => clearInterval(interval);
     }, []);
 
+    useEffect(() => {
+        if (!activeAnnouncements || activeAnnouncements.length <= 1) return;
+
+        const interval = setInterval(() => {
+            setCurrentIndex(i => (i + 1) % activeAnnouncements.length);
+        }, 4000);
+
+        return () => clearInterval(interval);
+    }, [activeAnnouncements]);
+
+    useEffect(() => {
+        if (!menuOpen) return;
+        const onMouseDown = (e: MouseEvent) => {
+            if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+                setMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', onMouseDown);
+        return () => document.removeEventListener('mousedown', onMouseDown);
+    }, [menuOpen]);
+
+    const toggleReaction = async (id: string, dir: 'up' | 'down') => {
+        const previous = reactions[id] ?? null;
+        const next = previous === dir ? null : dir;
+
+        // Optimistically update the reaction state
+        setReactions(prev => ({ ...prev, [id]: next }));
+
+        const result = await postVote(id, next, previous);
+        if (result) {
+            // Update counts from the authoritative server response
+            setAnnouncements(prev => prev?.map(ann =>
+                ann.id === id ? { ...ann, upvotes: result.upvotes, downvotes: result.downvotes } : ann
+            ) ?? null);
+        }
+    };
+
+    const count = activeAnnouncements?.length ?? 0;
+    if (count === 0) return null;
+
+    const safeIndex = currentIndex % count;
+    const announcement = activeAnnouncements![safeIndex];
+
     return (
-        <>
-            {announcementData?.map((announcement) => (
-                <Banner
-                    key={announcement.id}
-                    message={announcement.message}
-                    type={announcement.type}
-                />
-            ))}
-        </>
+        <div className="announcement-container" ref={containerRef}>
+            <Banner key={safeIndex} message={announcement.message} type={announcement.type} />
+
+            <button
+                className={`announcement-menu-btn ${announcement.type}`}
+                onClick={() => setMenuOpen(o => !o)}
+                aria-label="Announcement options"
+            >
+                <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                    <circle cx="2.5" cy="8" r="1.5" fill="currentColor" />
+                    <circle cx="8"   cy="8" r="1.5" fill="currentColor" />
+                    <circle cx="13.5" cy="8" r="1.5" fill="currentColor" />
+                </svg>
+            </button>
+
+            {menuOpen && (
+                <div className="announcement-menu">
+                    {activeAnnouncements!.map(ann => (
+                        <div key={ann.id} className="announcement-menu-row">
+                            <span className="announcement-menu-row-text">
+                                {ann.message}
+                            </span>
+                            <div className="announcement-menu-row-actions">
+                                <button
+                                    className={`reaction-btn${reactions[ann.id] === 'up' ? ' active' : ''}`}
+                                    onClick={() => toggleReaction(ann.id, 'up')}
+                                    aria-label="Thumbs up"
+                                >👍 {ann.upvotes > 0 && <span className="reaction-count">{ann.upvotes}</span>}</button>
+                                <button
+                                    className={`reaction-btn${reactions[ann.id] === 'down' ? ' active' : ''}`}
+                                    onClick={() => toggleReaction(ann.id, 'down')}
+                                    aria-label="Thumbs down"
+                                >👎 {ann.downvotes > 0 && <span className="reaction-count">{ann.downvotes}</span>}</button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
     );
 }
