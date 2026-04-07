@@ -383,7 +383,7 @@ async def data_today(db: AsyncSession = Depends(get_db)):
 
     return locations_today_dict
 
-@router.get("/api/routes2")
+@router.get("/api/routes-v2")
 async def get_shuttle_routes2(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Route)
@@ -395,6 +395,8 @@ async def get_shuttle_routes2(db: AsyncSession = Depends(get_db)):
 
     routes = result.scalars().all()
     response = {}
+    stop_obj = {}
+    path_obj = {}
   
     #Loop through routes
     for route in routes:
@@ -404,17 +406,19 @@ async def get_shuttle_routes2(db: AsyncSession = Depends(get_db)):
             continue
 
         stops = sorted(route.stops, key=lambda s: s.id)
-
-        stops_obj = {}
+       
         full_path = []
+        stop_list = []
 
         #loop through stops to build stops list and path
         for stop in stops:
            
-            stops_obj[stop.name] = {
+            stop_obj[stop.name] = {
                 "latitude": stop.latitude,
                 "longitude": stop.longitude,
             }
+
+            stop_list.append(stop.name)
          
         #Build path from polylines
         for stop in stops:
@@ -424,12 +428,19 @@ async def get_shuttle_routes2(db: AsyncSession = Depends(get_db)):
                     for lat, lng in (c.split(",") for c in poly.coordinates)
                 ]
                 full_path.append(coords)
+            path_obj[route.name] = full_path
 
-        response[route.name] = {
+        route_obj = {
             "color": route.route_color,
-            "stops": stops_obj,
-            "path": full_path,
+            "stops": stop_list,
+            "path": route.name,
         }
+    
+        response[route.name] = route_obj
+    
+    response["stops"] = stop_obj
+    response["polylines"] = path_obj
+    
        
 
     return response
@@ -546,6 +557,7 @@ async def get_week_schedule(db: AsyncSession = Depends(get_db)):
     # Implementation for weeks schedule
     response = {}
     date = datetime.now().date()
+    sched_obj = {}
     for i in range(7):
         date = datetime.now().date() + timedelta(days=i)
 
@@ -563,23 +575,24 @@ async def get_week_schedule(db: AsyncSession = Depends(get_db)):
 
         date_schedule = result.scalar_one_or_none()
   
-        response[date.isoformat()] = {}
-
+        response[date.isoformat()] = [] 
+    
         #loop through bus schedules
         for mapping in date_schedule.day_schedule.bus_schedule_to_day_schedule:
 
             bus = mapping.bus_schedule
 
-            response[date.isoformat()][bus.name] = {
+            sched_obj[bus.name] = {
                 "route": bus.route_to_bus_schedules[0].route.name if bus.route_to_bus_schedules else None,
                 "departures": []
             }
-
+            response[date.isoformat()].append(bus.name)
             #loop through times for this bus
             for rbs in bus.route_to_bus_schedules:
         
-                response[date.isoformat()][bus.name]["departures"].append(rbs.time.strftime("%H:%M"))
-
+                sched_obj[bus.name]["departures"].append(rbs.time.strftime("%H:%M"))
+        
+    response["schedules"] = sched_obj
     return response
 
 @router.get("/api/aggregated-schedule")
