@@ -43,3 +43,38 @@ This means polyline 6 on the WEST route takes an average of 14.6 seconds to trav
 - Route optimization
 - Performance monitoring
 - Identifying slow segments
+
+---
+
+### `average_stop_time.py`
+
+Calculates the average time a vehicle dwells at each stop, per route and polyline.
+
+**What it does:**
+1. Loads data from the stops pipeline
+2. Identifies individual stop visits using segment ID, stop name, route, and polyline index
+3. Computes dwell duration for each visit and filters out zero-duration entries
+4. Aggregates statistics per stop
+5. Saves results to `lstm/<route>_<idx>/average_stop_time.csv`
+
+**Usage:**
+```bash
+python ml/scripts/average_stop_time.py
+```
+
+**Output:**
+Creates `average_stop_time.csv` in each polyline directory with columns:
+- `route`: Route name (e.g., "NORTH", "WEST")
+- `polyline_idx`: Polyline index
+- `stop_name`: Name of the stop
+- `avg_stop_time_seconds`: Average dwell time at this stop
+- `std_stop_time_seconds`: Standard deviation of dwell times
+- `sample_count`: Number of observations
+- `min_time`: Minimum observed dwell time
+- `max_time`: Maximum observed dwell time
+
+**Use cases:**
+- ETA prediction (combined with polyline travel times)
+- Identifying high-dwell stops
+- Schedule optimization
+- Performance monitoring
