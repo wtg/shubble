@@ -15,6 +15,7 @@ from backend.models import ETA, PredictedLocation
 from backend.database import get_db
 from backend.cache import cache, soft_clear_namespace, get_redis
 from backend.function_timer import timed
+from backend.time_utils import dev_now
 from shared.stops import Stops
 
 logger = logging.getLogger(__name__)
@@ -285,7 +286,7 @@ async def compute_per_stop_etas(vehicle_ids: List[str], df: Optional[pd.DataFram
     # Aggregate per-route: for each route, pick the vehicle arriving soonest
     # at its next stop, then use ALL of that vehicle's ETAs for that route.
     # This preserves stop ordering (no impossible ETAs).
-    now_utc = datetime.now(timezone.utc)
+    now_utc = dev_now(timezone.utc)
     best_per_route: Dict[str, Tuple[str, datetime, List[Tuple[str, datetime]]]] = {}
     # route -> (vehicle_id, next_stop_eta, stops_list)
 
@@ -446,7 +447,7 @@ async def save_predictions(per_stop_etas: Dict[str, Dict], next_states: Dict[str
             new_eta = ETA(
                 vehicle_id=vid,
                 etas=etas_dict,
-                timestamp=datetime.now(timezone.utc)
+                timestamp=dev_now(timezone.utc)
             )
             session.add(new_eta)
 

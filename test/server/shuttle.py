@@ -7,6 +7,8 @@ import requests
 from enum import Enum
 from dataclasses import dataclass
 from datetime import datetime, timezone
+
+from .dev_time import dev_now
 from typing import Optional
 
 from shared.stops import Stops
@@ -48,7 +50,7 @@ class Shuttle:
 
         # Location state
         self._location: tuple[float, float] = (0.0, 0.0)
-        self._last_updated: datetime = datetime.now(timezone.utc)
+        self._last_updated: datetime = dev_now(timezone.utc)
         self._speed: float = 20.0  # mph
 
         # Path following state
@@ -206,7 +208,7 @@ class Shuttle:
             elif current_action in (ShuttleAction.ENTERING, ShuttleAction.LOOPING, ShuttleAction.EXITING):
                 self._handle_movement()
 
-            self._last_updated = datetime.now(timezone.utc)
+            self._last_updated = dev_now(timezone.utc)
 
     # --- Action Handlers ---
 
@@ -290,7 +292,7 @@ class Shuttle:
         # Distance to travel this update
         speed_mps = self._speed * 0.44704  # mph to m/s
         speed_pseudo = speed_mps / 1000 * 0.02  # Approx to degrees
-        elapsed_seconds = (datetime.now(timezone.utc) - self._last_updated).total_seconds()
+        elapsed_seconds = (dev_now(timezone.utc) - self._last_updated).total_seconds()
         travel_distance = speed_pseudo * elapsed_seconds
 
         # Current segment
@@ -387,7 +389,7 @@ class Shuttle:
 
         payload = {
             'eventId': str(uuid.uuid4()),
-            'eventTime': datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z'),
+            'eventTime': dev_now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z'),
             'eventType': event_type,
             'orgId': 20936,
             'webhookId': '1411751028848270',

@@ -20,7 +20,7 @@ from sqlalchemy.orm import selectinload
 from backend.database import get_db
 from backend.models import Announcement, BusSchedule, BusScheduleToDaySchedule, DaySchedule, Polyline, Route, RouteToBusSchedule, Stop, Vehicle, GeofenceEvent, VehicleLocation
 from backend.config import settings
-from backend.time_utils import get_campus_start_of_day
+from backend.time_utils import get_campus_start_of_day, dev_now
 from backend.utils import (
     get_vehicles_in_geofence,
 )
@@ -107,7 +107,7 @@ async def get_locations(response: Response, request: Request):
         }
 
     # Add timing metadata as HTTP headers to help frontend synchronize with Samsara API
-    now = datetime.now(timezone.utc)
+    now = dev_now(timezone.utc)
     data_age = (now - oldest_timestamp).total_seconds() if oldest_timestamp else None
 
     response.headers['X-Server-Time'] = now.isoformat()
@@ -336,7 +336,7 @@ async def webhook(request: Request, db: AsyncSession = Depends(get_db)):
 @timed
 async def data_today(db: AsyncSession = Depends(get_db)):
     """Get all location data and geofence events for today."""
-    now = datetime.now(timezone.utc)
+    now = dev_now(timezone.utc)
     start_of_day = get_campus_start_of_day()
 
     # Query locations today
@@ -550,7 +550,7 @@ async def get_matched_shuttle_schedules(force_recompute: bool = False):
 async def data_announcement(db: AsyncSession = Depends(get_db)):
 
     # Query announcements that are active and not expired
-    now = datetime.now(timezone.utc)
+    now = dev_now(timezone.utc)
     announcements_query = (
         select(Announcement)
         .where(

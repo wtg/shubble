@@ -6,7 +6,6 @@ import time
 import threading
 from datetime import datetime, timedelta
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
@@ -15,11 +14,12 @@ from sqlalchemy import func, select, and_
 from backend.models import Vehicle, GeofenceEvent
 from backend.time_utils import get_campus_start_of_day
 from .shuttle import Shuttle, ShuttleAction
+from .dev_time import dev_now, CAMPUS_TZ
 from shared.stops import Stops
 
 logger = logging.getLogger(__name__)
 
-CAMPUS_TZ = ZoneInfo("America/New_York")
+# CAMPUS_TZ imported from dev_time
 SCHEDULE_PATH = Path(__file__).parent.parent.parent / "shared" / "aggregated_schedule.json"
 
 # Global shuttle management
@@ -196,7 +196,7 @@ def _load_today_schedule() -> dict[str, list[str]]:
     """Load today's route schedule from aggregated_schedule.json."""
     with open(SCHEDULE_PATH) as f:
         schedule = json.load(f)
-    now = datetime.now(CAMPUS_TZ)
+    now = dev_now(CAMPUS_TZ)
     # aggregated_schedule indexed by JS getDay() (0=Sun)
     # Python weekday(): Mon=0..Sun=6  →  JS: (py+1)%7
     js_day = (now.weekday() + 1) % 7
@@ -205,7 +205,7 @@ def _load_today_schedule() -> dict[str, list[str]]:
 
 def _parse_schedule_time(time_str: str) -> datetime:
     """Parse '9:00 AM' into today's datetime in campus timezone."""
-    now = datetime.now(CAMPUS_TZ)
+    now = dev_now(CAMPUS_TZ)
     parsed = datetime.strptime(time_str, "%I:%M %p")
     result = now.replace(hour=parsed.hour, minute=parsed.minute, second=0, microsecond=0)
     # "12:00 AM" means midnight → next day
@@ -217,7 +217,7 @@ def _parse_schedule_time(time_str: str) -> datetime:
 def _schedule_worker(shuttle: Shuttle, route: str, departure_times: list[datetime]):
     """Background thread: queues a LOOPING action at each scheduled departure."""
     for dep_time in departure_times:
-        now = datetime.now(CAMPUS_TZ)
+        now = dev_now(CAMPUS_TZ)
         wait = (dep_time - now).total_seconds()
         if wait > 0:
             time.sleep(wait)
@@ -232,7 +232,7 @@ async def setup_schedule_shuttles() -> int:
     global shuttle_counter
 
     schedule = _load_today_schedule()
-    now = datetime.now(CAMPUS_TZ)
+    now = dev_now(CAMPUS_TZ)
 
     async with shuttle_lock:
         # Tear down any existing shuttles

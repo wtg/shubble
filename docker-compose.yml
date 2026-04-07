@@ -118,6 +118,10 @@ services:
       - "${TEST_BACKEND_PORT:-4000}:4000"
     extra_hosts:
       - "localhost:host-gateway"
+    volumes:
+      - ./test:/app/test
+      - ./backend:/app/backend
+      - ./shared:/app/shared
     environment:
       TEST_FRONTEND_URL: ${TEST_FRONTEND_URL:-http://localhost:5174}
       DATABASE_URL: ${DATABASE_URL:-postgresql://shubble:shubble@postgres:5432/shubble}

@@ -289,8 +289,9 @@ async def get_latest_etas(vehicle_ids: List[str], session_factory) -> Dict[str, 
         return {}
 
     from datetime import datetime, timezone
+    from backend.time_utils import dev_now
 
-    now_utc = datetime.now(timezone.utc)
+    now_utc = dev_now(timezone.utc)
 
     async with session_factory() as db:
         # Subquery: latest ETA per vehicle

@@ -15,6 +15,7 @@ import type { ShuttleRouteData } from './types/route';
 import Navigation from './components/Navigation';
 import ErrorBoundary from './components/ErrorBoundary';
 import config from "./utils/config";
+import { devNow } from './utils/devTime';
 import NotFound from './components/NotFound';
 import ApplePrivacyPolicy from './privacy/ApplePrivacyPolicy';
 import AppleAppSupport from './support/AppleAppSupport';
@@ -47,8 +48,20 @@ function App() {
     }
   }, []);
 
+  const [devTime, setDevTime] = useState(devNow().toLocaleTimeString());
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const id = setInterval(() => setDevTime(devNow().toLocaleTimeString()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
   return (
     <ErrorBoundary>
+      {import.meta.env.DEV && (
+        <div style={{ position: 'fixed', bottom: 8, left: 8, background: 'rgba(0,0,0,0.7)', color: '#0f0', padding: '4px 8px', borderRadius: 4, fontSize: 12, fontFamily: 'monospace', zIndex: 9999 }}>
+          DEV {devTime}
+        </div>
+      )}
       <Router>
         <Routes>
           {/* with header and footer */}

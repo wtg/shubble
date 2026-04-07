@@ -14,6 +14,7 @@ from backend.database import create_async_db_engine, create_session_factory
 from backend.models import VehicleLocation, Driver, DriverVehicleAssignment
 from backend.utils import get_vehicles_in_geofence
 from backend.function_timer import timed
+from backend.time_utils import dev_now
 from backend.worker.data import generate_and_save_predictions
 from backend.cache_dataframe import update_today_dataframe
 
@@ -219,7 +220,7 @@ async def update_driver_assignments(session_factory, vehicle_ids):
                     has_next_page = True
                 after_token = pagination.get("endCursor", after_token)
 
-                now = datetime.now(timezone.utc)
+                now = dev_now(timezone.utc)
 
                 async with session_factory() as session:
                     for assignment in data.get("data", []):
