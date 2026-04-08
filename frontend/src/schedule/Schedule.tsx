@@ -373,12 +373,18 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
                     <div className="timeline-time">
                       {time}
                       {showRelative && <span className="relative-time">in {minutesUntil} min</span>}
-                      {isCurrentLoop && activeETAs[firstStop] && (
-                        <>
-                          <span className="live-eta"> - ETA: {activeETAs[firstStop]}</span>
-                          <span className="source-badge source-live">LIVE</span>
-                        </>
-                      )}
+                      {(() => {
+                        const fRouteKey = `${firstStop}:${safeSelectedRoute}`;
+                        const fEta = activeETAs[fRouteKey] || activeETAs[firstStop];
+                        const fDetails = liveETADetails[fRouteKey] || liveETADetails[firstStop];
+                        const fMatch = !fDetails?.route || fDetails.route === safeSelectedRoute;
+                        return isCurrentLoop && fEta && fMatch ? (
+                          <>
+                            <span className="live-eta"> - ETA: {fEta}</span>
+                            <span className="source-badge source-live">LIVE</span>
+                          </>
+                        ) : null;
+                      })()}
                       {!isCurrentLoop && !isPastTime && (
                         <span className="expand-indicator">{isExpanded ? '\u25B4' : '\u25BE'}</span>
                       )}
@@ -388,13 +394,52 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
                 </div>
 
                 {/* Secondary stops */}
-                {showSecondary && route?.STOPS && route.STOPS.length > 1 && (
+                {showSecondary && route?.STOPS && route.STOPS.length > 1 && (() => {
+                  // Pre-compute stop live info and inferredPassed in a single pass (no per-stop slicing)
+                  const secondaryStops = route.STOPS.slice(1);
+                  const stopInfo = secondaryStops.map(stop => {
+                    const rk = `${stop}:${safeSelectedRoute}`;
+                    const eta = activeETAs[rk] || activeETAs[stop];
+                    const det = liveETADetails[rk] || liveETADetails[stop];
+                    const routeMatch = !det?.route || det.route === safeSelectedRoute;
+                    const hasETA = !!(isCurrentLoop && eta && routeMatch);
+                    const hasLast = !!(isCurrentLoop && det?.lastArrival);
+                    const hasAnyLive = hasETA || hasLast;
+                    return { stop, eta, det, routeMatch, hasETA, hasLast, hasAnyLive, etaTime: eta };
+                  });
+
+                  // Single-pass inferredPassed: scan forward/backward once
+                  const n = stopInfo.length;
+                  // hasLiveBefore[i] = true if any stop before i has live data
+                  const hasLiveBefore: boolean[] = new Array(n);
+                  hasLiveBefore[0] = true; // first secondary stop: departure serves as "before"
+                  for (let i = 1; i < n; i++) {
+                    hasLiveBefore[i] = hasLiveBefore[i - 1] || stopInfo[i - 1].hasAnyLive;
+                  }
+                  // hasLiveAfter[i] = true if any stop after i has live data
+                  const hasLiveAfter: boolean[] = new Array(n);
+                  hasLiveAfter[n - 1] = false;
+                  for (let i = n - 2; i >= 0; i--) {
+                    hasLiveAfter[i] = hasLiveAfter[i + 1] || stopInfo[i + 1].hasAnyLive;
+                  }
+                  // allPriorLive[i] = true if every stop before i has live data
+                  const allPriorLive: boolean[] = new Array(n);
+                  allPriorLive[0] = true;
+                  for (let i = 1; i < n; i++) {
+                    allPriorLive[i] = allPriorLive[i - 1] && stopInfo[i - 1].hasAnyLive;
+                  }
+
+                  return (
                   <div className="secondary-timeline">
-                    {route.STOPS.slice(1).map((stop, stopIndex) => {
+                    {stopInfo.map((si, stopIndex) => {
+                      const stop = si.stop;
                       const stopData = route[stop] as ShuttleStopData;
-                      const hasLiveETA = isCurrentLoop && activeETAs[stop];
-                      const details = liveETADetails[stop];
+                      const etaTime = si.etaTime;
+                      const details = si.det;
+                      const hasLiveETA = si.hasETA;
                       const lastArrival = isCurrentLoop ? details?.lastArrival : undefined;
+                      const inferredPassed = isCurrentLoop && !hasLiveETA && !lastArrival
+                        && hasLiveBefore[stopIndex] && (hasLiveAfter[stopIndex] || (allPriorLive[stopIndex] && stopIndex > 0));
                       const isSelected = stop === selectedStop;
 
                       return (
@@ -409,7 +454,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
                             <div className="secondary-timeline-time">
                               {hasLiveETA ? (
                                 <>
-                                  <span className="live-eta">{activeETAs[stop]}</span>
+                                  <span className="live-eta">{etaTime}</span>
                                   <span className="source-badge source-live">LIVE</span>
                                   {(() => {
                                     const dev = computeDeviation(stop, loopStaticDates);
@@ -419,6 +464,11 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
                               ) : lastArrival ? (
                                 <>
                                   <span className="last-arrival">Last: {lastArrival}</span>
+                                  <span className="source-badge source-live">LIVE</span>
+                                </>
+                              ) : inferredPassed ? (
+                                <>
+                                  <span className="last-arrival">Passed</span>
                                   <span className="source-badge source-live">LIVE</span>
                                 </>
                               ) : (isCurrentLoop || isExpanded) && (loopETAs[stop] || loopStaticETAs[stop]) ? (
@@ -436,7 +486,8 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
                       );
                     })}
                   </div>
-                )}
+                  );
+                })()}
               </div>
             );
           })}

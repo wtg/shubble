@@ -4,7 +4,7 @@
  * Set DEV_ENABLED = false or remove this file for production.
  */
 
-const DEV_ENABLED = import.meta.env.DEV;
+const DEV_ENABLED = false; // import.meta.env.DEV;
 const TARGET_HOUR = 14; // 2:00 PM
 const TARGET_MINUTE = 0;
 

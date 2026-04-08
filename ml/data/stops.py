@@ -393,7 +393,7 @@ def clean_stops(
     
     stops_assigned = (prev_closer_mask | next_closer_mask).sum()
 
-    print(f"   ✓ Assigned {stops_assigned} unrecorded stops")
+    print(f" Assigned {stops_assigned} unrecorded stops")
     temp_cols = ['prev_route', 'prev_polyline_index', 'prev_stop', 'prev_distance',
                  'matched_stop', 'stop_to_assign_prev', 'stop_assignment']
     df.drop(columns=temp_cols, inplace=True, errors='ignore')

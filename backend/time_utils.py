@@ -7,12 +7,13 @@ from backend.config import settings
 # Dev time offset — mirrors frontend/src/utils/devTime.ts
 # Shifts all backend time to simulate a target hour in development mode.
 _DEV_OFFSET: timedelta = timedelta(0)
-if settings.DEPLOY_MODE == "development":
-    _target_hour = int(os.environ.get("DEV_TARGET_HOUR", "14"))
-    _target_minute = int(os.environ.get("DEV_TARGET_MINUTE", "0"))
-    _now = datetime.now(settings.CAMPUS_TZ)
-    _target = _now.replace(hour=_target_hour, minute=_target_minute, second=0, microsecond=0)
-    _DEV_OFFSET = _target - _now
+# Dev time disabled — uncomment to re-enable:
+# if settings.DEPLOY_MODE == "development":
+#     _target_hour = int(os.environ.get("DEV_TARGET_HOUR", "14"))
+#     _target_minute = int(os.environ.get("DEV_TARGET_MINUTE", "0"))
+#     _now = datetime.now(settings.CAMPUS_TZ)
+#     _target = _now.replace(hour=_target_hour, minute=_target_minute, second=0, microsecond=0)
+#     _DEV_OFFSET = _target - _now
 
 
 def dev_now(tz=None) -> datetime:

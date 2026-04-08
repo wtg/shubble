@@ -187,10 +187,11 @@ async def get_today_dataframe() -> pd.DataFrame:
     redis = get_redis()
 
     # Try to load from cache
-    cached_data = await redis.get(cache_key)
-    if cached_data:
-        logger.info(f"Loaded {today_str} processed data from Redis cache")
-        return pickle.loads(cached_data)
+    if redis:
+        cached_data = await redis.get(cache_key)
+        if cached_data:
+            logger.info(f"Loaded {today_str} processed data from Redis cache")
+            return pickle.loads(cached_data)
 
     # Load raw from database
     logger.info(f"Loading {today_str} raw data from database")
@@ -201,15 +202,16 @@ async def get_today_dataframe() -> pd.DataFrame:
     processed_df = await asyncio.to_thread(process_raw_dataframe, raw_df)
 
     # Save to cache
-    # Serialize with pickle
-    pickled_df = pickle.dumps(processed_df)
-    async with redis.pipeline() as pipe:
-        pipe.set(cache_key, pickled_df, ex=86400)
-        pipe.set(timestamp_key, datetime.now(timezone.utc).isoformat(), ex=86400)
-        await pipe.execute()
+    if redis:
+        pickled_df = pickle.dumps(processed_df)
+        async with redis.pipeline() as pipe:
+            pipe.set(cache_key, pickled_df, ex=86400)
+            pipe.set(timestamp_key, datetime.now(timezone.utc).isoformat(), ex=86400)
+            await pipe.execute()
 
     # Invalidate smart_closest_point cache since dataframe was updated
-    await soft_clear_namespace("smart_closest_point")
+    if redis:
+        await soft_clear_namespace("smart_closest_point")
 
     logger.info(f"Saved {today_str} processed data to Redis cache")
     return processed_df
@@ -247,6 +249,10 @@ async def update_today_dataframe(window_size: int = 5) -> pd.DataFrame:
     redis = get_redis()
 
     # Check if cache exists
+    if not redis:
+        logger.info(f"No Redis, loading fresh data for {today_str}")
+        return await get_today_dataframe()
+
     cached_data = await redis.get(cache_key)
     last_updated_bytes = await redis.get(timestamp_key)
 
@@ -340,14 +346,15 @@ async def update_today_dataframe(window_size: int = 5) -> pd.DataFrame:
     )
 
     # Update cache
-    pickled_df = pickle.dumps(updated_processed_df)
-    async with redis.pipeline() as pipe:
-        pipe.set(cache_key, pickled_df, ex=86400)
-        pipe.set(timestamp_key, datetime.now(timezone.utc).isoformat(), ex=86400)
-        await pipe.execute()
+    if redis:
+        pickled_df = pickle.dumps(updated_processed_df)
+        async with redis.pipeline() as pipe:
+            pipe.set(cache_key, pickled_df, ex=86400)
+            pipe.set(timestamp_key, datetime.now(timezone.utc).isoformat(), ex=86400)
+            await pipe.execute()
 
-    # Invalidate smart_closest_point cache since dataframe was updated
-    await soft_clear_namespace("smart_closest_point")
+        # Invalidate smart_closest_point cache since dataframe was updated
+        await soft_clear_namespace("smart_closest_point")
 
     logger.info(f"Updated cache to {len(updated_processed_df)} processed records")
 

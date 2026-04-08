@@ -208,7 +208,7 @@ def speed_pipeline(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
     # Clean up
     df = df.drop(columns=['_new_segment'])
 
-    logger.info("  ✓ Calculated segment-local speeds")
+    logger.info("  OK: Calculated segment-local speeds")
     return df
 
 
@@ -278,7 +278,7 @@ def segment_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
         distance_column='dist_to_route',
         max_distance_to_route=max_distance
     )
-    logger.info(f"  ✓ Created {df['segment_id'].nunique()} segments")
+    logger.info(f"  OK: Created {df['segment_id'].nunique()} segments")
 
     # Step 3: Clean NaN route values using segment-aware windowing
     logger.info(f"Step 3/5: Cleaning NaN route values (window size: {window_size})...")
@@ -311,7 +311,7 @@ def segment_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
     initial_segments = df['segment_id'].nunique()
     df = filter_segments_by_length(df, 'segment_id', min_segment_length)
     final_segments = df['segment_id'].nunique()
-    logger.info(f"  ✓ Kept {final_segments}/{initial_segments} segments")
+    logger.info(f"  OK: Kept {final_segments}/{initial_segments} segments")
 
     # Save to cache if caching is enabled
     if cache:
@@ -409,7 +409,7 @@ def stops_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
         polyline_index_column='polyline_idx',
         segment_index_column='segment_idx'
     )
-    logger.info(f"  ✓ Calculated polyline distances for {len(df)} points")
+    logger.info(f"  OK: Calculated polyline distances for {len(df)} points")
 
     # Step 4: Clean stops
     logger.info("Step 3/3: Cleaning unrecorded stop jumps...")
@@ -494,13 +494,13 @@ def eta_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
     removed_points = initial_points - len(df)
     final_segments = df['segment_id'].nunique()
     removed_segments = initial_segments - final_segments
-    logger.info(f"  ✓ Removed {removed_points} points ({removed_points/initial_points*100:.1f}%)")
-    logger.info(f"  ✓ Removed {removed_segments} segments without stops")
+    logger.info(f"  OK: Removed {removed_points} points ({removed_points/initial_points*100:.1f}%)")
+    logger.info(f"  OK: Removed {removed_segments} segments without stops")
 
     # Step 3: Add ETAs
     logger.info("Step 2/2: Calculating ETAs...")
     df = add_eta(df, 'stop_name', 'epoch_seconds', 'eta_seconds')
-    logger.info(f"  ✓ Calculated ETAs for {len(df)} points")
+    logger.info(f"  OK: Calculated ETAs for {len(df)} points")
 
     # Save to cache if caching is enabled
     if cache:
@@ -586,7 +586,7 @@ def split_pipeline(
         logger.info("Loading segmented data...")
         df = segment_pipeline(**kwargs)
 
-    logger.info(f"  ✓ Loaded {len(df)} points, {df['segment_id'].nunique()} segments")
+    logger.info(f"  OK: Loaded {len(df)} points, {df['segment_id'].nunique()} segments")
 
     if len(df) == 0:
         raise ValueError("No valid segments found")
@@ -657,7 +657,7 @@ def split_by_polyline_pipeline(df: pd.DataFrame = None, **kwargs) -> dict[tuple[
         polyline_index_column='polyline_idx'
     )
 
-    logger.info(f"  ✓ Split into {len(polyline_dfs)} unique polylines:")
+    logger.info(f"  OK: Split into {len(polyline_dfs)} unique polylines:")
     for (route, idx), polyline_df in sorted(polyline_dfs.items()):
         logger.info(f"    - {route} segment {idx}: {len(polyline_df)} points")
 
@@ -745,7 +745,7 @@ def lstm_pipeline(
         logger.info(f"\nLimiting to {limit_polylines} polylines...")
         polyline_keys = sorted(polyline_dfs.keys())[:limit_polylines]
         polyline_dfs = {k: polyline_dfs[k] for k in polyline_keys}
-        logger.info(f"  ✓ Processing {len(polyline_dfs)} polylines")
+        logger.info(f"  OK: Processing {len(polyline_dfs)} polylines")
 
     # Store results for each polyline
     polyline_models = {}
@@ -791,8 +791,8 @@ def lstm_pipeline(
             timestamp_column='timestamp',
             segment_column='segment_id'
         )
-        logger.info(f"  ✓ Train: {train_df['segment_id'].nunique()} segments, {len(train_df)} points")
-        logger.info(f"  ✓ Test:  {test_df['segment_id'].nunique()} segments, {len(test_df)} points")
+        logger.info(f"  OK: Train: {train_df['segment_id'].nunique()} segments, {len(train_df)} points")
+        logger.info(f"  OK: Test:  {test_df['segment_id'].nunique()} segments, {len(test_df)} points")
 
         # Save train/test splits
         save_csv(train_df, train_path, "train data")
@@ -807,7 +807,7 @@ def lstm_pipeline(
             initial = len(df_input)
             df_output = df_input.dropna(subset=req_cols)
             if len(df_output) < initial:
-                logger.info(f"  ✓ Dropped {initial - len(df_output)} rows with missing values in {name}")
+                logger.info(f"  OK: Dropped {initial - len(df_output)} rows with missing values in {name}")
             return df_output
 
         train_df = clean_df(train_df, "train set")
@@ -839,9 +839,9 @@ def lstm_pipeline(
 
                 logger.info(f"\n  Saving model to {model_path}...")
                 model.save(model_path, scaler_path=str(scaler_path))
-                logger.info("  ✓ Model trained and saved")
+                logger.info("  OK: Model trained and saved")
             except Exception as e:
-                logger.info(f"  ✗ Training failed: {e}")
+                logger.info(f"  FAIL: Training failed: {e}")
                 continue
         else:
             logger.info(f"\n3. LOADING CACHED MODEL")
@@ -857,7 +857,7 @@ def lstm_pipeline(
                 dropout=dropout
             )
             model.load(model_path, scaler_path=str(scaler_path))
-            logger.info(f"  ✓ Loaded LSTM model")
+            logger.info(f"  OK: Loaded LSTM model")
 
         # 4. Evaluate
         logger.info("\n4. MODEL EVALUATION")
@@ -880,7 +880,7 @@ def lstm_pipeline(
             # Store model and results
             polyline_models[polyline_key] = (model, results)
         except Exception as e:
-            logger.info(f"  ✗ Evaluation failed: {e}")
+            logger.info(f"  FAIL: Evaluation failed: {e}")
             continue
 
     # Summary
@@ -1040,7 +1040,7 @@ def arima_pipeline(
                         'params': pretrained_params,
                         'value_column': value_column
                     }, f)
-                logger.info("  ✓ Model trained and saved")
+                logger.info("  OK: Model trained and saved")
         except Exception as e:
             logger.info(f"  Warning: Training failed: {e}")
             pretrained_params = None
@@ -1055,7 +1055,7 @@ def arima_pipeline(
 
             if cached_model['p'] == p and cached_model['d'] == d and cached_model['q'] == q:
                 pretrained_params = cached_model['params']
-                logger.info(f"  ✓ Loaded ARIMA({p},{d},{q}) parameters")
+                logger.info(f"  OK: Loaded ARIMA({p},{d},{q}) parameters")
             else:
                 logger.info(f"  Warning: Cached model is ARIMA({cached_model['p']},{cached_model['d']},{cached_model['q']}) but requested ARIMA({p},{d},{q})")
                 logger.info("  Continuing without warm-start")
@@ -1237,11 +1237,11 @@ if __name__ == "__main__":
         if polyline_models:
             avg_rmse = sum(r['rmse'] for _, r in polyline_models.values()) / len(polyline_models)
             avg_mae = sum(r['mae'] for _, r in polyline_models.values()) / len(polyline_models)
-            logger.info(f"\n✓ LSTM pipeline complete. Trained {len(polyline_models)} models.")
+            logger.info(f"\nOK: LSTM pipeline complete. Trained {len(polyline_models)} models.")
             logger.info(f"  Average RMSE: {avg_rmse:.4f}, Average MAE: {avg_mae:.4f}")
         else:
-            logger.info("\n✗ No models were trained successfully.")
+            logger.info("\nFAIL: No models were trained successfully.")
     elif args.pipeline == "arima":
         results = arima_pipeline(**kwargs)
         if results:
-            logger.info(f"\n✓ ARIMA pipeline complete. Overall RMSE: {results['overall_rmse']:.4f}")
+            logger.info(f"\nOK: ARIMA pipeline complete. Overall RMSE: {results['overall_rmse']:.4f}")

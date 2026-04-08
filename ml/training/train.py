@@ -329,7 +329,7 @@ if __name__ == "__main__":
     print("Step 1: Getting preprocessed data...")
     # Use the pipeline function to get data (cached if available)
     df = preprocess_pipeline(force_recompute=False)
-    print(f"  ✓ Loaded {len(df)} records")
+    print(f" Loaded {len(df)} records")
     print()
 
     # 2. Segment data (needed for the split functions to work)
@@ -337,7 +337,7 @@ if __name__ == "__main__":
     # Create segments based on time gaps
     max_timedelta = 300  # 5 minutes
     df = segment_by_consecutive(df, max_timedelta=max_timedelta, segment_column='segment_id')
-    print(f"  ✓ Created {df['segment_id'].nunique()} segments")
+    print(f" Created {df['segment_id'].nunique()} segments")
     print()
 
     # 3. Filter short segments (using function from this file)
@@ -345,8 +345,8 @@ if __name__ == "__main__":
     min_length = 5
     print(f"  Removing segments with < {min_length} points")
     filtered_df = filter_segmented(df, 'segment_id', min_length=min_length)
-    print(f"  ✓ Remaining segments: {filtered_df['segment_id'].nunique()}")
-    print(f"  ✓ Remaining points: {len(filtered_df)}")
+    print(f" Remaining segments: {filtered_df['segment_id'].nunique()}")
+    print(f" Remaining points: {len(filtered_df)}")
     print()
 
     # 4. Split data (using function from this file)

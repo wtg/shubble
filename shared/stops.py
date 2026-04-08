@@ -175,7 +175,7 @@ class Stops:
             _polyline_total_lengths[(route_name, p_idx)] = cumulative_dists[-1]
 
     @classmethod
-    def get_closest_point(cls, origin_point, threshold=0.020, target_polyline=None):
+    def get_closest_point(cls, origin_point, threshold=0.020, target_polyline=None, preferred_route=None):
         """
         Find the closest point on any polyline to the given origin point.
         :param origin_point: A tuple or list with (latitude, longitude) coordinates.
@@ -292,7 +292,12 @@ class Stops:
             if target_polyline is None:
                 # Check if closest route is significantly closer than others
                 if len(closest_routes) > 1 and closest_routes[1][0] - closest_routes[0][0] < threshold:
-                    # If not significantly closer (ambiguous), return None
+                    # Ambiguous — if a preferred route hint is given, use it as tiebreaker
+                    if preferred_route:
+                        for cr in closest_routes:
+                            if cr[2] == preferred_route:
+                                return cr
+                    # No hint or hint doesn't match — return None
                     return None, None, None, None, None
             return closest_routes[0]
         return None, None, None, None, None

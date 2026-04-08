@@ -59,7 +59,7 @@ async def predict_eta(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None)
 
     # Group by vehicle and prepare batches
     sequence_length = 10
-    input_columns = ['latitude', 'longitude', 'speed_kmh']
+    input_columns = ['latitude', 'longitude', 'speed_kmh', 'dist_to_end']
 
     batches: Dict[Tuple[str, int], List[Tuple[str, np.ndarray, datetime]]] = {}
 
@@ -124,6 +124,11 @@ async def predict_eta(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None)
             for i, vid in enumerate(vehicle_ids_in_batch):
                 eta_seconds = float(predictions[i][0])
                 eta_seconds = max(0.0, eta_seconds)
+
+                # Clamp to reasonable max (30 min)
+                if eta_seconds > 1800:
+                    logger.warning(f"LSTM predicted {eta_seconds:.0f}s for vehicle {vid}, skipping (too large)")
+                    continue
 
                 # Convert ETA seconds to absolute datetime
                 eta_datetime = timestamps[i] + timedelta(seconds=eta_seconds)
@@ -191,8 +196,19 @@ async def compute_per_stop_etas(vehicle_ids: List[str], df: Optional[pd.DataFram
         current_polyline_idx = last_point.get('polyline_idx')
         now_stop_key = last_point.get('stop_name')
 
+        # If last point has no route (ambiguous location like shared Student Union),
+        # look backwards through the vehicle's history to find the last known route
         if pd.isna(route) or pd.isna(current_polyline_idx):
-            continue
+            valid_points = vehicle_df.dropna(subset=['route', 'polyline_idx'])
+            if valid_points.empty:
+                continue
+            fallback_point = valid_points.iloc[-1]
+            route = fallback_point.get('route')
+            current_polyline_idx = fallback_point.get('polyline_idx')
+            if pd.isna(now_stop_key):
+                now_stop_key = fallback_point.get('stop_name')
+            if pd.isna(route) or pd.isna(current_polyline_idx):
+                continue
 
         current_polyline_idx = int(current_polyline_idx)
         route = str(route)
@@ -206,16 +222,59 @@ async def compute_per_stop_etas(vehicle_ids: List[str], df: Optional[pd.DataFram
 
         stops = route_data['STOPS']
 
-        # Polyline index N = transition from STOPS[N] to STOPS[N+1]
-        # If vehicle is AT the destination stop, advance to next transition
+        # Use the vehicle's last detected stop to validate/correct polyline_idx.
+        # This resolves ambiguity at polyline intersections (e.g., the outbound
+        # segment from Student Union crosses the return segment near Houston Field
+        # House). The geometric polyline_idx can be wrong at these intersections.
+        stop_points = vehicle_df.dropna(subset=['stop_name'])
+        if not stop_points.empty:
+            last_stop = str(stop_points.iloc[-1].get('stop_name'))
+            if last_stop in stops:
+                last_stop_idx = stops.index(last_stop)
+                half_route = len(stops) // 2
+                # Detect loop restart: geometric near start, last stop near end
+                # This means the shuttle completed a loop and is starting fresh
+                is_loop_restart = (current_polyline_idx < half_route and
+                                   last_stop_idx >= half_route)
+                if not is_loop_restart:
+                    # Only override if geometric is behind the stop
+                    # (intersection confusion causing wrong segment)
+                    if current_polyline_idx < last_stop_idx:
+                        current_polyline_idx = last_stop_idx
+
+        # Map polyline_idx (from POLYLINE_STOPS, which includes ghost stops) to
+        # the next STOPS entry. POLYLINE_STOPS[polyline_idx+1] is the destination
+        # of the current polyline segment — find that in STOPS.
+        polyline_stops = route_data.get('POLYLINE_STOPS', stops)
+        poly_dest_idx = current_polyline_idx + 1
+        if poly_dest_idx < len(polyline_stops):
+            poly_dest_stop = polyline_stops[poly_dest_idx]
+            # Find next real stop at or after the polyline destination
+            next_stop_idx = None
+            for si in range(len(stops)):
+                if stops[si] == poly_dest_stop:
+                    next_stop_idx = si
+                    break
+                # If poly_dest is a ghost stop, find the next real stop after it
+                if si > 0 and polyline_stops.index(stops[si]) > poly_dest_idx if stops[si] in polyline_stops else False:
+                    next_stop_idx = si
+                    break
+            if next_stop_idx is None:
+                # Fallback: find next stop in POLYLINE_STOPS that's also in STOPS
+                for pi in range(poly_dest_idx, len(polyline_stops)):
+                    if polyline_stops[pi] in stops:
+                        next_stop_idx = stops.index(polyline_stops[pi])
+                        break
+        else:
+            next_stop_idx = None
+
+        # If vehicle is AT the next stop, advance to the one after
         if not pd.isna(now_stop_key) and str(now_stop_key) in stops:
             now_stop_idx = stops.index(str(now_stop_key))
-            if now_stop_idx == current_polyline_idx + 1:
-                current_polyline_idx += 1
+            if next_stop_idx is not None and now_stop_idx == next_stop_idx:
+                next_stop_idx = now_stop_idx + 1
 
-        # Next stop is the destination of current transition
-        next_stop_idx = current_polyline_idx + 1
-        if next_stop_idx >= len(stops):
+        if next_stop_idx is None or next_stop_idx >= len(stops):
             continue
 
         # --- Layer 1: ETA to next stop ---
@@ -288,47 +347,174 @@ async def compute_per_stop_etas(vehicle_ids: List[str], df: Optional[pd.DataFram
     # This preserves stop ordering (no impossible ETAs).
     now_utc = dev_now(timezone.utc)
     best_per_route: Dict[str, Tuple[str, datetime, List[Tuple[str, datetime]]]] = {}
-    # route -> (vehicle_id, next_stop_eta, stops_list)
+    # route -> (vehicle_id, first_future_eta, stops_list)
 
     for vid, vdata in vehicle_stop_etas.items():
         route = vdata["route"]
-        next_eta = vdata["next_stop_eta"]
-        if next_eta <= now_utc:
+        stops_list = vdata["stops"]
+
+        # Find the first future ETA in this vehicle's stop list.
+        # The next_stop_eta may be in the past if the shuttle just passed its
+        # next stop and the polyline_idx hasn't advanced yet — but subsequent
+        # stops (computed via OFFSET diffs) will still have future ETAs.
+        first_future_eta = None
+        for _, eta_dt in stops_list:
+            if eta_dt > now_utc:
+                first_future_eta = eta_dt
+                break
+
+        if first_future_eta is None:
             continue
 
-        if route not in best_per_route or next_eta < best_per_route[route][1]:
-            best_per_route[route] = (vid, next_eta, vdata["stops"])
+        if route not in best_per_route or first_future_eta < best_per_route[route][1]:
+            best_per_route[route] = (vid, first_future_eta, stops_list)
 
-    # Compute last_arrival for each stop from today's data
+    # Load previous cycle's ETAs from Redis for instant "Last:" updates.
+    # When a stop's predicted ETA is now in the past, use it as the implied
+    # arrival time (shuttle was predicted to arrive at that time → it did).
+    previous_etas: Dict[str, str] = {}
+    try:
+        redis = get_redis()
+        if redis:
+            import json as _json
+            raw = await redis.get("shubble:per_stop_etas_live")
+            if raw:
+                prev_data = _json.loads(raw)
+                for k, v in prev_data.items():
+                    if ':' in k or not isinstance(v, dict):
+                        continue
+                    eta = v.get('eta')
+                    if eta:
+                        previous_etas[k] = eta
+    except Exception as e:
+        logger.debug(f"Could not load previous ETAs: {e}")
+
+    # Compute last_arrival per vehicle, using each vehicle's current loop window.
+    # For each vehicle, the current loop started at its most recent detection
+    # at the FIRST stop of its route. Only include detections AFTER that time
+    # to avoid showing stale timestamps from previous loops.
     last_arrivals: Dict[str, str] = {}
-    if full_df is not None and not full_df.empty and 'stop_name' in full_df.columns:
-        stops_df = full_df.dropna(subset=['stop_name'])
-        if not stops_df.empty:
-            for stop_key, group in stops_df.groupby('stop_name'):
-                latest = group['timestamp'].max()
-                ts = pd.to_datetime(latest).to_pydatetime()
-                if ts.tzinfo is None:
-                    ts = ts.replace(tzinfo=timezone.utc)
-                last_arrivals[str(stop_key)] = ts.isoformat()
 
-    # Build final per-stop result from the best vehicle per route
+    # First pass: use expired ETAs from previous cycle as implied arrivals.
+    # If a stop had a future ETA last cycle but doesn't now (shuttle passed it),
+    # the expired ETA IS effectively the arrival time.
+    stops_with_future_eta_set: set = set()
+    for _route, (_vid, _eta, stops_list) in best_per_route.items():
+        for stop_key, eta_dt in stops_list:
+            if eta_dt > now_utc:
+                stops_with_future_eta_set.add(stop_key)
+
+    for stop_key, prev_eta in previous_etas.items():
+        if stop_key in stops_with_future_eta_set:
+            continue  # Still ahead in current cycle
+        try:
+            prev_eta_dt = datetime.fromisoformat(prev_eta)
+            # Only use recent past ETAs (within last 2 minutes)
+            if (now_utc - prev_eta_dt).total_seconds() > 120:
+                continue
+            if prev_eta_dt <= now_utc:
+                last_arrivals[stop_key] = prev_eta
+        except (ValueError, TypeError):
+            continue
+
+    if full_df is not None and not full_df.empty and 'stop_name' in full_df.columns:
+        tracked_vids = [str(v) for v in vehicle_ids]
+        for vid in tracked_vids:
+            vdf = full_df[full_df['vehicle_id'] == vid].dropna(subset=['stop_name'])
+            if vdf.empty:
+                continue
+
+            # Find the vehicle's current route (from its stop_route or route column)
+            route_col = vdf['stop_route'] if 'stop_route' in vdf.columns else vdf.get('route')
+            vehicle_route = None
+            if route_col is not None:
+                non_nan = route_col.dropna()
+                if not non_nan.empty:
+                    vehicle_route = str(non_nan.iloc[-1])
+
+            # Determine loop start: the most recent detection at the route's first stop
+            loop_start_ts = None
+            if vehicle_route and vehicle_route in routes:
+                first_stop = routes[vehicle_route]['STOPS'][0]
+                first_stop_detections = vdf[vdf['stop_name'] == first_stop]
+                if not first_stop_detections.empty:
+                    loop_start = pd.to_datetime(first_stop_detections['timestamp'].max()).to_pydatetime()
+                    if loop_start.tzinfo is None:
+                        loop_start = loop_start.replace(tzinfo=timezone.utc)
+                    loop_start_ts = loop_start
+
+            # For each stop, include only detections from the current loop
+            for stop_key, group in vdf.groupby('stop_name'):
+                latest = pd.to_datetime(group['timestamp'].max()).to_pydatetime()
+                if latest.tzinfo is None:
+                    latest = latest.replace(tzinfo=timezone.utc)
+                # Skip if older than loop start (previous loop data)
+                if loop_start_ts and latest < loop_start_ts:
+                    continue
+                key = str(stop_key)
+                # Keep the most recent across vehicles
+                if key not in last_arrivals or latest.isoformat() > last_arrivals[key]:
+                    last_arrivals[key] = latest.isoformat()
+
+    # Infer last_arrival for stops the shuttle must have passed through.
+    # Only interpolate between stops with RECENT timestamps to avoid
+    # false inferences from previous loop data.
+    for route_name, route_data in routes.items():
+        if 'STOPS' not in route_data:
+            continue
+        route_stops = route_data['STOPS']
+        arrival_indices = [i for i, s in enumerate(route_stops) if s in last_arrivals]
+        if len(arrival_indices) < 2:
+            continue
+        for gap_start_pos in range(len(arrival_indices) - 1):
+            i_start = arrival_indices[gap_start_pos]
+            i_end = arrival_indices[gap_start_pos + 1]
+            if i_end - i_start <= 1:
+                continue
+            ts_start = datetime.fromisoformat(last_arrivals[route_stops[i_start]])
+            ts_end = datetime.fromisoformat(last_arrivals[route_stops[i_end]])
+            if ts_start >= ts_end:
+                continue
+            total_gap = i_end - i_start
+            for j in range(i_start + 1, i_end):
+                stop_key = route_stops[j]
+                if stop_key in last_arrivals:
+                    continue
+                fraction = (j - i_start) / total_gap
+                interp_ts = ts_start + (ts_end - ts_start) * fraction
+                last_arrivals[stop_key] = interp_ts.isoformat()
+
+    # Build final per-stop result from the best vehicle per route.
+    # For stops that appear on multiple routes (e.g. STUDENT_UNION_RETURN),
+    # keep each route's ETA separately so the frontend can display the correct
+    # one for the selected route. Use "stop_key:route" as a secondary key.
     result: Dict[str, Dict] = {}
+    # Track which stops have future ETAs (shuttle hasn't passed them yet)
+    stops_with_future_eta: set = set()
     for route, (vid, _, stops_list) in best_per_route.items():
         for stop_key, eta_dt in stops_list:
             if eta_dt <= now_utc:
                 continue
+            stops_with_future_eta.add(stop_key)
+            # Don't include last_arrival for stops with future ETAs —
+            # the last_arrival might be from a previous loop
             entry = {
                 "eta": eta_dt.isoformat(),
                 "vehicle_id": vid,
                 "route": route,
-                "last_arrival": last_arrivals.get(stop_key),
+                "last_arrival": None,
             }
-            # For stops shared across routes (e.g. STUDENT_UNION), keep earliest
+            # Primary key: bare stop name — keep earliest across routes
             if stop_key not in result or eta_dt < datetime.fromisoformat(result[stop_key]["eta"]):
                 result[stop_key] = entry
+            # Secondary key: route-qualified — ensures each route's ETA is preserved
+            route_key = f"{stop_key}:{route}"
+            result[route_key] = entry
 
-    # Add last_arrival for stops that have no future ETA
+    # Add last_arrival only for stops the shuttle has PASSED (no future ETA)
     for stop_key, last_iso in last_arrivals.items():
+        if stop_key in stops_with_future_eta:
+            continue  # Stop still ahead — don't show stale last_arrival
         if stop_key not in result:
             result[stop_key] = {
                 "eta": None,

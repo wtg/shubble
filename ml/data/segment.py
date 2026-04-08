@@ -340,9 +340,9 @@ def clean_closest_route(
         df_clean.loc[labels_to_update, polyline_idx_column] = new_polys
 
         filled_count = len(indices_to_update)
-        print(f"  ✓ Filled {filled_count}/{total_nans} NaN values ({filled_count/total_nans*100:.1f}%)")
+        print(f"  Filled {filled_count}/{total_nans} NaN values ({filled_count/total_nans*100:.1f}%)")
     else:
-        print(f"  ✓ Filled 0/{total_nans} NaN values (0.0%)")
+        print(f"  Filled 0/{total_nans} NaN values (0.0%)")
 
     return df_clean
 

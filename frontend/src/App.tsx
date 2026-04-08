@@ -10,7 +10,7 @@ import About from './about/About';
 import Data from './dashboard/Dashboard';
 import LiveLocationMapKit from './locations/components/LiveLocationMapKit';
 import rawRouteData from './shared/routes.json';
-import { useState, useEffect } from "react";
+import { useState, useEffect, memo } from "react";
 import type { ShuttleRouteData } from './types/route';
 import Navigation from './components/Navigation';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -19,6 +19,20 @@ import { devNow } from './utils/devTime';
 import NotFound from './components/NotFound';
 import ApplePrivacyPolicy from './privacy/ApplePrivacyPolicy';
 import AppleAppSupport from './support/AppleAppSupport';
+
+/** Isolated dev clock — 1-second ticks don't cascade re-renders to App children */
+const DevClock = memo(function DevClock() {
+  const [time, setTime] = useState(devNow().toLocaleTimeString());
+  useEffect(() => {
+    const id = setInterval(() => setTime(devNow().toLocaleTimeString()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <div style={{ position: 'fixed', bottom: 8, left: 8, background: 'rgba(0,0,0,0.7)', color: '#0f0', padding: '4px 8px', borderRadius: 4, fontSize: 12, fontFamily: 'monospace', zIndex: 9999 }}>
+      DEV {time}
+    </div>
+  );
+});
 
 function App() {
   const [selectedRoute, setSelectedRoute] = useState<string | null>(
@@ -48,22 +62,15 @@ function App() {
     }
   }, []);
 
-  const [devTime, setDevTime] = useState(devNow().toLocaleTimeString());
   useEffect(() => {
     if (!import.meta.env.DEV) return;
     // Reset test server shuttles on page load so simulation starts fresh
     fetch('http://localhost:4000/api/shuttles/schedule', { method: 'POST' }).catch(() => {});
-    const id = setInterval(() => setDevTime(devNow().toLocaleTimeString()), 1000);
-    return () => clearInterval(id);
   }, []);
 
   return (
     <ErrorBoundary>
-      {import.meta.env.DEV && (
-        <div style={{ position: 'fixed', bottom: 8, left: 8, background: 'rgba(0,0,0,0.7)', color: '#0f0', padding: '4px 8px', borderRadius: 4, fontSize: 12, fontFamily: 'monospace', zIndex: 9999 }}>
-          DEV {devTime}
-        </div>
-      )}
+      {import.meta.env.DEV && <DevClock />}
       <Router>
         <Routes>
           {/* with header and footer */}

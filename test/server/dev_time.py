@@ -21,7 +21,7 @@ TARGET_MINUTE = int(os.environ.get("DEV_TARGET_MINUTE", "0"))
 # Compute offset once at module load (same logic as devTime.ts)
 _now = datetime.now(CAMPUS_TZ)
 _target = _now.replace(hour=TARGET_HOUR, minute=TARGET_MINUTE, second=0, microsecond=0)
-OFFSET: timedelta = _target - _now
+OFFSET: timedelta = timedelta(0)  # Disabled: _target - _now
 
 
 def dev_now(tz: ZoneInfo | timezone = CAMPUS_TZ) -> datetime:

@@ -251,7 +251,10 @@ async def setup_schedule_shuttles() -> int:
                 logger.warning(f"Route {route_name}: fewer than 2 future departures, skipping")
                 continue
 
-            # Shuttle A gets even-indexed departures, Shuttle B gets odd-indexed
+            # Staggered two shuttles per route: first starts immediately,
+            # second starts ~2 minutes later (test sim is faster than real time)
+            su_coords = (42.730711, -73.676737)
+            half_loop_sec = 120  # 2 minutes
             is_first_shuttle = True
             for shuttle_deps in [future_deps[0::2], future_deps[1::2]]:
                 if not shuttle_deps:
@@ -259,15 +262,19 @@ async def setup_schedule_shuttles() -> int:
 
                 shuttle_id = str(shuttle_counter).zfill(15)
                 shuttle = Shuttle(shuttle_id)
+                shuttle._location = su_coords
+                shuttle._send_webhook(entry=True)
 
                 if is_first_shuttle:
-                    # First shuttle per route: skip entering, start looping immediately
-                    # so route colors and ETAs appear without waiting
                     shuttle.push_action(ShuttleAction.LOOPING, route=route_name)
-                    shuttle._send_webhook(entry=True)  # notify backend of geofence entry
                     is_first_shuttle = False
                 else:
-                    shuttle.push_action(ShuttleAction.ENTERING)
+                    # Delay the second shuttle's start by half a loop
+                    def delayed_start(sh=shuttle, rn=route_name):
+                        sh.push_action(ShuttleAction.LOOPING, route=rn)
+                    t = threading.Timer(half_loop_sec, delayed_start)
+                    t.daemon = True
+                    t.start()
 
                 shuttle.start()
                 shuttles[shuttle_id] = shuttle

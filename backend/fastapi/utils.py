@@ -355,13 +355,27 @@ async def get_latest_etas(vehicle_ids: List[str], session_factory) -> Dict[str, 
 
                 last_arrival = stop_data.get("last_arrival") if isinstance(stop_data, dict) else None
 
+                entry = {
+                    "eta": eta_iso,
+                    "vehicle_id": eta_row.vehicle_id,
+                    "route": route,
+                    "last_arrival": last_arrival,
+                }
+
+                # Skip route-qualified keys from DB storage (they're re-generated below)
+                if ":" in stop_key:
+                    continue
+
+                # Primary key: bare stop name — keep earliest across routes
                 if stop_key not in per_stop or eta_dt < datetime.fromisoformat(per_stop[stop_key]["eta"]):
-                    per_stop[stop_key] = {
-                        "eta": eta_iso,
-                        "vehicle_id": eta_row.vehicle_id,
-                        "route": route,
-                        "last_arrival": last_arrival,
-                    }
+                    per_stop[stop_key] = entry
+
+                # Secondary key: route-qualified — ensures each route's ETA is preserved
+                # so the frontend can show the correct one for the selected route
+                if route:
+                    route_key = f"{stop_key}:{route}"
+                    if route_key not in per_stop or eta_dt < datetime.fromisoformat(per_stop[route_key]["eta"]):
+                        per_stop[route_key] = entry
 
         return per_stop
 
