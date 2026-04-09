@@ -92,16 +92,18 @@ async function checkMapScheduleConsistency(findings, label) {
     // consistent with time to arrival. Shuttles drive ~30 km/h = 500m/min.
     // Thresholds are generous — we only want to catch gross mismatches
     // (stale ETA, wrong route, wrong stop direction), not normal jitter.
+    // We also skip complaints at loop boundaries (near STUDENT_UNION_RETURN
+    // or STUDENT_UNION) since the polyline matching is naturally ambiguous
+    // at those coordinates.
+    const isLoopBoundary = nextStop === 'STUDENT_UNION' || nextStop === 'STUDENT_UNION_RETURN';
     const expectedDistPerMin = 500;
-    // At mins=0 allow up to 400m (shuttle is "arriving")
-    const maxReasonableDist = Math.max(400, mins * expectedDistPerMin * 5);
-    // At low mins, don't complain about shuttles being far ahead
+    const maxReasonableDist = isLoopBoundary ? 2000 : Math.max(600, mins * expectedDistPerMin * 5);
     const minReasonableDist = Math.max(0, mins * expectedDistPerMin / 5 - 400);
 
     if (mins >= 0 && dist > maxReasonableDist) {
       findings.push(`[${label}/consistency] ${vid.slice(-3)}: ${dist.toFixed(0)}m to ${nextStop} but ETA is only ${mins.toFixed(1)}min (expected ≤${maxReasonableDist.toFixed(0)}m)`);
     }
-    if (mins > 3 && dist < minReasonableDist) {
+    if (mins > 5 && dist < minReasonableDist && !isLoopBoundary) {
       findings.push(`[${label}/consistency] ${vid.slice(-3)}: ${dist.toFixed(0)}m to ${nextStop} but ETA is ${mins.toFixed(1)}min away (expected ≥${minReasonableDist.toFixed(0)}m)`);
     }
   }

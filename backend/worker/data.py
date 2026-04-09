@@ -745,6 +745,7 @@ async def _compute_vehicle_etas_and_arrivals(
         # Stop-based polyline validation
         stop_points = vehicle_df.dropna(subset=['stop_name'])
         last_stop_idx = None
+        polyline_was_reset = False
         if not stop_points.empty:
             last_stop = str(stop_points.iloc[-1].get('stop_name'))
             if last_stop in stops:
@@ -756,6 +757,8 @@ async def _compute_vehicle_etas_and_arrivals(
                 # at the START. If the last detected stop is the FIRST stop,
                 # trust that over the polyline_idx and reset to 0.
                 if last_stop_idx == 0:
+                    if current_polyline_idx != 0:
+                        polyline_was_reset = True
                     current_polyline_idx = 0
                 else:
                     is_loop_restart = (current_polyline_idx < half_route and last_stop_idx >= half_route)
@@ -797,8 +800,12 @@ async def _compute_vehicle_etas_and_arrivals(
         if next_stop_idx is None or next_stop_idx >= len(stops):
             continue
 
-        # Layer 1: next stop ETA from LSTM or fallback
-        next_stop_eta = next_stop_etas.get(vehicle_id)
+        # Layer 1: next stop ETA from LSTM or fallback.
+        # If we reset the polyline_idx (shuttle at Student Union starting
+        # a new loop), skip the LSTM prediction — it was computed for
+        # the OLD polyline_idx (near end of route) and would produce a
+        # wrong ETA for the first stop of the new loop.
+        next_stop_eta = None if polyline_was_reset else next_stop_etas.get(vehicle_id)
         if next_stop_eta is None:
             last_lat = last_point.get('latitude')
             last_lon = last_point.get('longitude')
