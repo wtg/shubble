@@ -15,6 +15,12 @@ from shared.stops import Stops
 
 logger = logging.getLogger(__name__)
 
+# How long a shuttle dwells at Union between loops in the dev sim.
+# Real shuttles pause ~5 min between loops; we use a shorter value here
+# so iterative testing doesn't take forever. Must be well below the
+# backend's IDLE_THRESHOLD_SEC (1200s) so a normal dwell isn't filtered.
+INTER_LOOP_PAUSE_SEC = 60  # 1 minute (real life: ~5 min)
+
 
 class ShuttleAction(Enum):
     ENTERING = "entering"
@@ -59,6 +65,9 @@ class Shuttle:
         self._subpath_index: int = 0
         self._distance_into_segment: float = 0.0
         self._current_route: Optional[str] = None
+        # When non-None, the shuttle is dwelling at Union between loops
+        # until time.time() reaches this value.
+        self._loop_dwell_until: Optional[float] = None
 
         # Thread control
         self._running: bool = False
@@ -234,8 +243,32 @@ class Shuttle:
 
     def _handle_movement(self):
         """Handle movement actions (ENTERING, LOOPING, EXITING)."""
+        # While paused between loops at Union, just hold position
+        # until the dwell timer expires, then start the next loop.
+        if self._current_action == ShuttleAction.LOOPING and self._loop_dwell_until:
+            if time.time() >= self._loop_dwell_until:
+                self._loop_dwell_until = None
+                self._path = self._get_looping_path(self._current_route)
+                self._reset_path_state()
+            return
+
         if not self._follow_path():
-            # Path complete
+            # LOOPING repeats: real shuttles dwell briefly at Union between
+            # loops (driver stretch, passenger boarding) then continue.
+            # The dev-sim pauses for INTER_LOOP_PAUSE_SEC, much shorter
+            # than real life so testing doesn't take 15 minutes per loop.
+            # The idle-shuttle filter (>20 min at first stop) is well
+            # above this dwell so a normal dwell won't accidentally
+            # hide the trip.
+            if self._current_action == ShuttleAction.LOOPING and self._current_route:
+                self._loop_dwell_until = time.time() + INTER_LOOP_PAUSE_SEC
+                logger.info(
+                    f"Shuttle {self.id}: loop complete on {self._current_route}, "
+                    f"dwelling at Union for {INTER_LOOP_PAUSE_SEC}s"
+                )
+                return
+
+            # Path complete (non-LOOPING actions)
             if self._current_action == ShuttleAction.EXITING:
                 self._send_webhook(entry=False)
 
