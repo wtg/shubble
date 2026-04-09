@@ -687,7 +687,17 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
               }
               let lastArrival: string | undefined;
               if (info.last_arrival) {
-                lastArrival = new Date(info.last_arrival).toLocaleTimeString(undefined, TIME_FORMAT);
+                // Hide stale "Last:" timestamps. If the most recent
+                // detection at this stop is older than ~20 minutes,
+                // the shuttle has clearly looped past it without the
+                // stop detection firing on subsequent passes — showing
+                // "Last: 14:43" when it's currently 15:05 is misleading.
+                // Fall back to passed=true with no time so the user
+                // sees "Passed" instead of a stale timestamp.
+                const laMs = new Date(info.last_arrival).getTime();
+                if (laMs > nowMs - 20 * 60_000) {
+                  lastArrival = new Date(info.last_arrival).toLocaleTimeString(undefined, TIME_FORMAT);
+                }
               }
               return { etaTime, lastArrival, passed: info.passed };
             };
