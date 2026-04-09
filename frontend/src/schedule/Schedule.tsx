@@ -68,6 +68,32 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
     }
   }, [closestStop, selectedStop]);
 
+  // When the user switches routes, the previously-selected stop may not
+  // exist on the new route (e.g. City Station → NORTH). Without a reset
+  // the countdown summary silently disappears. Switch to the closest stop
+  // on the new route so the student always has a live countdown.
+  useEffect(() => {
+    const currentRoute = routeData[safeSelectedRoute as keyof typeof routeData];
+    if (!currentRoute?.STOPS) return;
+    if (selectedStop && !currentRoute.STOPS.includes(selectedStop)) {
+      // Prefer the geo-based closest stop when available. Otherwise pick
+      // the second stop (index 1) rather than index 0 — the first stop is
+      // Student Union, which shuttles pass through continuously, so its
+      // ETA is almost always "passed" and produces no countdown.
+      let fallback: string;
+      if (closestStop?.id && currentRoute.STOPS.includes(closestStop.id)) {
+        fallback = closestStop.id;
+      } else if (currentRoute.STOPS.length > 1) {
+        fallback = currentRoute.STOPS[1];
+      } else {
+        fallback = currentRoute.STOPS[0];
+      }
+      setSelectedStop(fallback);
+      localStorage.setItem('shubble-stop', fallback);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [safeSelectedRoute]);
+
   // Persist stop selection
   const handleStopSelect = useCallback((stopId: string) => {
     setSelectedStop(stopId);
@@ -193,11 +219,15 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
   const formatDepartureDisplay = (d: Date): string =>
     d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 
-  // Group trips by their departure-time display string for O(1) lookup
+  // Group trips by their departure-time display string for O(1) lookup.
+  // Trips are ALWAYS today's live data — never merge them into other days'
+  // schedules, or tomorrow's schedule will show ghost vehicle badges.
   const tripsByTimeKey: Record<string, Trip[]> = {};
-  for (const t of routeTrips) {
-    const key = formatDepartureDisplay(new Date(t.departure_time));
-    (tripsByTimeKey[key] ||= []).push(t);
+  if (isToday) {
+    for (const t of routeTrips) {
+      const key = formatDepartureDisplay(new Date(t.departure_time));
+      (tripsByTimeKey[key] ||= []).push(t);
+    }
   }
 
   const timelineRows: TimelineRow[] = [];
@@ -236,19 +266,22 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
     }
   });
 
-  // 2. Append injected trips (non-schedule times) at their own slots
-  for (const t of routeTrips) {
-    if (consumedTripIds.has(t.trip_id)) continue;
-    const d = new Date(t.departure_time);
-    const time = formatDepartureDisplay(d);
-    timelineRows.push({
-      key: `${time}|${t.vehicle_id ?? t.trip_id}|injected`,
-      time,
-      timeDate: d,
-      trip: t,
-      originalIndex: -1,
-      isInjected: true,
-    });
+  // 2. Append injected trips (non-schedule times) at their own slots.
+  //    Only for today — tomorrow's view is static schedule only.
+  if (isToday) {
+    for (const t of routeTrips) {
+      if (consumedTripIds.has(t.trip_id)) continue;
+      const d = new Date(t.departure_time);
+      const time = formatDepartureDisplay(d);
+      timelineRows.push({
+        key: `${time}|${t.vehicle_id ?? t.trip_id}|injected`,
+        time,
+        timeDate: d,
+        trip: t,
+        originalIndex: -1,
+        isInjected: true,
+      });
+    }
   }
 
   // 3. Stable sort by timeDate so same-time rows stay grouped
@@ -383,26 +416,67 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
   // Suppress unused variable warning — tick drives re-renders for countdown freshness
   void tick;
 
-  // Track which trip row has the soonest ETA for the selected stop, so we
-  // can visually highlight it. Key = row key, value = eta ms.
-  let soonestRowKey: string | null = null;
+  // Track which trip rows have the soonest ETA for the selected stop, so
+  // we can visually highlight them. When two shuttles have nearly-identical
+  // ETAs at the same stop, both should be marked as "next arrivals" —
+  // otherwise students looking at the un-marked row get misleading data.
+  const soonestRowKeys = new Set<string>();
   let soonestETAMs = Infinity;
+
+  // Derive the route's loop duration (minutes) from the last stop's offset
+  // so we can project the next loop's ETA when a shuttle has already
+  // passed the selected stop.
+  const routeLoopMinutes = (() => {
+    if (!route?.STOPS || route.STOPS.length === 0) return 20;
+    const lastStop = route.STOPS[route.STOPS.length - 1];
+    const lastStopData = route[lastStop] as ShuttleStopData | undefined;
+    return lastStopData?.OFFSET ?? 20;
+  })();
 
   if (selectedStop && selectedDay === now.getDay()) {
     const nowMs = devNowMs();
 
-    // Scan all active trip rows for the earliest future ETA at selectedStop
+    // First pass: find the absolute earliest ETA at selectedStop.
+    // If a trip's ETA for this stop is stale or the shuttle has already
+    // passed it, project the next-loop ETA by adding the route's loop
+    // duration so the student still sees a useful countdown.
+    const rowETAs: Array<{ rowKey: string; etaMs: number; etaISO: string }> = [];
     for (const row of timelineRows) {
       if (!row.trip?.vehicle_id || !row.trip.stop_etas[selectedStop]) continue;
-      const etaISO = row.trip.stop_etas[selectedStop].eta;
-      if (!etaISO) continue;
-      const etaMs = new Date(etaISO).getTime();
-      if (etaMs > nowMs && etaMs < soonestETAMs) {
-        soonestETAMs = etaMs;
-        soonestRowKey = row.key;
-        const mins = Math.round((etaMs - nowMs) / 60_000);
-        nextETAMinutes = mins;
-        nextETATime = new Date(etaISO).toLocaleTimeString(undefined, TIME_FORMAT);
+      const stopInfo = row.trip.stop_etas[selectedStop];
+      const etaISO = stopInfo.eta;
+      let etaMs: number | null = null;
+      let etaForDisplay: string | null | undefined = etaISO;
+
+      const rawEtaMs = etaISO ? new Date(etaISO).getTime() : null;
+      const baseMs = stopInfo.last_arrival ? new Date(stopInfo.last_arrival).getTime() : rawEtaMs;
+
+      if (stopInfo.passed || stopInfo.last_arrival || (rawEtaMs !== null && rawEtaMs <= nowMs)) {
+        // Stop is either passed or the ETA is stale — project to next loop
+        if (baseMs !== null) {
+          etaMs = baseMs + routeLoopMinutes * 60_000;
+          etaForDisplay = new Date(etaMs).toISOString();
+        }
+      } else if (rawEtaMs !== null) {
+        etaMs = rawEtaMs;
+        etaForDisplay = etaISO;
+      }
+
+      if (etaMs !== null && etaMs > nowMs && etaForDisplay) {
+        rowETAs.push({ rowKey: row.key, etaMs, etaISO: etaForDisplay });
+        if (etaMs < soonestETAMs) soonestETAMs = etaMs;
+      }
+    }
+
+    // Second pass: mark all rows within 60s of the earliest as "next"
+    for (const r of rowETAs) {
+      if (r.etaMs - soonestETAMs <= 60_000) {
+        soonestRowKeys.add(r.rowKey);
+        if (r.etaMs === soonestETAMs) {
+          const mins = Math.round((r.etaMs - nowMs) / 60_000);
+          nextETAMinutes = mins;
+          nextETATime = new Date(r.etaISO).toLocaleTimeString(undefined, TIME_FORMAT);
+        }
       }
     }
 
@@ -499,6 +573,14 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
         </div>
       )}
 
+      {/* First-time hint: appears only when no stop has been selected yet,
+          teaching the user that tapping a stop gives them a countdown. */}
+      {isToday && !selectedStop && (
+        <div className="stop-select-hint" role="note">
+          Tap a stop below to see the live countdown for that stop.
+        </div>
+      )}
+
       <div className="timeline-container">
         <div className="timeline-content">
           {visibleItems.map((row) => {
@@ -568,16 +650,16 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
               <div key={rowKey} className="timeline-route-group">
                 {/* First stop - main timeline item */}
                 <div
-                  className={`timeline-item first-stop ${isCurrentLoop ? 'current-loop' : ''} ${isPastTime && !isCurrentLoop ? 'past-time' : ''} ${soonestRowKey === rowKey ? 'soonest-arrival' : ''}`}
+                  className={`timeline-item first-stop ${isCurrentLoop ? 'current-loop' : ''} ${isPastTime && !isCurrentLoop ? 'past-time' : ''} ${soonestRowKeys.has(rowKey) ? 'soonest-arrival' : ''}`}
                   onClick={() => !isPastTime && !isCurrentLoop && toggleExpand(rowKey)}
                   style={!isPastTime && !isCurrentLoop ? { cursor: 'pointer' } : undefined}
                 >
                   <div className="timeline-dot"></div>
                   <div className="timeline-content-item">
                     <div className="timeline-time">
-                      {time}
+                      <span className="timeline-time-text">{time}</span>
                       {loopTrip?.vehicle_id && (
-                        <span className="vehicle-badge">#{loopTrip.vehicle_id.slice(-3)}</span>
+                        <span className="vehicle-badge" aria-label={`Shuttle ${loopTrip.vehicle_id.slice(-3)}`}>#{loopTrip.vehicle_id.slice(-3)}</span>
                       )}
                       {showRelative && <span className="relative-time">in {minutesUntil} min</span>}
                       {isCompletedTrip && <span className="trip-completed-badge">DONE</span>}
@@ -695,6 +777,16 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
                           className={`secondary-timeline-item ${isPastTime && !isCurrentLoop ? 'past-time' : ''} ${hasLiveETA ? 'has-eta' : ''} ${isSelected ? 'selected-stop' : ''}`}
                           onClick={() => handleStopSelect(stop)}
                           style={{ cursor: 'pointer' }}
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Select ${stopData?.NAME || stop} for arrival countdown`}
+                          aria-pressed={isSelected}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              handleStopSelect(stop);
+                            }
+                          }}
                         >
                           <div className="secondary-timeline-dot"></div>
                           <div className="secondary-timeline-content">

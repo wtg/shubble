@@ -188,6 +188,12 @@
   font-weight: 600;
   color: #2c3e50;
   margin-bottom: 4px;
+  /* Flex row so badges (vehicle, NEXT, DONE) line up horizontally
+     and wrap gracefully on very small screens. */
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
 }
 
 .timeline-stop {
@@ -345,7 +351,6 @@
   border: 1px solid rgba(122, 122, 122, 0.2);
   padding: 2px 6px;
   border-radius: 3px;
-  margin-left: 8px;
   vertical-align: middle;
   font-variant-numeric: tabular-nums;
 }
@@ -368,8 +373,30 @@
   border: 1px solid rgba(41, 128, 185, 0.3);
   padding: 1px 5px;
   border-radius: 3px;
-  margin-left: 8px;
   vertical-align: middle;
+}
+
+/* First-time stop-selection hint — teaches the user that stops are tappable */
+.stop-select-hint {
+  font-size: 13px;
+  color: #5d6d7e;
+  background: rgba(93, 109, 126, 0.06);
+  border: 1px dashed rgba(93, 109, 126, 0.3);
+  padding: 10px 14px;
+  border-radius: 6px;
+  margin: 0 0 16px 0;
+  text-align: center;
+}
+
+/* Hover affordance on secondary stops — hints at tappability */
+.secondary-timeline-item:not(.selected-stop):hover {
+  background: rgba(41, 128, 185, 0.04);
+  border-color: rgba(41, 128, 185, 0.2);
+}
+
+.secondary-timeline-item:focus-visible {
+  outline: 2px solid #2980b9;
+  outline-offset: 2px;
 }
 
 /* Trip completed badge — shown when a shuttle has finished its loop */
@@ -382,7 +409,6 @@
   border: 1px solid rgba(127, 140, 141, 0.3);
   padding: 1px 5px;
   border-radius: 3px;
-  margin-left: 8px;
   vertical-align: middle;
 }
 
@@ -404,9 +430,12 @@
 .next-shuttle-summary {
   font-size: 15px;
   color: #2c3e50;
-  padding: 10px 0;
+  padding: 10px 14px;
   margin-bottom: 4px;
-  border-bottom: 1px solid #e1e8ed;
+  border: 1px solid #d4e1f0;
+  border-left: 3px solid #578FCA;
+  border-radius: 6px;
+  background: rgba(87, 143, 202, 0.06);
 }
 
 .summary-stop {
@@ -633,7 +662,26 @@
   }
 
   .timeline-content {
-    padding-left: 37px;
+    padding-left: 32px;
+    padding-right: 4px;
+  }
+
+  /* Tighter schedule container on mobile to maximize content width */
+  .schedule-container {
+    padding: 16px 12px;
+  }
+
+  .timeline-item {
+    gap: 10px;
+  }
+
+  .timeline-content-item {
+    padding: 12px 14px;
+  }
+
+  /* Reduce font size of vehicle/NEXT/DONE badges so they stay on one line */
+  .timeline-time {
+    font-size: 17px;
   }
 
   .timeline-content::before {
