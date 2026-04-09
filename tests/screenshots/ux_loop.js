@@ -312,8 +312,9 @@ async function clickStopByName(page, stopName) {
 
         // 5. Summary minutes value should match a real ETA, or "arriving now" for 0 min
         const minutesMatch = state.summary.match(/in\s+(\d+)\s*min/);
+        const hoursMatch = state.summary.match(/in\s+(\d+)h\s+(\d+)m/);
         const arrivingNow = state.summary.includes('arriving now');
-        if (!minutesMatch && !arrivingNow) {
+        if (!minutesMatch && !hoursMatch && !arrivingNow) {
           findings.push(`[${vp.name}/${route}] ${stopName}: Summary format unexpected: "${state.summary}"`);
         }
 

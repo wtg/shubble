@@ -34,6 +34,8 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
   const [schedule, setSchedule] = useState<AggregatedDaySchedule>(aggregatedSchedule[selectedDay]);
   const [showFullSchedule, setShowFullSchedule] = useState(false);
   const [expandedLoops, setExpandedLoops] = useState<Set<string>>(new Set());
+  // Selected stop is persisted per-route so switching routes doesn't
+  // destroy the user's previously-picked stop on the other route.
   const [selectedStop, setSelectedStop] = useState<string | null>(
     () => localStorage.getItem('shubble-stop')
   );
@@ -68,37 +70,48 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
     }
   }, [closestStop, selectedStop]);
 
-  // When the user switches routes, the previously-selected stop may not
-  // exist on the new route (e.g. City Station → NORTH). Without a reset
-  // the countdown summary silently disappears. Switch to the closest stop
-  // on the new route so the student always has a live countdown.
+  // When the user switches routes, restore their previous stop preference
+  // on the new route (if any), or fall back to geolocation/first non-SU.
+  // This avoids losing the user's carefully-picked stop when they briefly
+  // peek at another route.
   useEffect(() => {
     const currentRoute = routeData[safeSelectedRoute as keyof typeof routeData];
     if (!currentRoute?.STOPS) return;
-    if (selectedStop && !currentRoute.STOPS.includes(selectedStop)) {
-      // Prefer the geo-based closest stop when available. Otherwise pick
-      // the second stop (index 1) rather than index 0 — the first stop is
-      // Student Union, which shuttles pass through continuously, so its
-      // ETA is almost always "passed" and produces no countdown.
-      let fallback: string;
-      if (closestStop?.id && currentRoute.STOPS.includes(closestStop.id)) {
-        fallback = closestStop.id;
-      } else if (currentRoute.STOPS.length > 1) {
-        fallback = currentRoute.STOPS[1];
-      } else {
-        fallback = currentRoute.STOPS[0];
-      }
-      setSelectedStop(fallback);
-      localStorage.setItem('shubble-stop', fallback);
+    if (selectedStop && currentRoute.STOPS.includes(selectedStop)) return; // already valid
+
+    // 1. Restore per-route memory
+    const remembered = localStorage.getItem(`shubble-stop:${safeSelectedRoute}`);
+    if (remembered && currentRoute.STOPS.includes(remembered)) {
+      setSelectedStop(remembered);
+      localStorage.setItem('shubble-stop', remembered);
+      return;
     }
+
+    // 2. Geo-based closest on this route
+    if (closestStop?.id && currentRoute.STOPS.includes(closestStop.id)) {
+      setSelectedStop(closestStop.id);
+      localStorage.setItem('shubble-stop', closestStop.id);
+      localStorage.setItem(`shubble-stop:${safeSelectedRoute}`, closestStop.id);
+      return;
+    }
+
+    // 3. Fall back to the second stop — the first is Student Union, which
+    //    shuttles pass through continuously so its ETA is rarely useful.
+    const fallback = currentRoute.STOPS.length > 1 ? currentRoute.STOPS[1] : currentRoute.STOPS[0];
+    setSelectedStop(fallback);
+    localStorage.setItem('shubble-stop', fallback);
+    localStorage.setItem(`shubble-stop:${safeSelectedRoute}`, fallback);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [safeSelectedRoute]);
 
-  // Persist stop selection
+  // Persist stop selection. Store per-route so switching routes
+  // doesn't destroy the user's other-route preferences.
   const handleStopSelect = useCallback((stopId: string) => {
     setSelectedStop(stopId);
     localStorage.setItem('shubble-stop', stopId);
-  }, []);
+    // Per-route memory: which stop did the user pick on this route?
+    localStorage.setItem(`shubble-stop:${safeSelectedRoute}`, stopId);
+  }, [safeSelectedRoute]);
 
   // Re-render countdown every 30 seconds
   useEffect(() => {
@@ -500,25 +513,21 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
       }
     }
 
-    // Fallback: static scheduled time
-    if (nextETAMinutes === null && staticETADates[selectedStop]) {
-      const scheduledDate = staticETADates[selectedStop];
-      const mins = Math.round((scheduledDate.getTime() - nowMs) / 60_000);
-      if (mins > 0) {
-        nextETAMinutes = mins;
-        nextETATime = staticETAs[selectedStop];
-      } else {
-        const nextLoopIdx = currentLoopIndex + 1;
-        if (nextLoopIdx < times.length) {
-          const nextDates = computeStaticETADates(nextLoopIdx);
-          const nextETAsFormatted = computeStaticETAs(nextLoopIdx);
-          if (nextDates[selectedStop]) {
-            const nextMins = Math.round((nextDates[selectedStop].getTime() - nowMs) / 60_000);
-            if (nextMins > 0) {
-              nextETAMinutes = nextMins;
-              nextETATime = nextETAsFormatted[selectedStop];
-            }
-          }
+    // Fallback: static scheduled time.
+    // Scan all schedule times and find the earliest upcoming ETA for the
+    // selected stop. This handles the pre-service-hours case (e.g., 3 AM
+    // before 7 AM departures) where currentLoopIndex is -1.
+    if (nextETAMinutes === null) {
+      for (let i = 0; i < times.length; i++) {
+        const dates = computeStaticETADates(i);
+        const formatted = computeStaticETAs(i);
+        const stopDate = dates[selectedStop];
+        if (!stopDate) continue;
+        const mins = Math.round((stopDate.getTime() - nowMs) / 60_000);
+        if (mins > 0) {
+          nextETAMinutes = mins;
+          nextETATime = formatted[selectedStop];
+          break;
         }
       }
     }
@@ -582,7 +591,11 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
             <>
               {soonestIsProjected ? 'Next loop at ' : 'Next at '}
               <span className="summary-stop">{selectedStopName}</span>
-              {' '}in <strong>{nextETAMinutes} min</strong>
+              {' '}in <strong>{
+                nextETAMinutes >= 60
+                  ? `${Math.floor(nextETAMinutes / 60)}h ${nextETAMinutes % 60}m`
+                  : `${nextETAMinutes} min`
+              }</strong>
               {nextETATime && <span className="summary-time"> ({nextETATime})</span>}
               {soonestIsProjected && (
                 <div className="summary-note">
