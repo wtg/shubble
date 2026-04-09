@@ -102,11 +102,18 @@
 .timeline-container {
   position: relative;
   padding: 20px 0;
-  max-height: calc(70vh - 200px);
+  /* Give the schedule more vertical room on all viewports so the user
+     can see multiple shuttle rows without needing to scroll a tiny
+     300-500px sub-container. Cap it at 85vh so there's still room for
+     other UI (map, nav, feedback form). */
+  max-height: calc(85vh - 180px);
   overflow-y: auto;
   scroll-behavior: auto;
-  min-height: 200px;
+  min-height: 300px;
 }
+
+/* Desktop override moved to the bottom of the file so it wins over
+   the base .secondary-timeline-item rules declared later in source. */
 
 .timeline-container::-webkit-scrollbar {
   width: 6px;
@@ -374,18 +381,6 @@
   padding: 1px 5px;
   border-radius: 3px;
   vertical-align: middle;
-}
-
-/* First-time stop-selection hint — teaches the user that stops are tappable */
-.stop-select-hint {
-  font-size: 13px;
-  color: #5d6d7e;
-  background: rgba(93, 109, 126, 0.06);
-  border: 1px dashed rgba(93, 109, 126, 0.3);
-  padding: 10px 14px;
-  border-radius: 6px;
-  margin: 0 0 16px 0;
-  text-align: center;
 }
 
 /* Hover affordance on secondary stops — hints at tappability */
@@ -730,5 +725,23 @@
 
   .secondary-timeline-dot {
     left: -24px;
+  }
+}
+
+/* Desktop: let the schedule container grow and compact secondary stops
+   so two full shuttle rows can fit without a big sub-scroll. Placed at
+   the END of the file so the overrides win the cascade against the
+   base .secondary-timeline-item rules declared later in source. */
+@media (min-width: 1025px) {
+  .timeline-container {
+    max-height: calc(100vh - 220px);
+  }
+
+  .secondary-timeline-item {
+    margin-bottom: 6px;
+  }
+
+  .secondary-timeline-content {
+    padding: 6px 12px;
   }
 }

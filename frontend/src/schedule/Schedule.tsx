@@ -607,13 +607,6 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
         </div>
       )}
 
-      {/* First-time hint: appears only when no stop has been selected yet,
-          teaching the user that tapping a stop gives them a countdown. */}
-      {isToday && !selectedStop && (
-        <div className="stop-select-hint" role="note">
-          Tap a stop below to see the live countdown for that stop.
-        </div>
-      )}
 
       <div className="timeline-container">
         <div className="timeline-content">
