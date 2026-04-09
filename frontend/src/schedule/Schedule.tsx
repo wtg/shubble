@@ -880,6 +880,28 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
                                     // have no real schedule to be late/early against,
                                     // only a projection from their own actual departure.
                                     if (loopTrip && !loopTrip.scheduled) return null;
+                                    // Suppress deviation when the shuttle has clearly
+                                    // looped past its originally-matched departure —
+                                    // the backend keeps the same trip object across
+                                    // loops, so the "+NN min late" labels become
+                                    // cumulative and misleading. Detection: if the
+                                    // current ETA to any NEAR stop exceeds loop
+                                    // duration (~15 min) from the trip's scheduled
+                                    // departure, the shuttle is on a later loop.
+                                    if (loopTrip?.departure_time) {
+                                      const schedMs = new Date(loopTrip.departure_time).getTime();
+                                      const tripEtaISOCheck = loopTrip.stop_etas[stop]?.eta;
+                                      if (tripEtaISOCheck) {
+                                        const etaMs = new Date(tripEtaISOCheck).getTime();
+                                        // ETA is > routeLoopMinutes after scheduled
+                                        // departure + this stop's offset → next loop
+                                        const stopOffsetMin = loopStaticDates[stop]
+                                          ? (loopStaticDates[stop].getTime() - schedMs) / 60_000
+                                          : 0;
+                                        const expectedEtaMs = schedMs + (stopOffsetMin + routeLoopMinutes) * 60_000;
+                                        if (etaMs >= expectedEtaMs) return null;
+                                      }
+                                    }
                                     // For scheduled trip rows, use the trip's own ETA
                                     // so deviation matches the displayed time.
                                     const tripEtaISO = loopTrip?.stop_etas[stop]?.eta ?? null;
