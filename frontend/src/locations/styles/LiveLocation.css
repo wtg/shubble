@@ -28,9 +28,15 @@
         gap: 40px;
     }
 
+    /* Let the schedule panel grow to fill the remaining horizontal
+       space next to the fixed-width map, so two shuttle rows can
+       render side-by-side on desktop instead of being cramped into
+       a 350px column. */
     .schedule-table {
         width: auto;
-        max-width: none;
+        max-width: 600px;
+        flex: 1 1 auto;
+        min-width: 400px;
     }
 }
 
