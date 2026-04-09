@@ -333,6 +333,59 @@
   border: 1px solid rgba(149, 165, 166, 0.3);
 }
 
+/* Vehicle badge — identifies which physical shuttle a trip belongs to.
+   Shown on rows that have an assigned vehicle; lets two concurrent
+   shuttles on the same scheduled time be visually distinguished. */
+.vehicle-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  color: #7a7a7a;
+  background: rgba(122, 122, 122, 0.08);
+  border: 1px solid rgba(122, 122, 122, 0.2);
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-left: 8px;
+  vertical-align: middle;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Soonest arrival highlight — marks the trip row that arrives soonest
+   at the user's selected stop, so with multiple shuttles they know
+   which row to look at. */
+.timeline-item.soonest-arrival {
+  border-left: 3px solid #2980b9;
+  padding-left: 9px; /* compensate for border */
+}
+
+.timeline-item.soonest-arrival .timeline-time::after {
+  content: 'NEXT';
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  color: #2980b9;
+  background: rgba(41, 128, 185, 0.1);
+  border: 1px solid rgba(41, 128, 185, 0.3);
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+/* Trip completed badge — shown when a shuttle has finished its loop */
+.trip-completed-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  color: #7f8c8d;
+  background: rgba(127, 140, 141, 0.1);
+  border: 1px solid rgba(127, 140, 141, 0.3);
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
 /* Missing Data Messages */
 .no-service-message {
   color: #95a5a6;

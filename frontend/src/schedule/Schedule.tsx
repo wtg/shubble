@@ -6,6 +6,7 @@ import config from '../utils/config';
 import type { AggregatedDaySchedule, AggregatedScheduleType, Route } from '../types/schedule';
 import type { ShuttleRouteData, ShuttleStopData } from '../types/route';
 import { useStopETAs, type StopETAs, type StopETADetails } from '../hooks/useStopETAs';
+import { useTrips, type Trip } from '../hooks/useTrips';
 import { useClosestStop } from '../hooks/useClosestStop';
 
 const aggregatedSchedule: AggregatedScheduleType = rawAggregatedSchedule as unknown as AggregatedScheduleType;
@@ -32,7 +33,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
   const [routeNames, setRouteNames] = useState(Object.keys(aggregatedSchedule[selectedDay]));
   const [schedule, setSchedule] = useState<AggregatedDaySchedule>(aggregatedSchedule[selectedDay]);
   const [showFullSchedule, setShowFullSchedule] = useState(false);
-  const [expandedLoops, setExpandedLoops] = useState<Set<number>>(new Set());
+  const [expandedLoops, setExpandedLoops] = useState<Set<string>>(new Set());
   const [selectedStop, setSelectedStop] = useState<string | null>(
     () => localStorage.getItem('shubble-stop')
   );
@@ -46,7 +47,15 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
   const liveETAs = externalStopETAs ?? internalStopETAs;
   const liveETADetails = externalDetails ?? internalDetails;
 
+  // Per-trip ETAs from the new /api/trips endpoint. Fetched regardless of
+  // whether stopETAs are passed externally — trips are always needed to
+  // render the per-vehicle row model.
+  const trips = useTrips(!config.staticETAs);
+
   const safeSelectedRoute = selectedRoute || routeNames[0];
+
+  // Trips for the selected route only (row model built below, after `times`).
+  const routeTrips: Trip[] = trips.filter(t => t.route === safeSelectedRoute);
 
   // Auto-detect closest stop via geolocation
   const { closestStop } = useClosestStop(safeSelectedRoute);
@@ -89,7 +98,8 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
   };
 
   const timeToDate = (timeStr: string): Date => {
-    const [time, modifier] = timeStr.trim().split(" ");
+    const trimmed = timeStr.trim();
+    const [time, modifier] = trimmed.split(" ");
     let [hours, minutes] = time.split(":").map(Number);
     if (modifier.toUpperCase() === "PM" && hours !== 12) {
       hours += 12;
@@ -100,6 +110,13 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
     dateObj.setHours(hours);
     dateObj.setMinutes(minutes);
     dateObj.setSeconds(0);
+    dateObj.setMilliseconds(0);
+    // Schedule times that wrap past midnight (e.g. "12:00 AM") represent
+    // the END of the current service day — i.e. tomorrow at 00:00 — so
+    // roll them forward. Matches backend handling in trips.py.
+    if (trimmed === "12:00 AM") {
+      dateObj.setDate(dateObj.getDate() + 1);
+    }
     return dateObj;
   };
 
@@ -144,10 +161,10 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRoute, selectedDay, schedule]);
 
-  const toggleExpand = (idx: number) => {
+  const toggleExpand = (key: string) => {
     setExpandedLoops(prev => {
       const next = new Set(prev);
-      next.has(idx) ? next.delete(idx) : next.add(idx);
+      next.has(key) ? next.delete(key) : next.add(key);
       return next;
     });
   };
@@ -157,29 +174,123 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
   const times = schedule[safeSelectedRoute as Route] || [];
   const route = routeData[safeSelectedRoute as keyof typeof routeData];
   const currentLoopIndex = findCurrentLoopIndex(times);
+  const isToday = selectedDay === now.getDay();
 
-  // Compute static ETAs from route offsets for a given loop
-  const computeStaticETAs = (loopIndex: number): StopETAs => {
-    if (loopIndex < 0 || !route?.STOPS) return {};
+  // --- Timeline row model: one row per physical departure ---
+  // When two shuttles concurrently run the same scheduled time, each gets
+  // its own row. Injected (early / non-schedule) trips appear as their own
+  // rows at their actual departure time. Scheduled slots with no trip
+  // match render as a single "trip: null" row (static/scheduled display).
+  type TimelineRow = {
+    key: string;           // React key; unique per row
+    time: string;          // "9:00 AM" display label
+    timeDate: Date;        // for sorting + past-time comparison
+    trip: Trip | null;     // null when no vehicle is assigned yet
+    originalIndex: number; // index into `times`; -1 for injected
+    isInjected: boolean;
+  };
 
-    const departureTime = timeToDate(times[loopIndex]);
+  const formatDepartureDisplay = (d: Date): string =>
+    d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+
+  // Group trips by their departure-time display string for O(1) lookup
+  const tripsByTimeKey: Record<string, Trip[]> = {};
+  for (const t of routeTrips) {
+    const key = formatDepartureDisplay(new Date(t.departure_time));
+    (tripsByTimeKey[key] ||= []).push(t);
+  }
+
+  const timelineRows: TimelineRow[] = [];
+  const consumedTripIds = new Set<string>();
+
+  // 1. Emit rows for each scheduled time. Hide past scheduled-only rows
+  //    (older than 5 minutes) — they're clutter when an active shuttle
+  //    is already running on the route. Scheduled rows with matching
+  //    trip data are always shown regardless of age.
+  const pastThreshold = new Date(now.getTime() - 5 * 60_000);
+  times.forEach((time, i) => {
+    const timeDate = timeToDate(time);
+    const matching = tripsByTimeKey[time] || [];
+    if (matching.length === 0) {
+      if (isToday && timeDate < pastThreshold) return;
+      timelineRows.push({
+        key: `${time}|sched:${i}`,
+        time,
+        timeDate,
+        trip: null,
+        originalIndex: i,
+        isInjected: false,
+      });
+    } else {
+      for (const t of matching) {
+        consumedTripIds.add(t.trip_id);
+        timelineRows.push({
+          key: `${time}|${t.vehicle_id ?? t.trip_id}`,
+          time,
+          timeDate,
+          trip: t,
+          originalIndex: i,
+          isInjected: false,
+        });
+      }
+    }
+  });
+
+  // 2. Append injected trips (non-schedule times) at their own slots
+  for (const t of routeTrips) {
+    if (consumedTripIds.has(t.trip_id)) continue;
+    const d = new Date(t.departure_time);
+    const time = formatDepartureDisplay(d);
+    timelineRows.push({
+      key: `${time}|${t.vehicle_id ?? t.trip_id}|injected`,
+      time,
+      timeDate: d,
+      trip: t,
+      originalIndex: -1,
+      isInjected: true,
+    });
+  }
+
+  // 3. Stable sort by timeDate so same-time rows stay grouped
+  timelineRows.sort((a, b) => a.timeDate.getTime() - b.timeDate.getTime());
+
+  // Rows considered "current" — either an active trip, or (fallback) the
+  // most-recent scheduled row when no trips are present at all.
+  const currentRowKeys = new Set<string>();
+  if (isToday) {
+    let sawActive = false;
+    for (const row of timelineRows) {
+      if (row.trip?.status === 'active' || row.trip?.status === 'completed') {
+        currentRowKeys.add(row.key);
+        if (row.trip?.status === 'active') sawActive = true;
+      }
+    }
+    if (!sawActive && currentLoopIndex >= 0) {
+      // Legacy fallback: no trip data yet → highlight the most recent scheduled row
+      const legacyRow = timelineRows.find(
+        r => r.trip === null && r.originalIndex === currentLoopIndex
+      );
+      if (legacyRow) currentRowKeys.add(legacyRow.key);
+    }
+  }
+
+  // Compute static ETAs from route offsets given an absolute departure Date.
+  // Used directly for injected trips (which have no schedule index) and
+  // indirectly via computeStaticETAs(loopIndex) for scheduled rows.
+  const computeStaticETAsForDate = (departureTime: Date): StopETAs => {
+    if (!route?.STOPS) return {};
     const stopETAs: StopETAs = {};
-
     for (const stopKey of route.STOPS) {
       const stopData = route[stopKey] as ShuttleStopData;
       if (!stopData) continue;
-
       const etaDate = new Date(departureTime.getTime() + stopData.OFFSET * 60_000);
       stopETAs[stopKey] = etaDate.toLocaleTimeString(undefined, TIME_FORMAT);
     }
-
     return stopETAs;
   };
 
-  // Compute static ETA Dates for deviation comparison
-  const computeStaticETADates = (loopIndex: number): Record<string, Date> => {
-    if (loopIndex < 0 || !route?.STOPS) return {};
-    const departureTime = timeToDate(times[loopIndex]);
+  const computeStaticETADatesForDate = (departureTime: Date): Record<string, Date> => {
+    if (!route?.STOPS) return {};
     const dates: Record<string, Date> = {};
     for (const stopKey of route.STOPS) {
       const stopData = route[stopKey] as ShuttleStopData;
@@ -187,6 +298,18 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
       dates[stopKey] = new Date(departureTime.getTime() + stopData.OFFSET * 60_000);
     }
     return dates;
+  };
+
+  // Compute static ETAs from route offsets for a scheduled loop index.
+  const computeStaticETAs = (loopIndex: number): StopETAs => {
+    if (loopIndex < 0) return {};
+    return computeStaticETAsForDate(timeToDate(times[loopIndex]));
+  };
+
+  // Compute static ETA Dates for deviation comparison
+  const computeStaticETADates = (loopIndex: number): Record<string, Date> => {
+    if (loopIndex < 0) return {};
+    return computeStaticETADatesForDate(timeToDate(times[loopIndex]));
   };
 
   // Determine contextual message when no ETA data is available (D-08)
@@ -213,18 +336,26 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
     return 'No shuttle in service';
   };
 
-  // Compute early/late deviation for live ETAs (D-05, D-06, D-07, D-11, D-12)
+  // Compute early/late deviation for live ETAs (D-05, D-06, D-07, D-11, D-12).
+  // Takes an explicit liveISO so trip-based rows compare against their own
+  // per-vehicle ETA instead of the global per-stop aggregate. Falls back to
+  // the legacy aggregate for rows without trip data.
   const computeDeviation = (
     stopKey: string,
-    loopStaticDatesForStop: Record<string, Date>
+    loopStaticDatesForStop: Record<string, Date>,
+    liveISO?: string | null,
   ): { text: string; className: string } | null => {
-    const detail = liveETADetails[stopKey];
-    if (!detail?.etaISO) return null;
+    let effectiveISO: string | null | undefined = liveISO;
+    if (!effectiveISO) {
+      const detail = liveETADetails[stopKey];
+      if (!detail?.etaISO) return null;
+      effectiveISO = detail.etaISO;
+    }
 
     const scheduledDate = loopStaticDatesForStop[stopKey];
     if (!scheduledDate) return null;
 
-    const liveDate = new Date(detail.etaISO);
+    const liveDate = new Date(effectiveISO);
     const diffMinutes = Math.round((liveDate.getTime() - scheduledDate.getTime()) / 60_000);
 
     // D-11: 2-minute dead zone (inclusive)
@@ -252,32 +383,56 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
   // Suppress unused variable warning — tick drives re-renders for countdown freshness
   void tick;
 
+  // Track which trip row has the soonest ETA for the selected stop, so we
+  // can visually highlight it. Key = row key, value = eta ms.
+  let soonestRowKey: string | null = null;
+  let soonestETAMs = Infinity;
+
   if (selectedStop && selectedDay === now.getDay()) {
-    // Try live ETA first
-    const liveDetail = liveETADetails[selectedStop];
-    if (liveDetail?.etaISO) {
-      const etaDate = new Date(liveDetail.etaISO);
-      const mins = Math.round((etaDate.getTime() - devNowMs()) / 60_000);
-      if (mins > 0) {
+    const nowMs = devNowMs();
+
+    // Scan all active trip rows for the earliest future ETA at selectedStop
+    for (const row of timelineRows) {
+      if (!row.trip?.vehicle_id || !row.trip.stop_etas[selectedStop]) continue;
+      const etaISO = row.trip.stop_etas[selectedStop].eta;
+      if (!etaISO) continue;
+      const etaMs = new Date(etaISO).getTime();
+      if (etaMs > nowMs && etaMs < soonestETAMs) {
+        soonestETAMs = etaMs;
+        soonestRowKey = row.key;
+        const mins = Math.round((etaMs - nowMs) / 60_000);
         nextETAMinutes = mins;
-        nextETATime = liveDetail.eta;
+        nextETATime = new Date(etaISO).toLocaleTimeString(undefined, TIME_FORMAT);
       }
     }
-    // Fallback to static scheduled time
+
+    // Fallback: try legacy per-stop aggregate
+    if (nextETAMinutes === null) {
+      const liveDetail = liveETADetails[selectedStop];
+      if (liveDetail?.etaISO) {
+        const etaDate = new Date(liveDetail.etaISO);
+        const mins = Math.round((etaDate.getTime() - nowMs) / 60_000);
+        if (mins > 0) {
+          nextETAMinutes = mins;
+          nextETATime = liveDetail.eta;
+        }
+      }
+    }
+
+    // Fallback: static scheduled time
     if (nextETAMinutes === null && staticETADates[selectedStop]) {
       const scheduledDate = staticETADates[selectedStop];
-      const mins = Math.round((scheduledDate.getTime() - devNowMs()) / 60_000);
+      const mins = Math.round((scheduledDate.getTime() - nowMs) / 60_000);
       if (mins > 0) {
         nextETAMinutes = mins;
         nextETATime = staticETAs[selectedStop];
       } else {
-        // Current loop's time has passed — check next loop
         const nextLoopIdx = currentLoopIndex + 1;
         if (nextLoopIdx < times.length) {
           const nextDates = computeStaticETADates(nextLoopIdx);
           const nextETAsFormatted = computeStaticETAs(nextLoopIdx);
           if (nextDates[selectedStop]) {
-            const nextMins = Math.round((nextDates[selectedStop].getTime() - devNowMs()) / 60_000);
+            const nextMins = Math.round((nextDates[selectedStop].getTime() - nowMs) / 60_000);
             if (nextMins > 0) {
               nextETAMinutes = nextMins;
               nextETATime = nextETAsFormatted[selectedStop];
@@ -289,14 +444,20 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
   }
 
   // --- Truncated view ---
-  const isToday = selectedDay === now.getDay();
-  const shouldTruncate = isToday && !showFullSchedule && times.length > 7;
+  const shouldTruncate = isToday && !showFullSchedule && timelineRows.length > 7;
 
-  const visibleItems = shouldTruncate
-    ? times
-        .map((t, i) => ({ time: t, originalIndex: i }))
-        .slice(Math.max(0, currentLoopIndex - 1), currentLoopIndex + 6)
-    : times.map((t, i) => ({ time: t, originalIndex: i }));
+  // Find the index of the first current-row (earliest active shuttle) as
+  // the anchor for the truncation window. If there's no active row, fall
+  // back to the row whose originalIndex matches currentLoopIndex.
+  let anchorIdx = timelineRows.findIndex(r => currentRowKeys.has(r.key));
+  if (anchorIdx === -1 && currentLoopIndex >= 0) {
+    anchorIdx = timelineRows.findIndex(r => r.originalIndex === currentLoopIndex);
+  }
+  if (anchorIdx === -1) anchorIdx = 0;
+
+  const visibleItems: TimelineRow[] = shouldTruncate
+    ? timelineRows.slice(Math.max(0, anchorIdx - 1), anchorIdx + 6)
+    : timelineRows;
 
   return (
     <div className="schedule-container">
@@ -340,11 +501,11 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
 
       <div className="timeline-container">
         <div className="timeline-content">
-          {visibleItems.map(({ time, originalIndex }) => {
-            const timeDate = timeToDate(time);
+          {visibleItems.map((row) => {
+            const { key: rowKey, time, timeDate, trip, originalIndex } = row;
             const isPastTime = isToday && timeDate < now;
-            const isCurrentLoop = originalIndex === currentLoopIndex;
-            const isExpanded = expandedLoops.has(originalIndex);
+            const isCurrentLoop = currentRowKeys.has(rowKey);
+            const isExpanded = expandedLoops.has(rowKey);
             const showSecondary = isCurrentLoop || isExpanded;
 
             // Get first stop info
@@ -355,25 +516,85 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
             const minutesUntil = Math.round((timeDate.getTime() - now.getTime()) / 60_000);
             const showRelative = isToday && !isPastTime && !isCurrentLoop && minutesUntil > 0 && minutesUntil <= 30;
 
-            // ETAs for expanded (non-current) loops use static schedule
-            const loopETAs = isCurrentLoop ? activeETAs : computeStaticETAs(originalIndex);
-            const loopStaticETAs = computeStaticETAs(originalIndex);
-            const loopStaticDates = isCurrentLoop ? staticETADates : computeStaticETADates(originalIndex);
+            // This row's trip (null for scheduled-only rows with no vehicle)
+            const loopTrip: Trip | null = trip;
+            // Static ETAs for this row — use loopIndex when it's a scheduled
+            // row, else compute from the injected trip's actual departure time.
+            const staticForRow: StopETAs = originalIndex >= 0
+              ? computeStaticETAs(originalIndex)
+              : computeStaticETAsForDate(timeDate);
+            const staticDatesForRow: Record<string, Date> = originalIndex >= 0
+              ? computeStaticETADates(originalIndex)
+              : computeStaticETADatesForDate(timeDate);
+            // Legacy fallback ETAs (global per-stop aggregate, used when no trip)
+            const loopETAs: StopETAs = isCurrentLoop ? activeETAs : staticForRow;
+            const loopStaticETAs: StopETAs = staticForRow;
+            const loopStaticDates: Record<string, Date> = staticDatesForRow;
+
+            // Helper: get trip-based ETA info for a stop. Only returns data
+            // for trips with an assigned vehicle — scheduled-only trips
+            // (no vehicle_id) have static stop_etas that shouldn't be
+            // displayed as LIVE.
+            const isCompletedTrip = loopTrip?.status === 'completed';
+
+            const getTripStopInfo = (stop: string) => {
+              if (!loopTrip || !loopTrip.vehicle_id || !loopTrip.stop_etas[stop]) return null;
+              const info = loopTrip.stop_etas[stop];
+              const nowMs = devNowMs();
+              let etaTime: string | undefined;
+              // Completed trips: suppress all future ETAs — the loop is done.
+              if (isCompletedTrip) {
+                return { etaTime: undefined, lastArrival: info.last_arrival ? new Date(info.last_arrival).toLocaleTimeString(undefined, TIME_FORMAT) : undefined, passed: true };
+              }
+              if (info.eta) {
+                const etaDate = new Date(info.eta);
+                // Grace window: keep showing the ETA for up to 120s after it
+                // expires so stops don't flip to "Passed" just because the
+                // backend hasn't re-computed yet. If the shuttle's been stuck
+                // or hasn't triggered detection, the stale ETA is still more
+                // useful than an inferred "Passed".
+                if (etaDate.getTime() > nowMs - 120_000) {
+                  etaTime = etaDate.toLocaleTimeString(undefined, TIME_FORMAT);
+                }
+              }
+              let lastArrival: string | undefined;
+              if (info.last_arrival) {
+                lastArrival = new Date(info.last_arrival).toLocaleTimeString(undefined, TIME_FORMAT);
+              }
+              return { etaTime, lastArrival, passed: info.passed };
+            };
 
             return (
-              <div key={originalIndex} className="timeline-route-group">
+              <div key={rowKey} className="timeline-route-group">
                 {/* First stop - main timeline item */}
                 <div
-                  className={`timeline-item first-stop ${isCurrentLoop ? 'current-loop' : ''} ${isPastTime && !isCurrentLoop ? 'past-time' : ''}`}
-                  onClick={() => !isPastTime && !isCurrentLoop && toggleExpand(originalIndex)}
+                  className={`timeline-item first-stop ${isCurrentLoop ? 'current-loop' : ''} ${isPastTime && !isCurrentLoop ? 'past-time' : ''} ${soonestRowKey === rowKey ? 'soonest-arrival' : ''}`}
+                  onClick={() => !isPastTime && !isCurrentLoop && toggleExpand(rowKey)}
                   style={!isPastTime && !isCurrentLoop ? { cursor: 'pointer' } : undefined}
                 >
                   <div className="timeline-dot"></div>
                   <div className="timeline-content-item">
                     <div className="timeline-time">
                       {time}
+                      {loopTrip?.vehicle_id && (
+                        <span className="vehicle-badge">#{loopTrip.vehicle_id.slice(-3)}</span>
+                      )}
                       {showRelative && <span className="relative-time">in {minutesUntil} min</span>}
+                      {isCompletedTrip && <span className="trip-completed-badge">DONE</span>}
                       {(() => {
+                        if (isCompletedTrip) return null;
+                        // Prefer trip-based first-stop ETA if loop has a trip
+                        if (loopTrip && firstStop) {
+                          const ti = getTripStopInfo(firstStop);
+                          if (ti?.etaTime) {
+                            return (
+                              <>
+                                <span className="live-eta"> - ETA: {ti.etaTime}</span>
+                                <span className="source-badge source-live">LIVE</span>
+                              </>
+                            );
+                          }
+                        }
                         const fRouteKey = `${firstStop}:${safeSelectedRoute}`;
                         const fEta = activeETAs[fRouteKey] || activeETAs[firstStop];
                         const fDetails = liveETADetails[fRouteKey] || liveETADetails[firstStop];
@@ -395,17 +616,42 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
 
                 {/* Secondary stops */}
                 {showSecondary && route?.STOPS && route.STOPS.length > 1 && (() => {
-                  // Pre-compute stop live info and inferredPassed in a single pass (no per-stop slicing)
+                  // Pre-compute stop live info. Prefer trip-based ETAs if this
+                  // loop has an assigned trip; otherwise fall back to global ETAs.
                   const secondaryStops = route.STOPS.slice(1);
                   const stopInfo = secondaryStops.map(stop => {
+                    if (loopTrip) {
+                      const ti = getTripStopInfo(stop);
+                      if (ti) {
+                        const hasETA = !!ti.etaTime;
+                        const hasLast = !!ti.lastArrival;
+                        return {
+                          stop,
+                          hasETA,
+                          hasLast,
+                          hasAnyLive: hasETA || hasLast,
+                          etaTime: ti.etaTime,
+                          lastArrival: ti.lastArrival,
+                          passed: ti.passed,
+                        } as const;
+                      }
+                    }
+                    // Legacy fallback
                     const rk = `${stop}:${safeSelectedRoute}`;
                     const eta = activeETAs[rk] || activeETAs[stop];
                     const det = liveETADetails[rk] || liveETADetails[stop];
                     const routeMatch = !det?.route || det.route === safeSelectedRoute;
                     const hasETA = !!(isCurrentLoop && eta && routeMatch);
                     const hasLast = !!(isCurrentLoop && det?.lastArrival);
-                    const hasAnyLive = hasETA || hasLast;
-                    return { stop, eta, det, routeMatch, hasETA, hasLast, hasAnyLive, etaTime: eta };
+                    return {
+                      stop,
+                      hasETA,
+                      hasLast,
+                      hasAnyLive: hasETA || hasLast,
+                      etaTime: eta,
+                      lastArrival: det?.lastArrival,
+                      passed: false,
+                    } as const;
                   });
 
                   // Single-pass inferredPassed: scan forward/backward once
@@ -435,10 +681,11 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
                       const stop = si.stop;
                       const stopData = route[stop] as ShuttleStopData;
                       const etaTime = si.etaTime;
-                      const details = si.det;
                       const hasLiveETA = si.hasETA;
-                      const lastArrival = isCurrentLoop ? details?.lastArrival : undefined;
-                      const inferredPassed = isCurrentLoop && !hasLiveETA && !lastArrival
+                      // Show last_arrival for any loop with trip data, or current loop with legacy data
+                      const showLast = !!loopTrip || isCurrentLoop;
+                      const lastArrival = showLast ? si.lastArrival : undefined;
+                      const inferredPassed = showLast && !hasLiveETA && !lastArrival
                         && hasLiveBefore[stopIndex] && (hasLiveAfter[stopIndex] || (allPriorLive[stopIndex] && stopIndex > 0));
                       const isSelected = stop === selectedStop;
 
@@ -457,7 +704,14 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
                                   <span className="live-eta">{etaTime}</span>
                                   <span className="source-badge source-live">LIVE</span>
                                   {(() => {
-                                    const dev = computeDeviation(stop, loopStaticDates);
+                                    // Suppress deviation for injected trips — they
+                                    // have no real schedule to be late/early against,
+                                    // only a projection from their own actual departure.
+                                    if (loopTrip && !loopTrip.scheduled) return null;
+                                    // For scheduled trip rows, use the trip's own ETA
+                                    // so deviation matches the displayed time.
+                                    const tripEtaISO = loopTrip?.stop_etas[stop]?.eta ?? null;
+                                    const dev = computeDeviation(stop, loopStaticDates, tripEtaISO);
                                     return dev ? <span className={dev.className}>{dev.text}</span> : null;
                                   })()}
                                 </>
@@ -496,10 +750,10 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
         {/* Show full schedule link */}
         {shouldTruncate && (
           <button className="show-full-schedule" onClick={() => setShowFullSchedule(true)}>
-            Show full schedule ({times.length - visibleItems.length} more)
+            Show full schedule ({timelineRows.length - visibleItems.length} more)
           </button>
         )}
-        {showFullSchedule && isToday && times.length > 7 && (
+        {showFullSchedule && isToday && timelineRows.length > 7 && (
           <button className="show-full-schedule" onClick={() => setShowFullSchedule(false)}>
             Show less
           </button>

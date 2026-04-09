@@ -651,6 +651,242 @@ async def save_predictions(per_stop_etas: Dict[str, Dict], next_states: Dict[str
         await soft_clear_namespace("velocities")
 
 @timed
+async def compute_trips(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None) -> List[Dict]:
+    """Compute per-trip ETAs. Each trip is a (route, departure_time) pair
+    assigned to a specific shuttle. Unlike compute_per_stop_etas, this
+    does NOT merge shuttles on the same route — each trip is independent.
+    """
+    from backend.worker.trips import compute_trips_from_vehicle_data
+    from backend.config import settings
+
+    full_df = df
+    if full_df is None:
+        try:
+            full_df = await get_today_dataframe()
+        except Exception as e:
+            logger.error(f"Failed to load dataframe for compute_trips: {e}")
+            return []
+
+    if full_df is None or full_df.empty:
+        return []
+
+    # Reuse compute_per_stop_etas internals by calling it to populate caches,
+    # but we need the per-vehicle data. Call a helper that exposes it.
+    vehicle_stop_etas, last_arrivals_by_vehicle = await _compute_vehicle_etas_and_arrivals(vehicle_ids, full_df)
+
+    now_utc = dev_now(timezone.utc)
+    trips = compute_trips_from_vehicle_data(
+        vehicle_stop_etas=vehicle_stop_etas,
+        last_arrivals_by_vehicle=last_arrivals_by_vehicle,
+        full_df=full_df,
+        routes_data=Stops.routes_data,
+        vehicle_ids=vehicle_ids,
+        now_utc=now_utc,
+        campus_tz=settings.CAMPUS_TZ,
+    )
+    return trips
+
+
+async def _compute_vehicle_etas_and_arrivals(
+    vehicle_ids: List[str],
+    full_df: pd.DataFrame,
+) -> Tuple[Dict[str, Dict], Dict[str, Dict[str, str]]]:
+    """Extract the per-vehicle ETAs and per-vehicle last_arrivals.
+
+    Returns:
+        (vehicle_stop_etas, last_arrivals_by_vehicle)
+        where last_arrivals_by_vehicle is {vehicle_id: {stop_name: iso}}
+        so concurrent shuttles don't cross-contaminate each other's
+        "passed" state.
+    """
+    # Delegate to compute_per_stop_etas but recover the intermediate data
+    # by re-running a lightweight version.
+    # Simpler: just call compute_per_stop_etas to prime Redis, then read
+    # vehicle stops directly from its result structure.
+    # For now, we re-implement the per-vehicle loop inline.
+    from backend.worker.velocity import get_velocity_predictor
+    routes = Stops.routes_data
+    velocity_predictor = get_velocity_predictor()
+    next_stop_etas = await predict_eta(vehicle_ids, df=full_df)
+
+    vehicle_stop_etas: Dict[str, Dict] = {}
+
+    for vehicle_id in vehicle_ids:
+        vehicle_df = full_df[full_df['vehicle_id'] == str(vehicle_id)].sort_values('timestamp')
+        if vehicle_df.empty:
+            continue
+
+        last_point = vehicle_df.iloc[-1]
+        route = last_point.get('route')
+        current_polyline_idx = last_point.get('polyline_idx')
+        now_stop_key = last_point.get('stop_name')
+
+        if pd.isna(route) or pd.isna(current_polyline_idx):
+            valid_points = vehicle_df.dropna(subset=['route', 'polyline_idx'])
+            if valid_points.empty:
+                continue
+            fallback_point = valid_points.iloc[-1]
+            route = fallback_point.get('route')
+            current_polyline_idx = fallback_point.get('polyline_idx')
+            if pd.isna(now_stop_key):
+                now_stop_key = fallback_point.get('stop_name')
+            if pd.isna(route) or pd.isna(current_polyline_idx):
+                continue
+
+        current_polyline_idx = int(current_polyline_idx)
+        route = str(route)
+        if route not in routes:
+            continue
+        route_data = routes[route]
+        if 'STOPS' not in route_data:
+            continue
+        stops = route_data['STOPS']
+
+        # Stop-based polyline validation
+        stop_points = vehicle_df.dropna(subset=['stop_name'])
+        last_stop_idx = None
+        if not stop_points.empty:
+            last_stop = str(stop_points.iloc[-1].get('stop_name'))
+            if last_stop in stops:
+                last_stop_idx = stops.index(last_stop)
+                half_route = len(stops) // 2
+                # Loop-boundary reset: the polyline wraps near Student Union,
+                # so the GPS closest-point match can return a polyline index
+                # near the END of the route even when the shuttle is physically
+                # at the START. If the last detected stop is the FIRST stop,
+                # trust that over the polyline_idx and reset to 0.
+                if last_stop_idx == 0:
+                    current_polyline_idx = 0
+                else:
+                    is_loop_restart = (current_polyline_idx < half_route and last_stop_idx >= half_route)
+                    if not is_loop_restart and current_polyline_idx < last_stop_idx:
+                        current_polyline_idx = last_stop_idx
+
+        # POLYLINE_STOPS → STOPS mapping
+        polyline_stops = route_data.get('POLYLINE_STOPS', stops)
+        poly_dest_idx = current_polyline_idx + 1
+        next_stop_idx = None
+        if poly_dest_idx < len(polyline_stops):
+            poly_dest_stop = polyline_stops[poly_dest_idx]
+            if poly_dest_stop in stops:
+                next_stop_idx = stops.index(poly_dest_stop)
+            else:
+                for pi in range(poly_dest_idx, len(polyline_stops)):
+                    if polyline_stops[pi] in stops:
+                        next_stop_idx = stops.index(polyline_stops[pi])
+                        break
+
+        # Stop-detection override: if the latest row has a detected stop,
+        # trust that over the polyline-based next_stop. This catches cases
+        # where polyline matching finds a geometrically-close but loop-stale
+        # position (e.g. polyline intersection at loop boundary).
+        if not pd.isna(now_stop_key) and str(now_stop_key) in stops:
+            now_stop_idx = stops.index(str(now_stop_key))
+            # Always treat the shuttle as "at now_stop", so the next stop is
+            # the one immediately after. Guards against polyline matching
+            # returning a position far ahead of where the shuttle actually is.
+            next_stop_idx = now_stop_idx + 1
+        elif last_stop_idx is not None and next_stop_idx is not None:
+            # now_stop_key is NaN (between-stop GPS ping), but we have a last
+            # detected stop. The polyline-based next_stop should be close to
+            # last_stop_idx + 1. If it's too far ahead (> 2 stops forward),
+            # clamp it down — polyline matching is likely wrong.
+            if next_stop_idx > last_stop_idx + 2:
+                next_stop_idx = last_stop_idx + 1
+
+        if next_stop_idx is None or next_stop_idx >= len(stops):
+            continue
+
+        # Layer 1: next stop ETA from LSTM or fallback
+        next_stop_eta = next_stop_etas.get(vehicle_id)
+        if next_stop_eta is None:
+            last_lat = last_point.get('latitude')
+            last_lon = last_point.get('longitude')
+            if pd.isna(last_lat) or pd.isna(last_lon):
+                continue
+            try:
+                closest = Stops.get_closest_point(
+                    (float(last_lat), float(last_lon)),
+                    target_polyline=(route, current_polyline_idx)
+                )
+                if closest is None:
+                    continue
+                _, dist_to_end, _ = Stops.get_polyline_distances(
+                    (float(last_lat), float(last_lon)),
+                    closest_point_result=closest
+                )
+                if dist_to_end is None or dist_to_end <= 0:
+                    dist_to_end = 0.1
+                speed_kmh = velocity_predictor.predict_speed_kmh(str(vehicle_id), route)
+                if speed_kmh <= 0:
+                    speed_kmh = 20.0
+                eta_seconds = (dist_to_end / speed_kmh) * 3600
+            except Exception:
+                continue
+            last_ts = pd.to_datetime(last_point['timestamp']).to_pydatetime()
+            if last_ts.tzinfo is None:
+                last_ts = last_ts.replace(tzinfo=timezone.utc)
+            next_stop_eta = last_ts + timedelta(seconds=eta_seconds)
+
+        next_stop_key = stops[next_stop_idx]
+        next_stop_data = route_data.get(next_stop_key)
+        if not next_stop_data or 'OFFSET' not in next_stop_data:
+            continue
+        next_stop_offset = next_stop_data['OFFSET']
+
+        vehicle_stops: List[Tuple[str, datetime]] = [(next_stop_key, next_stop_eta)]
+        for i in range(next_stop_idx + 1, len(stops)):
+            stop_key = stops[i]
+            sde = route_data.get(stop_key)
+            if not sde or 'OFFSET' not in sde:
+                continue
+            offset_diff_sec = (sde['OFFSET'] - next_stop_offset) * 60
+            vehicle_stops.append((stop_key, next_stop_eta + timedelta(seconds=offset_diff_sec)))
+
+        vehicle_stop_etas[str(vehicle_id)] = {
+            "route": route,
+            "stops": vehicle_stops,
+        }
+
+    # Compute per-vehicle last_arrivals with loop-start cutoff. Keyed by
+    # vehicle_id so trip A doesn't inherit trip B's "passed" stops.
+    last_arrivals_by_vehicle: Dict[str, Dict[str, str]] = {}
+    if 'stop_name' in full_df.columns:
+        tracked_vids = [str(v) for v in vehicle_ids]
+        for vid in tracked_vids:
+            vdf = full_df[full_df['vehicle_id'] == vid].dropna(subset=['stop_name'])
+            if vdf.empty:
+                continue
+            route_col = vdf['stop_route'] if 'stop_route' in vdf.columns else vdf.get('route')
+            vehicle_route = None
+            if route_col is not None:
+                non_nan = route_col.dropna()
+                if not non_nan.empty:
+                    vehicle_route = str(non_nan.iloc[-1])
+            loop_start_ts = None
+            if vehicle_route and vehicle_route in routes:
+                first_stop = routes[vehicle_route]['STOPS'][0]
+                first_stop_detections = vdf[vdf['stop_name'] == first_stop]
+                if not first_stop_detections.empty:
+                    loop_start = pd.to_datetime(first_stop_detections['timestamp'].max()).to_pydatetime()
+                    if loop_start.tzinfo is None:
+                        loop_start = loop_start.replace(tzinfo=timezone.utc)
+                    loop_start_ts = loop_start
+            vehicle_las: Dict[str, str] = {}
+            for stop_key, group in vdf.groupby('stop_name'):
+                latest = pd.to_datetime(group['timestamp'].max()).to_pydatetime()
+                if latest.tzinfo is None:
+                    latest = latest.replace(tzinfo=timezone.utc)
+                if loop_start_ts and latest < loop_start_ts:
+                    continue
+                vehicle_las[str(stop_key)] = latest.isoformat()
+            if vehicle_las:
+                last_arrivals_by_vehicle[vid] = vehicle_las
+
+    return vehicle_stop_etas, last_arrivals_by_vehicle
+
+
+@timed
 async def generate_and_save_predictions(vehicle_ids: List[str]):
     """Generate ETAs and next states, then save to DB."""
     if not vehicle_ids:
@@ -665,19 +901,26 @@ async def generate_and_save_predictions(vehicle_ids: List[str]):
         logger.error(f"Failed to load dataframe for predictions: {e}")
         return
 
-    # Compute per-stop ETAs (uses LSTM for next stop, OFFSET diffs for rest)
+    # Compute per-stop ETAs (legacy API) and per-trip ETAs (new API)
     per_stop_etas = await compute_per_stop_etas(vehicle_ids, df=df)
+    trips = await compute_trips(vehicle_ids, df=df)
 
-    # Store complete per-stop result in Redis for direct API access
-    # (preserves last_arrival-only entries that don't survive the DB round-trip)
+    # Store both in Redis
     redis = get_redis()
-    if redis and per_stop_etas:
+    if redis:
         import json as _json
-        await redis.set(
-            "shubble:per_stop_etas_live",
-            _json.dumps(per_stop_etas).encode(),
-            ex=120,
-        )
+        if per_stop_etas:
+            await redis.set(
+                "shubble:per_stop_etas_live",
+                _json.dumps(per_stop_etas).encode(),
+                ex=120,
+            )
+        if trips:
+            await redis.set(
+                "shubble:trips_live",
+                _json.dumps(trips).encode(),
+                ex=120,
+            )
 
     # Predict next state separately (for /api/velocities endpoint)
     next_states = await predict_next_state(vehicle_ids, df=df)

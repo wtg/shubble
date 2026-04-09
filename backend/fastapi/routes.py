@@ -147,6 +147,20 @@ async def get_etas(request: Request, response: Response):
     return await get_latest_etas(vehicle_ids, request.app.state.session_factory)
 
 
+@router.get("/api/trips")
+@timed
+async def get_trips(request: Request, response: Response):
+    """Returns per-trip ETAs. Each trip is a (route, departure_time) pair
+    with its assigned shuttle's stop ETAs. See backend/worker/trips.py.
+    """
+    redis = get_redis()
+    if redis:
+        raw = await redis.get("shubble:trips_live")
+        if raw:
+            return json.loads(raw)
+    return []
+
+
 @router.get("/api/velocities")
 @timed
 @cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="velocities")

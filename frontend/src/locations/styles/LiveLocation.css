@@ -1,21 +1,36 @@
 .live-location-div {
     display: flex;
-    flex-direction: row;
-    gap: 40px;
+    flex-direction: column;
+    gap: 20px;
     width: 90%;
+    max-width: 1400px;
+    margin: 0 auto;
+    align-items: center;
     justify-content: center;
     padding: 20px;
     box-sizing: border-box;
 }
 
+/* Schedule/trips panel is always shown on the home page so the user can
+   see per-vehicle trip rows (with #XXX badges) alongside the map. On
+   desktop the map + panel sit side-by-side, centered in the viewport. */
 .schedule-table {
-    display: none;
+    display: block;
+    width: 100%;
+    max-width: 500px;
 }
 
-
 @media (min-width: 1025px) {
+    .live-location-div {
+        flex-direction: row;
+        align-items: flex-start;
+        justify-content: center;
+        gap: 40px;
+    }
+
     .schedule-table {
-	display: block;
+        width: auto;
+        max-width: none;
     }
 }
 

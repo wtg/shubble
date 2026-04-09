@@ -62,11 +62,9 @@ function App() {
     }
   }, []);
 
-  useEffect(() => {
-    if (!import.meta.env.DEV) return;
-    // Reset test server shuttles on page load so simulation starts fresh
-    fetch('http://localhost:4000/api/shuttles/schedule', { method: 'POST' }).catch(() => {});
-  }, []);
+  // Shuttle setup is now manual — use POST /api/shuttles/schedule from the
+  // terminal when you want to restart the test simulation. Automatic reset
+  // on every page load was disruptive during iterative development.
 
   return (
     <ErrorBoundary>
