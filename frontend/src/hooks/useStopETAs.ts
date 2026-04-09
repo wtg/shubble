@@ -34,10 +34,13 @@ export function useStopETAs(enabled = true, pollInterval = 30000) {
   useEffect(() => {
     if (!enabled) return;
 
+    const controller = new AbortController();
+    let cancelled = false;
+
     const fetchETAs = async () => {
       try {
-        const response = await fetch(`${config.apiBaseUrl}/api/etas`, { cache: 'no-store' });
-        if (!response.ok) return;
+        const response = await fetch(`${config.apiBaseUrl}/api/etas`, { cache: 'no-store', signal: controller.signal });
+        if (!response.ok || cancelled) return;
 
         const data = (await response.json()) as StopETAMap;
         const now = devNow();
@@ -90,16 +93,22 @@ export function useStopETAs(enabled = true, pollInterval = 30000) {
           }
         }
 
+        if (cancelled) return;
         setStopETAs(newStopETAs);
         setStopETADetails(newDetails);
       } catch (error) {
-        console.error('Failed to fetch ETAs:', error);
+        // Ignore abort errors (unmount) and silently retry on network errors
+        if ((error as Error).name === 'AbortError') return;
       }
     };
 
     fetchETAs();
     const interval = setInterval(fetchETAs, pollInterval);
-    return () => clearInterval(interval);
+    return () => {
+      cancelled = true;
+      controller.abort();
+      clearInterval(interval);
+    };
   }, [enabled, pollInterval]);
 
   return { stopETAs, stopETADetails };

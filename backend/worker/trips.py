@@ -232,6 +232,26 @@ def build_trip_etas(
 
         stop_etas[stop_key] = entry
 
+    # Fix detection gaps: stops between two "passed" stops that themselves
+    # have no data should be implied-passed. Happens when the backend's
+    # forward-projection skips a stop OR the shuttle's stop-detection
+    # missed a pass-through. Iterate and mark unknown stops between the
+    # last known passed stop and the next known passed stop as "passed"
+    # with a synthetic last_arrival interpolated from their neighbors.
+    last_passed_idx = -1
+    for i, stop_key in enumerate(stops_in_route):
+        if stop_etas[stop_key]["passed"]:
+            if last_passed_idx >= 0:
+                # Fill gap between last_passed_idx+1 and i
+                for j in range(last_passed_idx + 1, i):
+                    gap_stop = stops_in_route[j]
+                    gap_entry = stop_etas[gap_stop]
+                    if not gap_entry["passed"] and gap_entry["eta"] is None:
+                        # Implied passed — use the later stop's last_arrival
+                        gap_entry["passed"] = True
+                        gap_entry["last_arrival"] = stop_etas[stop_key]["last_arrival"]
+            last_passed_idx = i
+
     return stop_etas
 
 

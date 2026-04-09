@@ -6,11 +6,106 @@
  * - Verify countdown summary matches the earliest trip ETA for that stop
  * - Verify NEXT badge is on the row with that earliest ETA
  * - Capture DOM anomalies (duplicate keys, overflow, missing elements)
+ * - Map/schedule data consistency check (shuttle positions vs ETAs)
  * - Take a screenshot for visual inspection
  *
  * Delete old screenshots before running. Results in `findings[]`.
  */
 const { chromium } = require('playwright');
+
+// Haversine distance between two lat/lon points in meters
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const phi1 = lat1 * Math.PI / 180;
+  const phi2 = lat2 * Math.PI / 180;
+  const dphi = (lat2 - lat1) * Math.PI / 180;
+  const dlambda = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dphi/2) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(dlambda/2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+// Cross-check: for each active trip, does the shuttle's GPS position
+// match the reported "next stop" at a reasonable distance?
+async function checkMapScheduleConsistency(findings, label) {
+  const fs = require('fs');
+  const routes = JSON.parse(fs.readFileSync('shared/routes.json', 'utf8'));
+  const [locRes, velRes, tripsRes] = await Promise.all([
+    fetch('http://localhost:8000/api/locations').then(r => r.json()),
+    fetch('http://localhost:8000/api/velocities').then(r => r.json()),
+    fetch('http://localhost:8000/api/trips').then(r => r.json()),
+  ]);
+
+  for (const t of tripsRes) {
+    const vid = t.vehicle_id;
+    if (!vid || t.status !== 'active') continue;
+    const loc = locRes[vid];
+    const vel = velRes[vid];
+    if (!loc) {
+      findings.push(`[${label}/consistency] Trip for ${vid} has no location`);
+      continue;
+    }
+    if (!vel?.route_name) {
+      findings.push(`[${label}/consistency] Vehicle ${vid.slice(-3)} has no route_name in velocities`);
+      continue;
+    }
+    if (vel.route_name !== t.route) {
+      findings.push(`[${label}/consistency] ${vid.slice(-3)}: velocity route=${vel.route_name} but trip route=${t.route}`);
+    }
+
+    // Find the next upcoming stop from the trip's stop_etas.
+    // Skip stops with null eta (detection gaps) — they indicate the
+    // backend couldn't compute the ETA, which is its own bug but not
+    // a map/schedule mismatch.
+    const routeData = routes[t.route];
+    if (!routeData) continue;
+    let nextStop = null;
+    for (const s of routeData.STOPS) {
+      const info = t.stop_etas[s];
+      if (info?.eta && !info.passed && !info.last_arrival) {
+        nextStop = s;
+        break;
+      }
+    }
+    if (!nextStop) continue;
+
+    // Detect backend inconsistency: stop N passed but stop N-1 not
+    let sawPassed = false;
+    for (const s of routeData.STOPS) {
+      const info = t.stop_etas[s];
+      if (info?.passed) {
+        sawPassed = true;
+      } else if (sawPassed && info && !info.eta && !info.last_arrival) {
+        findings.push(`[${label}/consistency] ${vid.slice(-3)}: stop ${s} is unpassed+noETA but earlier stops are passed (detection gap)`);
+      }
+    }
+
+    const stopCoords = routeData[nextStop]?.COORDINATES;
+    if (!stopCoords) continue;
+    const dist = haversine(loc.latitude, loc.longitude, stopCoords[0], stopCoords[1]);
+
+    // Parse ETA to get minutes until arrival
+    const etaMs = new Date(t.stop_etas[nextStop].eta).getTime();
+    const nowMs = Date.now();
+    const mins = (etaMs - nowMs) / 60_000;
+
+    // Consistency rule: distance to next stop should be roughly
+    // consistent with time to arrival. Shuttles drive ~30 km/h = 500m/min.
+    // Thresholds are generous — we only want to catch gross mismatches
+    // (stale ETA, wrong route, wrong stop direction), not normal jitter.
+    const expectedDistPerMin = 500;
+    // At mins=0 allow up to 400m (shuttle is "arriving")
+    const maxReasonableDist = Math.max(400, mins * expectedDistPerMin * 5);
+    // At low mins, don't complain about shuttles being far ahead
+    const minReasonableDist = Math.max(0, mins * expectedDistPerMin / 5 - 400);
+
+    if (mins >= 0 && dist > maxReasonableDist) {
+      findings.push(`[${label}/consistency] ${vid.slice(-3)}: ${dist.toFixed(0)}m to ${nextStop} but ETA is only ${mins.toFixed(1)}min (expected ≤${maxReasonableDist.toFixed(0)}m)`);
+    }
+    if (mins > 3 && dist < minReasonableDist) {
+      findings.push(`[${label}/consistency] ${vid.slice(-3)}: ${dist.toFixed(0)}m to ${nextStop} but ETA is ${mins.toFixed(1)}min away (expected ≥${minReasonableDist.toFixed(0)}m)`);
+    }
+  }
+}
 
 const VIEWPORTS = [
   { name: 'mobile-sm', w: 375, h: 667 },
@@ -202,6 +297,14 @@ async function clickStopByName(page, stopName) {
   const apiTrips = await (await fetch('http://localhost:8000/api/trips')).json();
   const activeTrips = apiTrips.filter(t => t.vehicle_id && t.status === 'active');
   console.log(`Active trips: ${activeTrips.length}`);
+
+  // Run the consistency check upfront (multiple samples to catch
+  // transient issues as shuttles move between stops)
+  await checkMapScheduleConsistency(findings, 'initial');
+  await new Promise(r => setTimeout(r, 5000));
+  await checkMapScheduleConsistency(findings, '+5s');
+  await new Promise(r => setTimeout(r, 10000));
+  await checkMapScheduleConsistency(findings, '+15s');
 
   for (const vp of VIEWPORTS) {
     const ctx = await browser.newContext({

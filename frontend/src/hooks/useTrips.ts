@@ -31,22 +31,33 @@ export function useTrips(enabled = true, pollInterval = 15000) {
   useEffect(() => {
     if (!enabled) return;
 
+    const controller = new AbortController();
+    let cancelled = false;
+
     const fetchTrips = async () => {
       try {
         const response = await fetch(`${config.apiBaseUrl}/api/trips`, {
           cache: 'no-store',
+          signal: controller.signal,
         });
-        if (!response.ok) return;
+        if (!response.ok || cancelled) return;
         const data = (await response.json()) as Trip[];
-        if (Array.isArray(data)) setTrips(data);
+        if (Array.isArray(data) && !cancelled) setTrips(data);
       } catch (error) {
-        console.error('Failed to fetch trips:', error);
+        // Ignore AbortError (component unmount) and network failures
+        // during polling — the next interval tick will retry.
+        if ((error as Error).name === 'AbortError') return;
+        // Silent: network issues are common and handled by retry.
       }
     };
 
     fetchTrips();
     const interval = setInterval(fetchTrips, pollInterval);
-    return () => clearInterval(interval);
+    return () => {
+      cancelled = true;
+      controller.abort();
+      clearInterval(interval);
+    };
   }, [enabled, pollInterval]);
 
   return trips;
