@@ -232,25 +232,23 @@ def build_trip_etas(
 
         stop_etas[stop_key] = entry
 
-    # Fix detection gaps: stops between two "passed" stops that themselves
-    # have no data should be implied-passed. Happens when the backend's
-    # forward-projection skips a stop OR the shuttle's stop-detection
-    # missed a pass-through. Iterate and mark unknown stops between the
-    # last known passed stop and the next known passed stop as "passed"
-    # with a synthetic last_arrival interpolated from their neighbors.
+    # Fix detection gaps: if a stop has no data but EARLIER stops are
+    # passed, the shuttle definitely passed this one too — either the
+    # stop detection missed it OR the forward-projection skipped it.
+    # Mark as implied-passed using the last-known passed stop's timestamp.
     last_passed_idx = -1
+    last_passed_la = None
     for i, stop_key in enumerate(stops_in_route):
-        if stop_etas[stop_key]["passed"]:
-            if last_passed_idx >= 0:
-                # Fill gap between last_passed_idx+1 and i
-                for j in range(last_passed_idx + 1, i):
-                    gap_stop = stops_in_route[j]
-                    gap_entry = stop_etas[gap_stop]
-                    if not gap_entry["passed"] and gap_entry["eta"] is None:
-                        # Implied passed — use the later stop's last_arrival
-                        gap_entry["passed"] = True
-                        gap_entry["last_arrival"] = stop_etas[stop_key]["last_arrival"]
+        entry = stop_etas[stop_key]
+        if entry["passed"]:
             last_passed_idx = i
+            last_passed_la = entry["last_arrival"]
+            continue
+        # Not passed — check if we should backfill
+        if entry["eta"] is None and last_passed_idx >= 0:
+            # Gap: no ETA, no last_arrival, but earlier stops are passed
+            entry["passed"] = True
+            entry["last_arrival"] = last_passed_la
 
     return stop_etas
 
