@@ -422,6 +422,10 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
   // otherwise students looking at the un-marked row get misleading data.
   const soonestRowKeys = new Set<string>();
   let soonestETAMs = Infinity;
+  // Tracks whether the soonest ETA is a next-loop projection (shuttle already
+  // passed) rather than a direct current-trip ETA, so the summary can phrase
+  // it as "Next arrival" vs "Arriving" for clarity.
+  let soonestIsProjected = false;
 
   // Derive the route's loop duration (minutes) from the last stop's offset
   // so we can project the next loop's ETA when a shuttle has already
@@ -440,13 +444,14 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
     // If a trip's ETA for this stop is stale or the shuttle has already
     // passed it, project the next-loop ETA by adding the route's loop
     // duration so the student still sees a useful countdown.
-    const rowETAs: Array<{ rowKey: string; etaMs: number; etaISO: string }> = [];
+    const rowETAs: Array<{ rowKey: string; etaMs: number; etaISO: string; isProjected: boolean }> = [];
     for (const row of timelineRows) {
       if (!row.trip?.vehicle_id || !row.trip.stop_etas[selectedStop]) continue;
       const stopInfo = row.trip.stop_etas[selectedStop];
       const etaISO = stopInfo.eta;
       let etaMs: number | null = null;
       let etaForDisplay: string | null | undefined = etaISO;
+      let isProjected = false;
 
       const rawEtaMs = etaISO ? new Date(etaISO).getTime() : null;
       const baseMs = stopInfo.last_arrival ? new Date(stopInfo.last_arrival).getTime() : rawEtaMs;
@@ -456,6 +461,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
         if (baseMs !== null) {
           etaMs = baseMs + routeLoopMinutes * 60_000;
           etaForDisplay = new Date(etaMs).toISOString();
+          isProjected = true;
         }
       } else if (rawEtaMs !== null) {
         etaMs = rawEtaMs;
@@ -463,7 +469,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
       }
 
       if (etaMs !== null && etaMs > nowMs && etaForDisplay) {
-        rowETAs.push({ rowKey: row.key, etaMs, etaISO: etaForDisplay });
+        rowETAs.push({ rowKey: row.key, etaMs, etaISO: etaForDisplay, isProjected });
         if (etaMs < soonestETAMs) soonestETAMs = etaMs;
       }
     }
@@ -476,6 +482,7 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
           const mins = Math.round((r.etaMs - nowMs) / 60_000);
           nextETAMinutes = mins;
           nextETATime = new Date(r.etaISO).toLocaleTimeString(undefined, TIME_FORMAT);
+          soonestIsProjected = r.isProjected;
         }
       }
     }
@@ -565,11 +572,25 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
 
       {/* Countdown summary */}
       {isToday && selectedStopName && nextETAMinutes !== null && (
-        <div className="next-shuttle-summary">
-          Next at{' '}
-          <span className="summary-stop">{selectedStopName}</span>
-          {' '}in <strong>{nextETAMinutes} min</strong>
-          {nextETATime && <span className="summary-time"> ({nextETATime})</span>}
+        <div className="next-shuttle-summary" role="status" aria-live="polite">
+          {nextETAMinutes === 0 && !soonestIsProjected ? (
+            <>
+              Shuttle <strong>arriving now</strong> at{' '}
+              <span className="summary-stop">{selectedStopName}</span>
+            </>
+          ) : (
+            <>
+              {soonestIsProjected ? 'Next loop at ' : 'Next at '}
+              <span className="summary-stop">{selectedStopName}</span>
+              {' '}in <strong>{nextETAMinutes} min</strong>
+              {nextETATime && <span className="summary-time"> ({nextETATime})</span>}
+              {soonestIsProjected && (
+                <div className="summary-note">
+                  Shuttle just passed — this is the next loop.
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
 
@@ -583,12 +604,31 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
 
       <div className="timeline-container">
         <div className="timeline-content">
-          {visibleItems.map((row) => {
-            const { key: rowKey, time, timeDate, trip, originalIndex } = row;
-            const isPastTime = isToday && timeDate < now;
-            const isCurrentLoop = currentRowKeys.has(rowKey);
-            const isExpanded = expandedLoops.has(rowKey);
-            const showSecondary = isCurrentLoop || isExpanded;
+          {(() => {
+            // Auto-expand a SINGLE current row to show secondary stops.
+            // Priority:
+            //   1. The row with the soonest ETA at the selected stop
+            //   2. Otherwise the first current row
+            // Other current rows collapse by default so users can compare
+            // shuttles at-a-glance without scrolling through huge lists.
+            const currentItems = visibleItems.filter(r => currentRowKeys.has(r.key));
+            let autoExpandKey: string | null = null;
+            if (currentItems.length > 0) {
+              // Prefer a row marked as soonest
+              const soonest = currentItems.find(r => soonestRowKeys.has(r.key));
+              autoExpandKey = (soonest ?? currentItems[0]).key;
+            }
+            return visibleItems.map((row) => {
+          const { key: rowKey, time, timeDate, trip, originalIndex } = row;
+          const isCurrentLoop = currentRowKeys.has(rowKey);
+          // A row is "past-time" only if its scheduled time is in the past
+          // AND it isn't an active trip. Active shuttles that departed
+          // earlier than now are NOT past — they're currently running.
+          const isPastTime = isToday && timeDate < now && !isCurrentLoop;
+          const isExpanded = expandedLoops.has(rowKey);
+          // Only the auto-expanded current row shows stops by default.
+          // Other current rows collapse unless the user manually expands.
+          const showSecondary = (isCurrentLoop && rowKey === autoExpandKey) || isExpanded;
 
             // Get first stop info
             const firstStop = route?.STOPS?.[0];
@@ -646,13 +686,26 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
               return { etaTime, lastArrival, passed: info.passed };
             };
 
+            const firstStopIsSelected = !!firstStop && firstStop === selectedStop;
+
             return (
               <div key={rowKey} className="timeline-route-group">
-                {/* First stop - main timeline item */}
+                {/* First stop - main timeline item.
+                    Click behavior:
+                      - Current/past rows: click the stop NAME to select,
+                        click anywhere else is a no-op
+                      - Expandable (future) rows: click anywhere to expand,
+                        but click on the stop NAME still selects it */}
                 <div
-                  className={`timeline-item first-stop ${isCurrentLoop ? 'current-loop' : ''} ${isPastTime && !isCurrentLoop ? 'past-time' : ''} ${soonestRowKeys.has(rowKey) ? 'soonest-arrival' : ''}`}
-                  onClick={() => !isPastTime && !isCurrentLoop && toggleExpand(rowKey)}
-                  style={!isPastTime && !isCurrentLoop ? { cursor: 'pointer' } : undefined}
+                  className={`timeline-item first-stop ${isCurrentLoop ? 'current-loop' : ''} ${isPastTime && !isCurrentLoop ? 'past-time' : ''} ${soonestRowKeys.has(rowKey) ? 'soonest-arrival' : ''} ${firstStopIsSelected ? 'first-stop-selected' : ''}`}
+                  onClick={() => {
+                    // Toggle expand unless this is a past row or the
+                    // auto-expanded current row (which stays open).
+                    if (isPastTime) return;
+                    if (isCurrentLoop && rowKey === autoExpandKey) return;
+                    toggleExpand(rowKey);
+                  }}
+                  style={!isPastTime && !(isCurrentLoop && rowKey === autoExpandKey) ? { cursor: 'pointer' } : undefined}
                 >
                   <div className="timeline-dot"></div>
                   <div className="timeline-content-item">
@@ -688,11 +741,32 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
                           </>
                         ) : null;
                       })()}
-                      {!isCurrentLoop && !isPastTime && (
+                      {!isPastTime && (!isCurrentLoop || rowKey !== autoExpandKey) && (
                         <span className="expand-indicator">{isExpanded ? '\u25B4' : '\u25BE'}</span>
                       )}
                     </div>
-                    <div className="timeline-stop">{firstStopData?.NAME || 'Unknown Stop'}</div>
+                    <div
+                      className="timeline-stop"
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Select ${firstStopData?.NAME || 'stop'} for arrival countdown`}
+                      aria-pressed={firstStopIsSelected}
+                      onClick={(e) => {
+                        if (firstStop) {
+                          e.stopPropagation();
+                          handleStopSelect(firstStop);
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (firstStop && (e.key === 'Enter' || e.key === ' ')) {
+                          e.preventDefault();
+                          handleStopSelect(firstStop);
+                        }
+                      }}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      {firstStopData?.NAME || 'Unknown Stop'}
+                    </div>
                   </div>
                 </div>
 
@@ -836,7 +910,8 @@ export default function Schedule({ selectedRoute, setSelectedRoute, stopETAs: ex
                 })()}
               </div>
             );
-          })}
+          });
+          })()}
         </div>
 
         {/* Show full schedule link */}

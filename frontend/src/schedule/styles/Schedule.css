@@ -399,6 +399,30 @@
   outline-offset: 2px;
 }
 
+/* First-stop name is clickable to select it (e.g. Student Union on the
+   home-stop row). Give it a subtle underline on hover so users discover it. */
+.timeline-item .timeline-stop {
+  display: inline-block;
+  border-radius: 4px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  transition: background 0.15s ease;
+}
+
+.timeline-item .timeline-stop:hover {
+  background: rgba(41, 128, 185, 0.08);
+}
+
+.timeline-item .timeline-stop:focus-visible {
+  outline: 2px solid #2980b9;
+  outline-offset: 2px;
+}
+
+.timeline-item.first-stop-selected .timeline-stop {
+  color: #2980b9;
+  font-weight: 600;
+}
+
 /* Trip completed badge — shown when a shuttle has finished its loop */
 .trip-completed-badge {
   display: inline-block;
@@ -436,6 +460,13 @@
   border-left: 3px solid #578FCA;
   border-radius: 6px;
   background: rgba(87, 143, 202, 0.06);
+}
+
+.summary-note {
+  font-size: 12px;
+  color: #7f8c8d;
+  margin-top: 2px;
+  font-style: italic;
 }
 
 .summary-stop {
