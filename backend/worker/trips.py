@@ -232,19 +232,26 @@ def build_trip_etas(
 
         stop_etas[stop_key] = entry
 
-    # Fix detection gaps: if a stop has no data but EARLIER stops are
-    # passed, the shuttle definitely passed this one too — either the
-    # stop detection missed it OR the forward-projection skipped it.
-    # Mark as implied-passed using the last-known passed stop's timestamp.
+    # Fix detection gaps + enforce monotonic last_arrivals. Passed stops
+    # should have last_arrival timestamps in ascending order within a
+    # single loop — a shuttle can't visit a later stop BEFORE an earlier
+    # one. If the order is violated, it's because the detection matched
+    # a stop from a PREVIOUS loop. Clamp the out-of-order stop's
+    # last_arrival up to the preceding stop's value so the display
+    # stays coherent.
     last_passed_idx = -1
     last_passed_la = None
     for i, stop_key in enumerate(stops_in_route):
         entry = stop_etas[stop_key]
         if entry["passed"]:
+            # Enforce monotonic ordering: if this stop's la is earlier
+            # than the previous passed stop's la, use the previous.
+            if last_passed_la and entry["last_arrival"] and entry["last_arrival"] < last_passed_la:
+                entry["last_arrival"] = last_passed_la
             last_passed_idx = i
             last_passed_la = entry["last_arrival"]
             continue
-        # Not passed — check if we should backfill
+        # Not passed — check if we should backfill (detection gap)
         if entry["eta"] is None and last_passed_idx >= 0:
             # Gap: no ETA, no last_arrival, but earlier stops are passed
             entry["passed"] = True
