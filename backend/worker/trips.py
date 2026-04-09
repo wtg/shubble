@@ -38,6 +38,28 @@ SCHEDULE_PATH = Path(__file__).parent.parent.parent / "shared" / "aggregated_sch
 # shuttle to leave a few minutes late).
 MATCH_WINDOW_SEC = 300  # 5 minutes
 
+# Hide a shuttle's trip when it hasn't made meaningful forward progress
+# for this long. Must be longer than one full loop (~15 min) so a slow
+# shuttle finishing its loop isn't accidentally hidden — only shuttles
+# that have clearly stopped running.
+IDLE_THRESHOLD_SEC = 1200  # 20 minutes
+
+# When checking "no movement", compare the latest GPS position to the
+# position from this many seconds ago. If the shuttle hasn't moved
+# more than NO_MOVEMENT_DIST_M in that span, it's parked. The lookback
+# must be longer than a typical mid-route stop dwell time (~30s) so
+# brief stops don't accidentally hide trips, but short enough that a
+# real break gets caught quickly.
+NO_MOVEMENT_LOOKBACK_SEC = 600  # 10 minutes
+NO_MOVEMENT_DIST_M = 100  # Less than 100m of movement = parked
+
+# Hide a shuttle's trip when this many of its last N GPS pings are
+# off-route (no route or polyline match). A single drift point won't
+# trigger; sustained off-route presence (driver on break at a depot,
+# parking lot, gas station, etc.) will.
+OFF_ROUTE_WINDOW = 5
+OFF_ROUTE_THRESHOLD = 4  # 4 of 5 = 80%
+
 
 def _load_today_schedule(campus_tz) -> Dict[str, List[datetime]]:
     """Load today's schedule and parse departure times to datetimes.
@@ -331,6 +353,82 @@ def compute_trips_from_vehicle_data(
             if earliest.tzinfo is None:
                 earliest = earliest.replace(tzinfo=timezone.utc)
             actual_departure = earliest
+
+        # --- Idle/off-route filter ----------------------------------
+        # Don't emit a trip when the shuttle is parked. The forward-
+        # projected ETAs would be pure speculation, and students would
+        # see phantom arrival times that never materialize. The shuttle
+        # still appears on the map via /api/locations — only the
+        # schedule trip row is suppressed.
+        if not vehicle_df.empty:
+            last_point = vehicle_df.iloc[-1]
+
+            # Filter 1: idle at the route's first stop for longer than
+            # a full loop (driver on break at Union, end-of-day, etc.)
+            latest_stop = last_point.get('stop_name')
+            latest_speed = last_point.get('speed_kmh')
+            idle_seconds = (now_utc - actual_departure).total_seconds()
+            at_first_stop = pd.notna(latest_stop) and str(latest_stop) == first_stop
+            not_moving = pd.isna(latest_speed) or float(latest_speed) <= 1.0
+            if at_first_stop and not_moving and idle_seconds > IDLE_THRESHOLD_SEC:
+                logger.debug(
+                    f"Skipping trip for vehicle {vid} on {route}: "
+                    f"idle at {first_stop} for {idle_seconds:.0f}s"
+                )
+                continue
+
+            # Filter 2: sustained off-route presence (driver on break
+            # at a depot/lot/gas station, far from any polyline)
+            if 'route' in vehicle_df.columns and 'polyline_idx' in vehicle_df.columns:
+                recent = vehicle_df.tail(OFF_ROUTE_WINDOW)
+                off_route_count = int(
+                    (recent['route'].isna() & recent['polyline_idx'].isna()).sum()
+                )
+                if off_route_count >= OFF_ROUTE_THRESHOLD:
+                    logger.debug(
+                        f"Skipping trip for vehicle {vid} on {route}: "
+                        f"{off_route_count}/{len(recent)} recent points off-route"
+                    )
+                    continue
+
+            # Filter 3: no movement in the last NO_MOVEMENT_LOOKBACK_SEC.
+            # Catches shuttles stuck mid-route (driver on break at a
+            # mid-route stop, broken-down vehicle, etc.) — Filter 1
+            # only catches the first-stop case.
+            if 'latitude' in vehicle_df.columns and 'longitude' in vehicle_df.columns:
+                latest_ts = pd.to_datetime(last_point['timestamp']).to_pydatetime()
+                if latest_ts.tzinfo is None:
+                    latest_ts = latest_ts.replace(tzinfo=timezone.utc)
+                lookback_cutoff = latest_ts - timedelta(seconds=NO_MOVEMENT_LOOKBACK_SEC)
+                vehicle_df_ts = pd.to_datetime(vehicle_df['timestamp'], utc=True)
+                old_points = vehicle_df[vehicle_df_ts <= lookback_cutoff]
+                if not old_points.empty:
+                    old_point = old_points.iloc[-1]  # most recent point >= lookback ago
+                    try:
+                        from shared.stops import Stops
+                        latest_lat = float(last_point['latitude'])
+                        latest_lon = float(last_point['longitude'])
+                        old_lat = float(old_point['latitude'])
+                        old_lon = float(old_point['longitude'])
+                        # Reuse haversine via Stops if available, else inline.
+                        import math
+                        R = 6371000
+                        phi1 = math.radians(old_lat)
+                        phi2 = math.radians(latest_lat)
+                        dphi = math.radians(latest_lat - old_lat)
+                        dlam = math.radians(latest_lon - old_lon)
+                        a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlam/2)**2
+                        dist_moved = 2 * R * math.asin(math.sqrt(a))
+                        if dist_moved < NO_MOVEMENT_DIST_M:
+                            logger.debug(
+                                f"Skipping trip for vehicle {vid} on {route}: "
+                                f"moved only {dist_moved:.0f}m in last "
+                                f"{NO_MOVEMENT_LOOKBACK_SEC}s"
+                            )
+                            continue
+                    except Exception:
+                        pass  # On any error, fall through and emit the trip
+        # ------------------------------------------------------------
 
         # Compute best candidate distance for sort ordering
         best_diff = float('inf')
