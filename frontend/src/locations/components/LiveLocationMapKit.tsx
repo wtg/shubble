@@ -116,8 +116,8 @@ export default function LiveLocationMapKit({
 
     pollLocation();
 
-    // refresh location every 5 seconds
-    const refreshLocation = setInterval(pollLocation, 5000);
+    // refresh location every 3 seconds
+    const refreshLocation = setInterval(pollLocation, 3000);
 
     return () => {
       clearInterval(refreshLocation);

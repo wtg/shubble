@@ -103,7 +103,7 @@ export function deriveStopEtasFromTrips(trips: Trip[]): {
  * tracked so concurrent shuttles on the same route don't fight over
  * displayed data.
  */
-export function useTrips(enabled = true, pollInterval = 15000) {
+export function useTrips(enabled = true, pollInterval = 5000) {
   const [trips, setTrips] = useState<Trip[]>([]);
 
   useEffect(() => {

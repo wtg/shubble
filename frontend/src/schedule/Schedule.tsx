@@ -133,9 +133,9 @@ export default function Schedule({
     localStorage.setItem(`shubble-stop:${safeSelectedRoute}`, stopId);
   }, [safeSelectedRoute]);
 
-  // Re-render countdown every 30 seconds
+  // Re-render countdown every 10 seconds
   useEffect(() => {
-    const interval = setInterval(() => setTick(t => t + 1), 30_000);
+    const interval = setInterval(() => setTick(t => t + 1), 10_000);
     return () => clearInterval(interval);
   }, []);
 
