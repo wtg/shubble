@@ -38,7 +38,7 @@ router = APIRouter()
 
 @router.get("/api/locations")
 @timed
-@cache(soft_ttl=15, hard_ttl=300, lock_timeout=0.0, namespace="locations")
+@cache(soft_ttl=3, hard_ttl=300, lock_timeout=0.0, namespace="locations")
 async def get_locations(response: Response, request: Request):
     """
     Returns the latest location for each vehicle currently inside the geofence.
@@ -127,7 +127,7 @@ async def get_trips(request: Request, response: Response):
 
 @router.get("/api/velocities")
 @timed
-@cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="velocities")
+@cache(soft_ttl=3, hard_ttl=300, lock_timeout=5.0, namespace="velocities")
 async def get_velocities(request: Request, response: Response):
     """
     Returns predicted velocity and route matching data for each vehicle currently inside the geofence.
