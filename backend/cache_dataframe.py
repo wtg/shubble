@@ -13,12 +13,12 @@ This significantly reduces computation time as the dataset grows throughout the 
 import asyncio
 import logging
 import pickle
+import time
 from contextlib import aclosing
 from datetime import datetime, timezone
 import pandas as pd
 from sqlalchemy import select
 
-from backend.config import settings
 from backend.cache import soft_clear_namespace, get_redis
 from backend.database import get_db
 from backend.models import VehicleLocation
@@ -26,6 +26,44 @@ from backend.time_utils import get_campus_start_of_day
 from ml.pipelines import preprocess_pipeline, segment_pipeline, stops_pipeline
 
 logger = logging.getLogger(__name__)
+
+# P3: process-local cache for the deserialized dataframe. Collapses concurrent
+# get_today_dataframe() calls (worker's asyncio.gather of per_stop_etas + trips
+# + predict_next_state, and concurrent API requests) into a single pickle.loads
+# within the TTL window. Stale-by-5s is fine: Redis cache has a 15s write cycle
+# anyway, and the worker repopulates this cache from its own update path.
+_PROCESS_DF_CACHE: dict[str, tuple[float, pd.DataFrame]] = {}
+_PROCESS_DF_CACHE_TTL = 5.0  # seconds
+_PROCESS_DF_CACHE_LOCK: asyncio.Lock | None = None
+
+
+def _get_process_cache_lock() -> asyncio.Lock:
+    """Lazy-init the cache lock. Must be called from within a running loop."""
+    global _PROCESS_DF_CACHE_LOCK
+    if _PROCESS_DF_CACHE_LOCK is None:
+        _PROCESS_DF_CACHE_LOCK = asyncio.Lock()
+    return _PROCESS_DF_CACHE_LOCK
+
+
+def _read_process_cache(date_str: str) -> pd.DataFrame | None:
+    entry = _PROCESS_DF_CACHE.get(date_str)
+    if entry is None:
+        return None
+    ts, df = entry
+    if time.monotonic() - ts > _PROCESS_DF_CACHE_TTL:
+        return None
+    return df
+
+
+def _write_process_cache(date_str: str, df: pd.DataFrame) -> None:
+    _PROCESS_DF_CACHE[date_str] = (time.monotonic(), df)
+
+
+def _invalidate_process_cache(date_str: str | None = None) -> None:
+    if date_str is None:
+        _PROCESS_DF_CACHE.clear()
+    else:
+        _PROCESS_DF_CACHE.pop(date_str, None)
 
 
 def get_cache_and_timestamp_key(date_str: str) -> tuple[str, str]:
@@ -174,47 +212,67 @@ async def load_today_dataframe(since: datetime | None = None) -> pd.DataFrame:
 
 async def get_today_dataframe() -> pd.DataFrame:
     """
-    Get today's processed vehicle location data, using Redis cache if available.
-    If cache miss, loads raw data, runs ML pipeline, and caches result.
+    Get today's processed vehicle location data.
+
+    Lookup order:
+      1. Process-local cache (5s TTL) — collapses concurrent calls
+      2. Redis cache — 15s worker update cycle
+      3. Load + process from database (cold path)
 
     Returns:
         Processed DataFrame
     """
     today_str = get_campus_start_of_day().strftime('%Y-%m-%d')
-    cache_key, timestamp_key = get_cache_and_timestamp_key(today_str)
 
-    # Connect to Redis
-    redis = get_redis()
+    # Fast path: process-local cache hit
+    cached = _read_process_cache(today_str)
+    if cached is not None:
+        return cached
 
-    # Try to load from cache
-    if redis:
-        cached_data = await redis.get(cache_key)
-        if cached_data:
-            logger.info(f"Loaded {today_str} processed data from Redis cache")
-            return pickle.loads(cached_data)
+    # Serialize concurrent misses so we only deserialize/load once per window
+    lock = _get_process_cache_lock()
+    async with lock:
+        # Double-check after acquiring lock
+        cached = _read_process_cache(today_str)
+        if cached is not None:
+            return cached
 
-    # Load raw from database
-    logger.info(f"Loading {today_str} raw data from database")
-    raw_df = await load_today_dataframe()
+        cache_key, timestamp_key = get_cache_and_timestamp_key(today_str)
 
-    # Process data in thread pool to avoid blocking the event loop
-    logger.info(f"Processing {len(raw_df)} records through ML pipeline...")
-    processed_df = await asyncio.to_thread(process_raw_dataframe, raw_df)
+        # Connect to Redis
+        redis = get_redis()
 
-    # Save to cache
-    if redis:
-        pickled_df = pickle.dumps(processed_df)
-        async with redis.pipeline() as pipe:
-            pipe.set(cache_key, pickled_df, ex=86400)
-            pipe.set(timestamp_key, datetime.now(timezone.utc).isoformat(), ex=86400)
-            await pipe.execute()
+        # Try to load from Redis cache
+        if redis:
+            cached_data = await redis.get(cache_key)
+            if cached_data:
+                logger.info(f"Loaded {today_str} processed data from Redis cache")
+                df = pickle.loads(cached_data)
+                _write_process_cache(today_str, df)
+                return df
 
-    # Invalidate smart_closest_point cache since dataframe was updated
-    if redis:
-        await soft_clear_namespace("smart_closest_point")
+        # Load raw from database
+        logger.info(f"Loading {today_str} raw data from database")
+        raw_df = await load_today_dataframe()
 
-    logger.info(f"Saved {today_str} processed data to Redis cache")
-    return processed_df
+        # Process data in thread pool to avoid blocking the event loop
+        logger.info(f"Processing {len(raw_df)} records through ML pipeline...")
+        processed_df = await asyncio.to_thread(process_raw_dataframe, raw_df)
+
+        # Save to Redis cache
+        if redis:
+            pickled_df = pickle.dumps(processed_df)
+            async with redis.pipeline() as pipe:
+                pipe.set(cache_key, pickled_df, ex=86400)
+                pipe.set(timestamp_key, datetime.now(timezone.utc).isoformat(), ex=86400)
+                await pipe.execute()
+
+            # Invalidate smart_closest_point cache since dataframe was updated
+            await soft_clear_namespace("smart_closest_point")
+
+        logger.info(f"Saved {today_str} processed data to Redis cache")
+        _write_process_cache(today_str, processed_df)
+        return processed_df
 
 
 async def update_today_dataframe(window_size: int = 5) -> pd.DataFrame:
@@ -270,7 +328,9 @@ async def update_today_dataframe(window_size: int = 5) -> pd.DataFrame:
 
     if new_raw_df.empty:
         logger.info("No new data since last update, returning cached data")
-        return pickle.loads(cached_data)
+        df = pickle.loads(cached_data)
+        _write_process_cache(today_str, df)
+        return df
 
     logger.info(f"Found {len(new_raw_df)} new raw records")
 
@@ -296,40 +356,32 @@ async def update_today_dataframe(window_size: int = 5) -> pd.DataFrame:
         if col not in rows_to_process.columns:
             rows_to_process[col] = pd.NA
 
-    # Identify which rows are genuinely new (not context)
-    # Context rows will already have processed values, new rows will have NaN
-    # We determine this by checking if 'route' column exists and has values
-    if 'route' in rows_to_process.columns:
-        # Rows from cache (context) will have route values
-        # New raw rows will have NaN for route
-        # Mark rows with NaN route as new (need processing)
-        new_row_keys = set(zip(new_raw_df['vehicle_id'], new_raw_df['timestamp']))
-        for idx, row in rows_to_process.iterrows():
-            key = (row['vehicle_id'], row['timestamp'])
-            if key in new_row_keys:
-                # This is a new row - set all processed columns to NaN
-                for col in processed_cols:
-                    rows_to_process.at[idx, col] = pd.NA
-    else:
-        # If route column doesn't exist, all rows need processing
+    # Identify which rows are genuinely new (not context) and null out their
+    # processed columns so process_raw_dataframe(additive=True) recomputes them.
+    # P5: vectorized mask instead of per-row iterrows + .at writes.
+    new_raw_index = pd.MultiIndex.from_arrays(
+        [new_raw_df['vehicle_id'].astype(str), new_raw_df['timestamp']]
+    )
+    row_index = pd.MultiIndex.from_arrays(
+        [rows_to_process['vehicle_id'].astype(str), rows_to_process['timestamp']]
+    )
+    is_new_row = row_index.isin(new_raw_index)
+    if 'route' in rows_to_process.columns and processed_cols:
+        rows_to_process.loc[is_new_row, processed_cols] = pd.NA
+    elif 'route' not in rows_to_process.columns:
+        # Route column absent — fall back to nulling every row's processed cols
         for col in processed_cols:
             rows_to_process[col] = pd.NA
 
     logger.info(f"Processing {len(rows_to_process)} rows with additive mode (preserves context, computes new)")
     newly_processed_df = await asyncio.to_thread(process_raw_dataframe, rows_to_process)
 
-    # Create a set of (vehicle_id, timestamp) pairs that are genuinely new
-    # (not from the context window)
-    new_keys = set(zip(new_raw_df['vehicle_id'], new_raw_df['timestamp']))
-
-    # Filter newly_processed_df to only include truly new rows
-    # by checking if (vehicle_id, timestamp) exists in new_keys
-    newly_processed_keys = list(zip(
-        newly_processed_df['vehicle_id'],
-        newly_processed_df['timestamp']
-    ))
-    mask = [key in new_keys for key in newly_processed_keys]
-    genuinely_new_processed = newly_processed_df[mask].copy()
+    # P5: filter truly-new rows with the same vectorized MultiIndex.isin trick
+    # instead of building a python set + list comprehension. Cheap on 30K rows.
+    processed_index = pd.MultiIndex.from_arrays(
+        [newly_processed_df['vehicle_id'].astype(str), newly_processed_df['timestamp']]
+    )
+    genuinely_new_processed = newly_processed_df[processed_index.isin(new_raw_index)].copy()
 
     logger.info(f"Adding {len(genuinely_new_processed)} newly processed records to cache")
 
@@ -339,11 +391,30 @@ async def update_today_dataframe(window_size: int = 5) -> pd.DataFrame:
         ignore_index=True
     )
 
-    # Sort and deduplicate using (vehicle_id, timestamp) as key
-    # Keep 'last' to prefer newly processed rows over cached ones in case of updates
-    updated_processed_df = updated_processed_df.sort_values('timestamp').drop_duplicates(
+    # P5: sort+drop_duplicates on near-sorted data is ~2x faster with
+    # kind='mergesort' (timsort-backed). Sort by (vehicle_id, timestamp) so
+    # the subsequent dedup is both stable and matches the index schema.
+    updated_processed_df = updated_processed_df.sort_values(
+        ['vehicle_id', 'timestamp'], kind='mergesort'
+    ).drop_duplicates(
         subset=['vehicle_id', 'timestamp'], keep='last'
     )
+
+    # Re-apply the co-located-stop remap across the ENTIRE merged
+    # dataframe. Incremental updates only process a small context
+    # window, so old rows keep whatever stop_name was assigned by
+    # earlier pipeline versions. Running the remap on the full
+    # merged df here is cheap (vectorized per route) and ensures new
+    # rules (e.g. STUDENT_UNION_RETURN disambiguation) propagate to
+    # historical rows without forcing a cold reprocess.
+    from ml.data.stops import resolve_duplicate_stops
+    if not updated_processed_df.empty and 'polyline_idx' in updated_processed_df.columns:
+        resolve_duplicate_stops(
+            updated_processed_df,
+            route_column='route',
+            polyline_index_column='polyline_idx',
+            stop_column='stop_name',
+        )
 
     # Update cache
     if redis:
@@ -357,5 +428,10 @@ async def update_today_dataframe(window_size: int = 5) -> pd.DataFrame:
         await soft_clear_namespace("smart_closest_point")
 
     logger.info(f"Updated cache to {len(updated_processed_df)} processed records")
+
+    # Populate process-local cache so the worker's subsequent
+    # get_today_dataframe() calls (per_stop_etas / trips / predict_next_state
+    # running under asyncio.gather) return instantly without re-deserializing.
+    _write_process_cache(today_str, updated_processed_df)
 
     return updated_processed_df

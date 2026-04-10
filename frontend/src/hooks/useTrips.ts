@@ -21,6 +21,84 @@ export interface Trip {
 }
 
 /**
+ * Formatted ETA strings keyed by stop key.
+ * Used by the map stop-marker tooltip. Derived client-side from /api/trips.
+ */
+export type StopETAs = Record<string, string>;
+
+/** Per-stop detail map for "Last arrived: HH:MM" tooltips. */
+export type StopETADetails = Record<string, {
+  eta: string;
+  etaISO: string;
+  route: string;
+  vehicleId: string;
+  lastArrival?: string;
+}>;
+
+const TIME_FORMAT: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' };
+
+/**
+ * Derive per-stop "next shuttle" and "last arrived" views from the trips
+ * array. Replaces the deleted `/api/etas` endpoint's role in feeding map
+ * stop-pin tooltips — one source of truth is /api/trips.
+ *
+ * For each stop:
+ *  - `stopETAs[stop]` = formatted HH:MM of the earliest upcoming ETA across
+ *    all active/scheduled trips.
+ *  - `stopETADetails[stop].lastArrival` = formatted HH:MM of the most
+ *    recent last_arrival across all trips.
+ */
+export function deriveStopEtasFromTrips(trips: Trip[]): {
+  stopETAs: StopETAs;
+  stopETADetails: StopETADetails;
+} {
+  const stopETAs: StopETAs = {};
+  const stopETADetails: StopETADetails = {};
+  const earliestEtaMs: Record<string, number> = {};
+  const latestLaMs: Record<string, number> = {};
+  const now = Date.now();
+
+  for (const trip of trips) {
+    // Only active and scheduled trips contribute upcoming ETAs. Completed
+    // trips contribute last_arrival history.
+    const contributesEta = trip.status === 'active' || trip.status === 'scheduled';
+    for (const [stop, info] of Object.entries(trip.stop_etas)) {
+      if (contributesEta && info.eta) {
+        const etaMs = new Date(info.eta).getTime();
+        if (etaMs > now) {
+          const prev = earliestEtaMs[stop];
+          if (prev === undefined || etaMs < prev) {
+            earliestEtaMs[stop] = etaMs;
+            const formatted = new Date(etaMs).toLocaleTimeString(undefined, TIME_FORMAT);
+            stopETAs[stop] = formatted;
+            stopETADetails[stop] = {
+              ...(stopETADetails[stop] ?? {}),
+              eta: formatted,
+              etaISO: info.eta,
+              route: trip.route,
+              vehicleId: trip.vehicle_id ?? '',
+            };
+          }
+        }
+      }
+      if (info.last_arrival) {
+        const laMs = new Date(info.last_arrival).getTime();
+        const prev = latestLaMs[stop];
+        if (prev === undefined || laMs > prev) {
+          latestLaMs[stop] = laMs;
+          const formatted = new Date(laMs).toLocaleTimeString(undefined, TIME_FORMAT);
+          const existing = stopETADetails[stop] ?? {
+            eta: '', etaISO: '', route: trip.route, vehicleId: trip.vehicle_id ?? '',
+          };
+          stopETADetails[stop] = { ...existing, lastArrival: formatted };
+        }
+      }
+    }
+  }
+  return { stopETAs, stopETADetails };
+}
+
+/**
  * Fetches per-trip ETAs from the backend. Each trip is independently
  * tracked so concurrent shuttles on the same route don't fight over
  * displayed data.
@@ -61,32 +139,4 @@ export function useTrips(enabled = true, pollInterval = 15000) {
   }, [enabled, pollInterval]);
 
   return trips;
-}
-
-/**
- * Formats a trip's departure time to a local HH:MM AM/PM string for
- * matching against the aggregated_schedule.json entries.
- */
-export function formatDepartureTime(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  });
-}
-
-/**
- * Groups trips by route for easy lookup.
- */
-export function tripsByRoute(trips: Trip[]): Record<string, Trip[]> {
-  const out: Record<string, Trip[]> = {};
-  for (const t of trips) {
-    if (!out[t.route]) out[t.route] = [];
-    out[t.route].push(t);
-  }
-  for (const r of Object.keys(out)) {
-    out[r].sort((a, b) => a.departure_time.localeCompare(b.departure_time));
-  }
-  return out;
 }

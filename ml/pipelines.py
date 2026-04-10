@@ -6,8 +6,7 @@ Complete end-to-end pipelines for preprocessing and train/test splitting.
 import logging
 import numpy as np
 import pandas as pd
-from pathlib import Path
-from typing import Tuple, Optional
+from typing import Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -193,20 +192,50 @@ def speed_pipeline(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
 
     logger.info("Calculating distance and speed...")
 
-    # Calculate distance and speed
-    df = (df
-          .pipe(distance_delta, 'closest_lat', 'closest_lon', 'distance_km')
-          .pipe(speed, 'distance_km', 'epoch_seconds', 'speed_kmh'))
+    # Calculate PROJECTED distance (for "progress along route" metric
+    # consumers) using closest_lat/lon. This is useful for things
+    # like schedule-reliability analysis that care about polyline
+    # progress rather than raw displacement.
+    df = df.pipe(distance_delta, 'closest_lat', 'closest_lon', 'distance_km')
 
-    # Mark segment boundaries
+    # Speed, however, must be computed from RAW GPS distance. The
+    # projected points can jump between polyline segments at
+    # intersections or when closest_point ambiguously resolves to
+    # a far-away polyline, producing impossible speeds (60000+ km/h)
+    # on moving shuttles and phantom 30+ km/h on stationary ones.
+    # Raw lat/lon haversine always reflects the shuttle's actual
+    # physical motion.
+    df = (df
+          .pipe(distance_delta, 'latitude', 'longitude', '_raw_distance_km')
+          .pipe(speed, '_raw_distance_km', 'epoch_seconds', 'speed_kmh'))
+
+    # Mark segment boundaries (handles vehicle transitions too since
+    # each vehicle gets its own segment_id).
     df['_new_segment'] = df['segment_id'] != df['segment_id'].shift(1)
 
-    # Set distance and speed to NaN at segment boundaries
+    # Set distance and speed to NaN at segment boundaries — the
+    # "previous" point at a boundary is from a different
+    # vehicle/segment and produces nonsensical deltas.
     df.loc[df['_new_segment'], 'distance_km'] = np.nan
     df.loc[df['_new_segment'], 'speed_kmh'] = np.nan
 
+    # Stationary clamp: GPS jitter at the ~1cm level still produces
+    # a tiny but non-zero raw speed (a few km/h). Snap anything
+    # under the jitter floor to 0 so downstream "is the shuttle
+    # moving?" checks get a clean signal.
+    STATIONARY_SPEED_KMH = 3.0  # ~0.8 m/s — slower than a walking pace
+    df.loc[df['speed_kmh'] < STATIONARY_SPEED_KMH, 'speed_kmh'] = 0.0
+
+    # Physical-max cap: a shuttle physically cannot exceed ~80 km/h
+    # on a campus route. Anything higher indicates a GPS glitch
+    # (bad fix, stale cache, test-server teleport on loop wrap).
+    # Clamp to NaN so consumers can distinguish "noise" from a real
+    # 0 (stopped).
+    PHYSICAL_MAX_KMH = 120.0
+    df.loc[df['speed_kmh'] > PHYSICAL_MAX_KMH, 'speed_kmh'] = np.nan
+
     # Clean up
-    df = df.drop(columns=['_new_segment'])
+    df = df.drop(columns=['_new_segment', '_raw_distance_km'])
 
     logger.info("  OK: Calculated segment-local speeds")
     return df
@@ -343,7 +372,13 @@ def stops_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
         DataFrame with added columns: 'stop_name', 'stop_route',
         'dist_from_start', 'dist_to_end', 'polyline_length'
     """
-    from ml.data.stops import add_stops, add_polyline_distances, clean_stops
+    from ml.data.stops import (
+        add_stops,
+        add_polyline_distances,
+        add_stops_from_segments,
+        clean_stops,
+        resolve_duplicate_stops,
+    )
 
     stops = kwargs.get('stops', False)
     cache = kwargs.get('cache', True)
@@ -387,14 +422,14 @@ def stops_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
         df = segment_pipeline(**segment_kwargs)
 
     # Step 2: Add stops
-    logger.info("Step 1/3: Adding stop information...")
+    logger.info("Step 1/4: Adding stop information...")
     add_stops(df, 'latitude', 'longitude', {
         'route_name': 'stop_route',
         'stop_name': 'stop_name'
     })
 
     # Step 3: Add polyline distances
-    logger.info("Step 2/3: Calculating polyline distances...")
+    logger.info("Step 2/4: Calculating polyline distances...")
     add_polyline_distances(
         df, 'latitude', 'longitude',
         {
@@ -411,8 +446,24 @@ def stops_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
     )
     logger.info(f"  OK: Calculated polyline distances for {len(df)} points")
 
+    # Step 3b: Segment-based backfill for drive-bys that the per-point
+    # is_at_stop check missed. At ~30 km/h a shuttle moves ~42m per 5s
+    # poll, exceeding the 20m threshold, so consecutive polls can
+    # straddle a stop without either being within range. This pass
+    # checks the PATH between polls instead of just the samples.
+    logger.info("Step 3/4: Backfilling drive-by stops from segments...")
+    add_stops_from_segments(
+        df,
+        vehicle_id_column='vehicle_id',
+        timestamp_column='timestamp',
+        lat_column='latitude',
+        lon_column='longitude',
+        stop_column='stop_name',
+        route_column='route',
+    )
+
     # Step 4: Clean stops
-    logger.info("Step 3/3: Cleaning unrecorded stop jumps...")
+    logger.info("Step 4/4: Cleaning unrecorded stop jumps...")
     clean_stops(df,
                 route_column='route',
                 polyline_index_column='polyline_idx',
@@ -421,6 +472,18 @@ def stops_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
                 lon_column='longitude',
                 distance_column='dist_to_route'
             )
+
+    # Step 5: Resolve co-located duplicate stops. is_at_stop() always
+    # picks the geometrically-first stop when two share coordinates
+    # (STUDENT_UNION vs STUDENT_UNION_RETURN), so the "return" variant
+    # never gets detections. Fix by remapping end-of-route positions
+    # to the return name based on polyline_idx.
+    resolve_duplicate_stops(
+        df,
+        route_column='route',
+        polyline_index_column='polyline_idx',
+        stop_column='stop_name',
+    )
 
     # Save to cache if caching is enabled
     if cache:

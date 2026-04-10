@@ -1,5 +1,4 @@
 """FastAPI routes for the Shubble API."""
-import asyncio
 import logging
 import hmac
 from hashlib import sha256
@@ -8,7 +7,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Request, Depends, HTTPException, Response
 from fastapi.responses import FileResponse, JSONResponse
-from sqlalchemy import func, and_, select
+from sqlalchemy import and_, select
 
 import json
 
@@ -18,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import selectinload
 from backend.database import get_db
-from backend.models import Announcement, BusSchedule, BusScheduleToDaySchedule, DaySchedule, Polyline, Route, RouteToBusSchedule, Stop, Vehicle, GeofenceEvent, VehicleLocation
+from backend.models import Announcement, BusSchedule, BusScheduleToDaySchedule, DaySchedule, Route, RouteToBusSchedule, Stop, Vehicle, GeofenceEvent, VehicleLocation
 from backend.config import settings
 from backend.time_utils import get_campus_start_of_day, dev_now
 from backend.utils import (
@@ -28,11 +27,9 @@ from backend.fastapi.utils import (
     smart_closest_point,
     get_latest_vehicle_locations,
     get_current_driver_assignments,
-    get_latest_etas,
     get_latest_velocities,
 )
 from shared.stops import Stops
-# from shared.schedules import Schedule
 
 logger = logging.getLogger(__name__)
 
@@ -62,30 +59,24 @@ async def get_locations(response: Response, request: Request):
         vehicle_ids, request.app.state.session_factory
     )
 
-    # Format response
+    # Format response. PERF: ISO-8601 timestamps sort lexicographically in
+    # the same order as chronological order (when UTC / same timezone), so we
+    # can find the oldest via string min() and only do one fromisoformat call.
     response_data = {}
-    oldest_timestamp = None
+    oldest_iso = min((loc["timestamp"] for loc in results), default=None)
 
     for loc in results:
         vehicle = loc["vehicle"]
-        # Track oldest data point for latency calculation
-        # Timestamp is ISO string in cached dict, convert back to datetime
-        ts = datetime.fromisoformat(loc["timestamp"])
-        if oldest_timestamp is None or ts < oldest_timestamp:
-            oldest_timestamp = ts
 
         # Get current driver info
         driver_info = None
         assignment = current_assignments.get(loc["vehicle_id"])
-        # Assignment is DriverAssignmentDict (dict)
         if assignment and assignment.get("driver"):
             driver_data = assignment["driver"]
             driver_info = {
                 "id": driver_data["id"],
                 "name": driver_data["name"],
             }
-        else:
-            driver_info = None
 
         response_data[loc["vehicle_id"]] = {
             "name": loc["name"],
@@ -108,43 +99,16 @@ async def get_locations(response: Response, request: Request):
 
     # Add timing metadata as HTTP headers to help frontend synchronize with Samsara API
     now = dev_now(timezone.utc)
-    data_age = (now - oldest_timestamp).total_seconds() if oldest_timestamp else None
+    data_age = (
+        (now - datetime.fromisoformat(oldest_iso)).total_seconds()
+        if oldest_iso else None
+    )
 
     response.headers['X-Server-Time'] = now.isoformat()
-    response.headers['X-Oldest-Data-Time'] = oldest_timestamp.isoformat() if oldest_timestamp else ''
+    response.headers['X-Oldest-Data-Time'] = oldest_iso or ''
     response.headers['X-Data-Age-Seconds'] = str(data_age) if data_age is not None else ''
 
     return response_data
-
-
-@router.get("/api/etas")
-@timed
-@cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="etas")
-async def get_etas(request: Request, response: Response):
-    """
-    Returns per-stop ETAs: for each stop, the next shuttle to arrive.
-
-    Response format:
-    {
-        "COLONIE": {"eta": "2026-04-03T14:33:00+00:00", "vehicle_id": "123", "route": "NORTH", "last_arrival": null},
-        ...
-    }
-    """
-    # Try worker-computed per-stop ETAs from Redis (includes last_arrival-only entries)
-    redis = get_redis()
-    if redis:
-        raw = await redis.get("shubble:per_stop_etas_live")
-        if raw:
-            return json.loads(raw)
-
-    # Fallback to DB aggregation (loses last_arrival-only entries)
-    vehicle_ids_set = await get_vehicles_in_geofence(request.app.state.session_factory)
-    vehicle_ids = list(vehicle_ids_set)
-
-    if not vehicle_ids:
-        return {}
-
-    return await get_latest_etas(vehicle_ids, request.app.state.session_factory)
 
 
 @router.get("/api/trips")
@@ -203,7 +167,6 @@ async def get_velocities(request: Request, response: Response):
         if route_name is None:
             loc = locations_by_id.get(vehicle_id)
             if loc:
-                from shared.stops import Stops
                 rt = Stops.get_closest_point((loc["latitude"], loc["longitude"]))
                 if rt[0] is not None and rt[0] < 0.050:
                     closest_distance, _, route_name, polyline_index, _ = rt[0], rt[1], rt[2], rt[3], rt[4]
@@ -394,41 +357,34 @@ async def data_today(db: AsyncSession = Depends(get_db)):
     events_result = await db.execute(events_query)
     events_today = events_result.scalars().all()
 
-    # Build response dict
-    locations_today_dict = {}
+    # Build response dict. setdefault avoids the "if in dict else new"
+    # branching and makes geofence-before-location edge cases safe.
+    locations_today_dict: dict = {}
     for location in locations_today:
-        vehicle_location = {
+        entry = locations_today_dict.setdefault(
+            location.vehicle_id, {"entry": None, "exit": None, "data": []}
+        )
+        entry["data"].append({
             "latitude": location.latitude,
             "longitude": location.longitude,
             "timestamp": location.timestamp,
             "speed_mph": location.speed_mph,
             "heading_degrees": location.heading_degrees,
             "address_id": location.address_id,
-        }
-        if location.vehicle_id in locations_today_dict:
-            locations_today_dict[location.vehicle_id]["data"].append(vehicle_location)
-        else:
-            locations_today_dict[location.vehicle_id] = {
-                "entry": None,
-                "exit": None,
-                "data": [vehicle_location],
-            }
+        })
 
     for geofence_event in events_today:
+        # Guard against events for vehicles with no location rows — previously
+        # this raised KeyError and crashed the endpoint.
+        vehicle_entry = locations_today_dict.setdefault(
+            geofence_event.vehicle_id, {"entry": None, "exit": None, "data": []}
+        )
         if geofence_event.event_type == "geofenceEntry":
-            if (
-                "entry" not in locations_today_dict[geofence_event.vehicle_id]
-            ):  # First entry
-                locations_today_dict[geofence_event.vehicle_id]["entry"] = (
-                    geofence_event.event_time
-                )
+            if vehicle_entry["entry"] is None:  # first entry wins
+                vehicle_entry["entry"] = geofence_event.event_time
         elif geofence_event.event_type == "geofenceExit":
-            if (
-                "entry" in locations_today_dict[geofence_event.vehicle_id]
-            ):  # Makes sure that the vehicle already entered
-                locations_today_dict[geofence_event.vehicle_id]["exit"] = (
-                    geofence_event.event_time
-                )
+            if vehicle_entry["entry"] is not None:  # only after an entry
+                vehicle_entry["exit"] = geofence_event.event_time
 
     return locations_today_dict
 

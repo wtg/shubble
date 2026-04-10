@@ -4,10 +4,24 @@ import '../styles/MapKitMap.css';
 import ShuttleIcon from "./ShuttleIcon";
 import config from "../../utils/config";
 
+// PERF: SVG shuttle icons only depend on (color, size), and both rarely
+// change. Cache the rendered data-URL so we don't pay the
+// renderToStaticMarkup + btoa cost per vehicle per 5s poll tick.
+const _shuttleIconCache = new Map<string, string>();
+function getShuttleIconUrl(color: string, size: number): string {
+  const key = `${color}|${size}`;
+  const cached = _shuttleIconCache.get(key);
+  if (cached) return cached;
+  const svg = renderToStaticMarkup(<ShuttleIcon color={color} size={size} />);
+  const url = `data:image/svg+xml;base64,${btoa(svg)}`;
+  _shuttleIconCache.set(key, url);
+  return url;
+}
+
 import type { ShuttleRouteData } from "../../types/route";
 import type { VehicleLocationMap, VehicleVelocityMap, VehicleCombinedMap } from "../../types/vehicleLocation";
 import type { Coordinate } from "../../utils/mapUtils";
-import type { StopETAs, StopETADetails } from "../../hooks/useStopETAs";
+import type { StopETAs, StopETADetails } from "../../hooks/useTrips";
 
 import MapKitCanvas from "../../mapkit/MapKitCanvas";
 import MapKitAnimation from "../../mapkit/MapKitAnimation";
@@ -154,9 +168,8 @@ export default function LiveLocationMapKit({
         return info.COLOR ?? "#444444";
       })();
 
-      // Render ShuttleIcon JSX to a static SVG string
-      const svgString = renderToStaticMarkup(<ShuttleIcon color={routeColor} size={shuttleIconSize} />);
-      const svgShuttle = `data:image/svg+xml;base64,${btoa(svgString)}`;
+      // Cached SVG data URL — renders once per unique (color, size).
+      const svgShuttle = getShuttleIconUrl(routeColor, shuttleIconSize);
 
       // Use predicted speed if available, otherwise fall back to reported speed
       // If showTrueLocation is true, set speed to 0 to disable animation

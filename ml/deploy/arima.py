@@ -1,8 +1,5 @@
 """ARIMA model deployment utilities."""
 import pickle
-from pathlib import Path
-from typing import Optional
-import numpy as np
 
 from ml.cache import get_cache_path, ARIMA_CACHE_DIR
 

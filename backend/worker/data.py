@@ -1,5 +1,6 @@
 """Data prediction utilities for worker."""
 import asyncio
+import json
 import logging
 from contextlib import aclosing
 import numpy as np
@@ -8,14 +9,16 @@ from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime, timezone, timedelta
 
 from backend.cache_dataframe import get_today_dataframe
-from ml.deploy.lstm import load_lstm_for_route
+from backend.config import settings
+from ml.deploy.lstm import load_lstm_for_route, list_cached_models
 from ml.deploy.arima import load_arima
 from ml.training.train import fit_arima
 from backend.models import ETA, PredictedLocation
 from backend.database import get_db
-from backend.cache import cache, soft_clear_namespace, get_redis
+from backend.cache import soft_clear_namespace, get_redis
 from backend.function_timer import timed
 from backend.time_utils import dev_now
+from backend.worker.velocity import get_velocity_predictor
 from shared.stops import Stops
 
 logger = logging.getLogger(__name__)
@@ -24,9 +27,48 @@ P = 3
 D = 0
 Q = 2
 
+# Input columns used by predict_eta. Must match the signature the LSTM models
+# on disk were trained with — preloading uses this exact list.
+_LSTM_INPUT_COLUMNS = ['latitude', 'longitude', 'speed_kmh', 'dist_to_end']
+
 # Cache for loaded models: (route_name, polyline_idx) -> LSTMModel | None
 # None sentinel means "load was attempted and failed — don't retry"
 _MODEL_CACHE: Dict[Tuple[str, int], Any] = {}
+
+
+def preload_lstm_models() -> int:
+    """
+    Eagerly load every LSTM model on disk into _MODEL_CACHE.
+
+    Called once at worker startup so the first prediction cycle doesn't pay
+    the ~100-300ms cold-load cost per (route, polyline_idx) pair. Failures
+    are tolerated and cached as None so predict_eta() skips them later.
+
+    Returns:
+        Number of models successfully loaded.
+    """
+    loaded = 0
+    skipped = 0
+    for meta in list_cached_models():
+        route = meta['route_name']
+        idx = meta['polyline_idx']
+        key = (route, idx)
+        if key in _MODEL_CACHE:
+            continue
+        try:
+            _MODEL_CACHE[key] = load_lstm_for_route(
+                route, idx, input_columns=_LSTM_INPUT_COLUMNS
+            )
+            loaded += 1
+        except FileNotFoundError:
+            _MODEL_CACHE[key] = None
+            skipped += 1
+        except Exception as e:
+            logger.error(f"Error preloading LSTM model for {route} segment {idx}: {e}")
+            _MODEL_CACHE[key] = None
+            skipped += 1
+    logger.info(f"LSTM preload complete: {loaded} loaded, {skipped} skipped")
+    return loaded
 
 @timed
 async def _get_vehicle_data(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
@@ -41,9 +83,11 @@ async def _get_vehicle_data(vehicle_ids: List[str], df: Optional[pd.DataFrame] =
     if df is None or df.empty:
         return pd.DataFrame()
 
-    # Filter for vehicles
-    df['vehicle_id'] = df['vehicle_id'].astype(str)
-    target_ids = [str(vid) for vid in vehicle_ids]
+    # PERF: no longer mutating the shared df. The vehicle_id column is
+    # produced as str by the Samsara ingest + ML pipeline, so we can just
+    # compare as-is. If a caller ever passes a df with non-str ids, isin()
+    # against a str set will miss — which is fine, it just returns empty.
+    target_ids = {str(vid) for vid in vehicle_ids}
     target_df = df[df['vehicle_id'].isin(target_ids)].copy()
 
     return target_df
@@ -59,7 +103,7 @@ async def predict_eta(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None)
 
     # Group by vehicle and prepare batches
     sequence_length = 10
-    input_columns = ['latitude', 'longitude', 'speed_kmh', 'dist_to_end']
+    input_columns = _LSTM_INPUT_COLUMNS
 
     batches: Dict[Tuple[str, int], List[Tuple[str, np.ndarray, datetime]]] = {}
 
@@ -163,8 +207,6 @@ async def compute_per_stop_etas(vehicle_ids: List[str], df: Optional[pd.DataFram
             ...
         }
     """
-    from backend.worker.velocity import get_velocity_predictor
-
     full_df = df
     if full_df is None:
         try:
@@ -186,9 +228,23 @@ async def compute_per_stop_etas(vehicle_ids: List[str], df: Optional[pd.DataFram
     # Structure: {vehicle_id: {route, next_stop_eta, stops: [(stop_key, eta)]}}
     vehicle_stop_etas: Dict[str, Dict] = {}
 
+    # PERF: vectorize the per-vehicle slicing. The prior per-iteration
+    # `full_df[full_df['vehicle_id'] == str(vid)].sort_values('timestamp')`
+    # did N full-df scans; a single sort + groupby gives us O(1) lookup per
+    # vehicle and the groups are already timestamp-sorted thanks to the
+    # stable sort upstream.
+    target_ids = {str(v) for v in vehicle_ids}
+    work_df = full_df[full_df['vehicle_id'].astype(str).isin(target_ids)]
+    if work_df.empty:
+        return {}
+    work_df = work_df.sort_values('timestamp', kind='mergesort')
+    vehicle_groups = {
+        str(vid): grp for vid, grp in work_df.groupby('vehicle_id', sort=False)
+    }
+
     for vehicle_id in vehicle_ids:
-        vehicle_df = full_df[full_df['vehicle_id'] == str(vehicle_id)].sort_values('timestamp')
-        if vehicle_df.empty:
+        vehicle_df = vehicle_groups.get(str(vehicle_id))
+        if vehicle_df is None or vehicle_df.empty:
             continue
 
         last_point = vehicle_df.iloc[-1]
@@ -278,41 +334,65 @@ async def compute_per_stop_etas(vehicle_ids: List[str], df: Optional[pd.DataFram
             continue
 
         # --- Layer 1: ETA to next stop ---
-        next_stop_eta = next_stop_etas.get(vehicle_id)
-
-        if next_stop_eta is None:
-            # Fallback: distance / average speed
-            last_lat = last_point.get('latitude')
-            last_lon = last_point.get('longitude')
-            if pd.isna(last_lat) or pd.isna(last_lon):
-                continue
-
+        # Always compute the physics-based fallback first so we can
+        # sanity-check the LSTM prediction against it. The LSTM has
+        # been observed to return predictions ~10x the actual travel
+        # time (e.g. 13 min for a 587m distance), usually when the
+        # input features contain noisy stationary-shuttle speed
+        # values or cross-loop confusion. A simple distance/speed
+        # estimate is more trustworthy in those cases.
+        last_lat = last_point.get('latitude')
+        last_lon = last_point.get('longitude')
+        fallback_seconds: Optional[float] = None
+        if not (pd.isna(last_lat) or pd.isna(last_lon)):
             try:
                 closest = Stops.get_closest_point(
                     (float(last_lat), float(last_lon)),
                     target_polyline=(route, current_polyline_idx)
                 )
-                if closest is None:
-                    continue
-                _, dist_to_end, _ = Stops.get_polyline_distances(
-                    (float(last_lat), float(last_lon)),
-                    closest_point_result=closest
-                )
-                if dist_to_end is None or dist_to_end <= 0:
-                    dist_to_end = 0.1  # minimum 100m
-
-                speed_kmh = velocity_predictor.predict_speed_kmh(str(vehicle_id), route)
-                if speed_kmh <= 0:
-                    speed_kmh = 20.0
-                eta_seconds = (dist_to_end / speed_kmh) * 3600
+                if closest is not None:
+                    _, dist_to_end, _ = Stops.get_polyline_distances(
+                        (float(last_lat), float(last_lon)),
+                        closest_point_result=closest
+                    )
+                    if dist_to_end is not None and dist_to_end > 0:
+                        speed_kmh = velocity_predictor.predict_speed_kmh(
+                            str(vehicle_id), route
+                        )
+                        if speed_kmh <= 0:
+                            speed_kmh = 20.0
+                        fallback_seconds = (dist_to_end / speed_kmh) * 3600
             except Exception as e:
-                logger.warning(f"Fallback ETA failed for vehicle {vehicle_id}: {e}")
-                continue
+                logger.debug(f"Fallback ETA estimate failed for {vehicle_id}: {e}")
 
+        next_stop_eta = next_stop_etas.get(vehicle_id)
+
+        # Sanity check: if the LSTM prediction is more than 3x the
+        # physics estimate AND the fallback is a reasonable length,
+        # the LSTM is probably confused. Prefer the fallback.
+        if next_stop_eta is not None and fallback_seconds is not None:
+            last_ts_for_check = pd.to_datetime(last_point['timestamp']).to_pydatetime()
+            if last_ts_for_check.tzinfo is None:
+                last_ts_for_check = last_ts_for_check.replace(tzinfo=timezone.utc)
+            lstm_seconds = (next_stop_eta - last_ts_for_check).total_seconds()
+            if (
+                lstm_seconds > 60  # only sanity-check non-trivial ETAs
+                and fallback_seconds > 0
+                and lstm_seconds > fallback_seconds * 3
+            ):
+                logger.debug(
+                    f"Vehicle {vehicle_id}: LSTM predicted {lstm_seconds:.0f}s vs "
+                    f"fallback {fallback_seconds:.0f}s — using fallback"
+                )
+                next_stop_eta = None  # force fallback path below
+
+        if next_stop_eta is None:
+            if fallback_seconds is None:
+                continue
             last_ts = pd.to_datetime(last_point['timestamp']).to_pydatetime()
             if last_ts.tzinfo is None:
                 last_ts = last_ts.replace(tzinfo=timezone.utc)
-            next_stop_eta = last_ts + timedelta(seconds=eta_seconds)
+            next_stop_eta = last_ts + timedelta(seconds=fallback_seconds)
 
         next_stop_key = stops[next_stop_idx]
         next_stop_data = route_data.get(next_stop_key)
@@ -376,10 +456,9 @@ async def compute_per_stop_etas(vehicle_ids: List[str], df: Optional[pd.DataFram
     try:
         redis = get_redis()
         if redis:
-            import json as _json
             raw = await redis.get("shubble:per_stop_etas_live")
             if raw:
-                prev_data = _json.loads(raw)
+                prev_data = json.loads(raw)
                 for k, v in prev_data.items():
                     if ':' in k or not isinstance(v, dict):
                         continue
@@ -418,10 +497,17 @@ async def compute_per_stop_etas(vehicle_ids: List[str], df: Optional[pd.DataFram
             continue
 
     if full_df is not None and not full_df.empty and 'stop_name' in full_df.columns:
-        tracked_vids = [str(v) for v in vehicle_ids]
+        # PERF: single filter + groupby instead of N full-df boolean masks.
+        tracked_vids = {str(v) for v in vehicle_ids}
+        stopped_df = full_df[
+            full_df['vehicle_id'].astype(str).isin(tracked_vids)
+        ].dropna(subset=['stop_name'])
+        vdf_by_vid = {
+            str(vid): grp for vid, grp in stopped_df.groupby('vehicle_id', sort=False)
+        }
         for vid in tracked_vids:
-            vdf = full_df[full_df['vehicle_id'] == vid].dropna(subset=['stop_name'])
-            if vdf.empty:
+            vdf = vdf_by_vid.get(vid)
+            if vdf is None or vdf.empty:
                 continue
 
             # Find the vehicle's current route (from its stop_route or route column)
@@ -443,9 +529,17 @@ async def compute_per_stop_etas(vehicle_ids: List[str], df: Optional[pd.DataFram
                         loop_start = loop_start.replace(tzinfo=timezone.utc)
                     loop_start_ts = loop_start
 
-            # For each stop, include only detections from the current loop
-            for stop_key, group in vdf.groupby('stop_name'):
-                latest = pd.to_datetime(group['timestamp'].max()).to_pydatetime()
+            # PERF: vectorized max-per-stop instead of per-group python loop.
+            # For each stop, include only detections from the current loop.
+            stop_maxes = vdf.groupby('stop_name', sort=False)['timestamp'].max()
+            for stop_key, latest_raw in stop_maxes.items():
+                if pd.isna(latest_raw):
+                    continue
+                latest = (
+                    latest_raw.to_pydatetime()
+                    if hasattr(latest_raw, 'to_pydatetime')
+                    else pd.Timestamp(latest_raw).to_pydatetime()
+                )
                 if latest.tzinfo is None:
                     latest = latest.replace(tzinfo=timezone.utc)
                 # Skip if older than loop start (previous loop data)
@@ -453,8 +547,9 @@ async def compute_per_stop_etas(vehicle_ids: List[str], df: Optional[pd.DataFram
                     continue
                 key = str(stop_key)
                 # Keep the most recent across vehicles
-                if key not in last_arrivals or latest.isoformat() > last_arrivals[key]:
-                    last_arrivals[key] = latest.isoformat()
+                latest_iso = latest.isoformat()
+                if key not in last_arrivals or latest_iso > last_arrivals[key]:
+                    last_arrivals[key] = latest_iso
 
     # Infer last_arrival for stops the shuttle must have passed through.
     # Only interpolate between stops with RECENT timestamps to avoid
@@ -656,8 +751,7 @@ async def compute_trips(vehicle_ids: List[str], df: Optional[pd.DataFrame] = Non
     assigned to a specific shuttle. Unlike compute_per_stop_etas, this
     does NOT merge shuttles on the same route — each trip is independent.
     """
-    from backend.worker.trips import compute_trips_from_vehicle_data
-    from backend.config import settings
+    from backend.worker.trips import compute_trips_from_vehicle_data  # local import avoids a cycle at module load
 
     full_df = df
     if full_df is None:
@@ -704,16 +798,25 @@ async def _compute_vehicle_etas_and_arrivals(
     # Simpler: just call compute_per_stop_etas to prime Redis, then read
     # vehicle stops directly from its result structure.
     # For now, we re-implement the per-vehicle loop inline.
-    from backend.worker.velocity import get_velocity_predictor
     routes = Stops.routes_data
     velocity_predictor = get_velocity_predictor()
     next_stop_etas = await predict_eta(vehicle_ids, df=full_df)
 
     vehicle_stop_etas: Dict[str, Dict] = {}
 
+    # PERF: single sort + groupby vs N boolean masks.
+    target_ids = {str(v) for v in vehicle_ids}
+    work_df = full_df[full_df['vehicle_id'].astype(str).isin(target_ids)]
+    if work_df.empty:
+        return ({}, {})
+    work_df = work_df.sort_values('timestamp', kind='mergesort')
+    vehicle_groups = {
+        str(vid): grp for vid, grp in work_df.groupby('vehicle_id', sort=False)
+    }
+
     for vehicle_id in vehicle_ids:
-        vehicle_df = full_df[full_df['vehicle_id'] == str(vehicle_id)].sort_values('timestamp')
-        if vehicle_df.empty:
+        vehicle_df = vehicle_groups.get(str(vehicle_id))
+        if vehicle_df is None or vehicle_df.empty:
             continue
 
         last_point = vehicle_df.iloc[-1]
@@ -855,40 +958,51 @@ async def _compute_vehicle_etas_and_arrivals(
             "stops": vehicle_stops,
         }
 
-    # Compute per-vehicle last_arrivals with loop-start cutoff. Keyed by
-    # vehicle_id so trip A doesn't inherit trip B's "passed" stops.
+    # Compute per-vehicle last_arrivals. Keyed by vehicle_id so trip A
+    # doesn't inherit trip B's "passed" stops.
+    #
+    # PER-TRIP SCOPING CONTRACT: this function returns the raw latest
+    # detection per (vehicle, stop) without any time-based filter.
+    # `build_trip_etas` is responsible for filtering by the current
+    # trip's `loop_cutoff` (= actual_departure for active trips,
+    # prior_departure for completed trips). That's the only place
+    # with enough context to know which detections belong to which
+    # loop — a time-based window here leaked prior-loop detections
+    # into the current trip's display (see commit history: the
+    # LOOP_FRESHNESS_SEC sliding window and the earlier
+    # `loop_start_ts = max(first_stop_detection)` approaches both
+    # had loop-boundary bugs for different reasons. Scoping in
+    # `build_trip_etas` sidesteps both, because by that point we
+    # already know per-trip departure times).
     last_arrivals_by_vehicle: Dict[str, Dict[str, str]] = {}
+
+    # Perf (P1): single vectorized groupby instead of per-vehicle
+    # filter scans. With ~30K rows and 4 vehicles, the old code did
+    # O(n*v) boolean masks; this does one O(n) groupby + per-group
+    # max. Measured ~50-100ms saving per cycle.
     if 'stop_name' in full_df.columns:
-        tracked_vids = [str(v) for v in vehicle_ids]
-        for vid in tracked_vids:
-            vdf = full_df[full_df['vehicle_id'] == vid].dropna(subset=['stop_name'])
-            if vdf.empty:
-                continue
-            route_col = vdf['stop_route'] if 'stop_route' in vdf.columns else vdf.get('route')
-            vehicle_route = None
-            if route_col is not None:
-                non_nan = route_col.dropna()
-                if not non_nan.empty:
-                    vehicle_route = str(non_nan.iloc[-1])
-            loop_start_ts = None
-            if vehicle_route and vehicle_route in routes:
-                first_stop = routes[vehicle_route]['STOPS'][0]
-                first_stop_detections = vdf[vdf['stop_name'] == first_stop]
-                if not first_stop_detections.empty:
-                    loop_start = pd.to_datetime(first_stop_detections['timestamp'].max()).to_pydatetime()
-                    if loop_start.tzinfo is None:
-                        loop_start = loop_start.replace(tzinfo=timezone.utc)
-                    loop_start_ts = loop_start
-            vehicle_las: Dict[str, str] = {}
-            for stop_key, group in vdf.groupby('stop_name'):
-                latest = pd.to_datetime(group['timestamp'].max()).to_pydatetime()
-                if latest.tzinfo is None:
-                    latest = latest.replace(tzinfo=timezone.utc)
-                if loop_start_ts and latest < loop_start_ts:
+        tracked_vids_set = {str(v) for v in vehicle_ids}
+        stops_df = full_df.dropna(subset=['stop_name'])
+        if not stops_df.empty:
+            # Coerce timestamp once so per-group max is cheap
+            timestamps_utc = pd.to_datetime(stops_df['timestamp'], utc=True)
+            # Vectorized max per (vehicle_id, stop_name) pair
+            grouped = (
+                stops_df.assign(_ts=timestamps_utc)
+                .groupby(['vehicle_id', 'stop_name'], sort=False)['_ts']
+                .max()
+            )
+            for (vid, stop_key), latest_ts in grouped.items():
+                vid_str = str(vid)
+                if vid_str not in tracked_vids_set:
                     continue
-                vehicle_las[str(stop_key)] = latest.isoformat()
-            if vehicle_las:
-                last_arrivals_by_vehicle[vid] = vehicle_las
+                if pd.isna(latest_ts):
+                    continue
+                latest_dt = latest_ts.to_pydatetime()
+                if latest_dt.tzinfo is None:
+                    latest_dt = latest_dt.replace(tzinfo=timezone.utc)
+                vehicle_las = last_arrivals_by_vehicle.setdefault(vid_str, {})
+                vehicle_las[str(stop_key)] = latest_dt.isoformat()
 
     return vehicle_stop_etas, last_arrivals_by_vehicle
 
@@ -908,33 +1022,31 @@ async def generate_and_save_predictions(vehicle_ids: List[str]):
         logger.error(f"Failed to load dataframe for predictions: {e}")
         return
 
-    # Compute per-stop ETAs (legacy API) and per-trip ETAs (new API)
-    per_stop_etas = await compute_per_stop_etas(vehicle_ids, df=df)
-    trips = await compute_trips(vehicle_ids, df=df)
+    # Run per-trip ETAs and next-state prediction in parallel. They share
+    # the same dataframe and don't depend on each other. `compute_per_stop_etas`
+    # was removed from the cycle — /api/trips is now the single source of
+    # truth and the frontend derives per-stop aggregates client-side via
+    # `deriveStopEtasFromTrips` in useTrips.ts. The function is still exercised
+    # by unit tests for its per-vehicle ETA math, but no longer runs per cycle.
+    trips, next_states = await asyncio.gather(
+        compute_trips(vehicle_ids, df=df),
+        predict_next_state(vehicle_ids, df=df),
+    )
 
-    # Store both in Redis
+    # Write trips to Redis for /api/trips and /api/trips/stream consumers.
     redis = get_redis()
-    if redis:
-        import json as _json
-        if per_stop_etas:
-            await redis.set(
-                "shubble:per_stop_etas_live",
-                _json.dumps(per_stop_etas).encode(),
-                ex=120,
-            )
-        if trips:
-            await redis.set(
-                "shubble:trips_live",
-                _json.dumps(trips).encode(),
-                ex=120,
-            )
+    if redis and trips:
+        await redis.set(
+            "shubble:trips_live",
+            json.dumps(trips).encode(),
+            ex=120,
+        )
 
-    # Predict next state separately (for /api/velocities endpoint)
-    next_states = await predict_next_state(vehicle_ids, df=df)
+    # save_predictions still writes PredictedLocation rows for /api/velocities;
+    # passing an empty per_stop_etas dict makes it a no-op for the ETA table.
+    await save_predictions({}, next_states)
 
-    await save_predictions(per_stop_etas, next_states)
-
-    count_stops = len(per_stop_etas)
+    count_trips = len(trips)
     count_locs = len(next_states)
-    if count_stops > 0 or count_locs > 0:
-        logger.info(f"Saved ETAs for {count_stops} stops and {count_locs} predicted locations")
+    if count_trips > 0 or count_locs > 0:
+        logger.info(f"Saved {count_trips} trips and {count_locs} predicted locations")

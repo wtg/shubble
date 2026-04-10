@@ -22,6 +22,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import numpy as np
 import pandas as pd
 
 from backend.time_utils import dev_now
@@ -61,12 +62,25 @@ OFF_ROUTE_WINDOW = 5
 OFF_ROUTE_THRESHOLD = 4  # 4 of 5 = 80%
 
 
+_SCHEDULE_CACHE: Dict[tuple, Dict[str, List[datetime]]] = {}
+
+
 def _load_today_schedule(campus_tz) -> Dict[str, List[datetime]]:
     """Load today's schedule and parse departure times to datetimes.
 
     Returns:
         Dict mapping route_name to sorted list of departure datetimes (UTC).
+
+    PERF: result is cached per (campus_date, campus_tz). The schedule JSON
+    is static for the day, so re-reading and re-parsing it every worker
+    cycle (every 5s) was pure waste.
     """
+    now = dev_now(campus_tz)
+    cache_key = (now.year, now.month, now.day, str(campus_tz))
+    cached = _SCHEDULE_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
     try:
         with open(SCHEDULE_PATH) as f:
             schedule = json.load(f)
@@ -74,7 +88,6 @@ def _load_today_schedule(campus_tz) -> Dict[str, List[datetime]]:
         logger.error(f"Failed to load schedule: {e}")
         return {}
 
-    now = dev_now(campus_tz)
     # aggregated_schedule indexed by JS getDay() (0=Sun)
     js_day = (now.weekday() + 1) % 7
     today = schedule[js_day] if js_day < len(schedule) else {}
@@ -92,6 +105,10 @@ def _load_today_schedule(campus_tz) -> Dict[str, List[datetime]]:
             except ValueError:
                 logger.warning(f"Could not parse schedule time: {time_str}")
         result[route] = sorted(parsed)
+
+    # Drop prior-day entries so the cache doesn't grow unbounded
+    _SCHEDULE_CACHE.clear()
+    _SCHEDULE_CACHE[cache_key] = result
     return result
 
 
@@ -99,102 +116,44 @@ def _detect_vehicle_departures(
     vehicle_df: pd.DataFrame,
     first_stop: str,
 ) -> List[datetime]:
-    """Find all times this vehicle was detected at the first stop of its route.
+    """Find all times this vehicle departed from the first stop of its route.
 
-    Each distinct detection (separated by a gap) represents a loop start.
-    Returns a sorted list of departure timestamps (UTC).
+    Groups consecutive first-stop detections into clusters (separated by
+    gaps > 120s). Each cluster represents a dwell at first_stop, and
+    its LAST timestamp is the closest approximation of when the shuttle
+    left to start its loop. Returns a sorted list of departure
+    timestamps (UTC).
+
+    Using the cluster's last detection (rather than its first) is
+    important when a shuttle dwells at first_stop waiting for its
+    scheduled departure: a 22-minute dwell from 9:53 to 10:15 should
+    register as departing at 10:15 (matching the 10:15 schedule slot),
+    NOT 9:53 (which would mismatch and snap to the prior 9:50 slot).
     """
     if vehicle_df.empty or 'stop_name' not in vehicle_df.columns:
         return []
 
-    first_stop_points = vehicle_df[vehicle_df['stop_name'] == first_stop].copy()
-    if first_stop_points.empty:
+    # PERF: vectorized cluster detection. Caller provides timestamp-sorted
+    # input (compute_trips_from_vehicle_data does a single upstream sort +
+    # groupby), so we skip the per-call sort_values and the iterrows walk.
+    mask = vehicle_df['stop_name'] == first_stop
+    if not mask.any():
         return []
-
-    first_stop_points = first_stop_points.sort_values('timestamp')
-    timestamps = []
-    last_ts = None
-    # Group consecutive first-stop detections; each cluster = one departure
-    for _, row in first_stop_points.iterrows():
-        ts = pd.to_datetime(row['timestamp']).to_pydatetime()
-        if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=timezone.utc)
-        if last_ts is None or (ts - last_ts).total_seconds() > 120:
-            timestamps.append(ts)
-        last_ts = ts
-    return timestamps
-
-
-def assign_trip_to_vehicle(
-    vehicle_id: str,
-    vehicle_df: pd.DataFrame,
-    route: str,
-    first_stop: str,
-    scheduled_departures: List[datetime],
-    now_utc: datetime,
-) -> Optional[Dict[str, Any]]:
-    """Assign this vehicle to a trip based on its departure history.
-
-    Logic:
-    1. Find the vehicle's most recent loop start (last detection at first stop)
-    2. Match to the nearest scheduled departure within MATCH_WINDOW_SEC
-    3. If no match, inject a new trip with the actual departure time
-
-    Returns:
-        Trip dict with fields:
-          trip_id, route, departure_time (ISO), scheduled (bool),
-          vehicle_id, status
-        Returns None if the vehicle hasn't started a loop yet.
-    """
-    departures = _detect_vehicle_departures(vehicle_df, first_stop)
-    if departures:
-        # Most recent departure is the current active trip start
-        actual_departure = departures[-1]
-    else:
-        # Fallback: stop detection hasn't fired yet. Use the vehicle's
-        # earliest timestamp as an approximate departure time so the trip
-        # still appears in the UI.
-        if vehicle_df.empty:
-            return None
-        earliest = pd.to_datetime(vehicle_df['timestamp'].min()).to_pydatetime()
-        if earliest.tzinfo is None:
-            earliest = earliest.replace(tzinfo=timezone.utc)
-        actual_departure = earliest
-
-    # Find the closest scheduled departure within the matching window
-    matched_scheduled: Optional[datetime] = None
-    min_diff = float('inf')
-    for sched in scheduled_departures:
-        diff = abs((sched - actual_departure).total_seconds())
-        if diff < min_diff and diff <= MATCH_WINDOW_SEC:
-            min_diff = diff
-            matched_scheduled = sched
-
-    if matched_scheduled is not None:
-        trip_time = matched_scheduled
-        scheduled = True
-    else:
-        # Injected trip — use the actual departure time
-        trip_time = actual_departure
-        scheduled = False
-
-    # Status derivation
-    if actual_departure > now_utc:
-        status = "scheduled"
-    else:
-        status = "active"
-
-    return {
-        # Include vehicle_id so two vehicles matched to the same scheduled
-        # departure each get a unique trip (no collision in frontend keys).
-        "trip_id": f"{route}:{trip_time.isoformat()}:{vehicle_id}",
-        "route": route,
-        "departure_time": trip_time.isoformat(),
-        "actual_departure": actual_departure.isoformat(),
-        "scheduled": scheduled,
-        "vehicle_id": vehicle_id,
-        "status": status,
-    }
+    ts = pd.to_datetime(vehicle_df.loc[mask, 'timestamp']).reset_index(drop=True)
+    if ts.empty:
+        return []
+    # cluster_id increments whenever the gap to the prior detection > 120s.
+    # The last row of each cluster is the departure moment.
+    gaps = ts.diff().dt.total_seconds().fillna(0) > 120
+    cluster_ids = gaps.cumsum()
+    cluster_ends = ts.groupby(cluster_ids).last().tolist()
+    result: List[datetime] = []
+    for raw in cluster_ends:
+        dt = raw.to_pydatetime() if hasattr(raw, 'to_pydatetime') else raw
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        result.append(dt)
+    return result
 
 
 def build_trip_etas(
@@ -203,6 +162,7 @@ def build_trip_etas(
     last_arrivals: Dict[str, str],
     stops_in_route: List[str],
     now_utc: datetime,
+    loop_cutoff: Optional[datetime] = None,
 ) -> Dict[str, Dict[str, Any]]:
     """Build per-stop ETA dict for a single trip.
 
@@ -210,16 +170,44 @@ def build_trip_etas(
     `last_arrival`, stops ahead show future `eta`.
 
     Args:
-        trip: Trip dict from assign_trip_to_vehicle
-        vehicle_stops: List of (stop_key, eta_datetime) from
-            compute_per_stop_etas per-vehicle computation
-        last_arrivals: Dict of stop_key -> ISO timestamp
+        trip: Trip dict from compute_trips_from_vehicle_data
+        vehicle_stops: List of (stop_key, eta_datetime) from the
+            per-vehicle ETA computation
+        last_arrivals: Dict of stop_key -> ISO timestamp. May contain
+            detections from previous loops — this function filters
+            by `loop_cutoff`.
         stops_in_route: Full STOPS list for the route
         now_utc: Current time
+        loop_cutoff: Only count last_arrival detections at-or-after this
+            moment. Pass `trip['actual_departure']` for active trips and
+            `prior_departure` for completed trips. This is the SINGLE
+            source of loop-boundary scoping — upstream
+            `_compute_vehicle_etas_and_arrivals` returns raw per-vehicle
+            detections without any time filter, and this function is the
+            only place that knows which detections belong to THIS trip's
+            loop. If `None`, no filtering is done (legacy behavior; avoid
+            in production).
 
     Returns:
         Dict mapping stop_key to {eta, last_arrival, passed} entry.
     """
+    # PER-TRIP LOOP SCOPING: drop any detection older than this trip's
+    # departure so we never surface a prior-loop "Last:" on a stop the
+    # shuttle hasn't reached yet in the current loop. See the detailed
+    # rationale in `_compute_vehicle_etas_and_arrivals`.
+    if loop_cutoff is not None and last_arrivals:
+        filtered_las: Dict[str, str] = {}
+        for k, v in last_arrivals.items():
+            try:
+                la_dt = datetime.fromisoformat(v)
+                if la_dt.tzinfo is None:
+                    la_dt = la_dt.replace(tzinfo=timezone.utc)
+                if la_dt >= loop_cutoff:
+                    filtered_las[k] = v
+            except (ValueError, TypeError):
+                continue
+        last_arrivals = filtered_las
+
     stop_etas: Dict[str, Dict[str, Any]] = {}
 
     # Build a lookup for future ETAs from vehicle_stops
@@ -236,23 +224,44 @@ def build_trip_etas(
 
         if stop_key in eta_lookup:
             eta_dt = eta_lookup[stop_key]
-            if eta_dt > now_utc:
-                entry["eta"] = eta_dt.isoformat()
-            else:
-                # ETA is in the past — treat as passed, use expired ETA
-                # as implied arrival time if no better data exists
-                entry["passed"] = True
-                entry["last_arrival"] = eta_dt.isoformat()
+            entry["eta"] = eta_dt.isoformat()
+            # Do NOT infer passed=True from an expired ETA. The predictor
+            # can easily overshoot (say "shuttle will be at ECAV at
+            # 22:30" when the shuttle is still 2 minutes away), and
+            # fabricating a "Last: 22:30" on an unpassed stop looks
+            # like the shuttle visited when it didn't. Detection via
+            # last_arrivals is the ONLY source of truth for passed.
 
         if stop_key in last_arrivals:
             la_iso = last_arrivals[stop_key]
-            # Prefer the detection-based last_arrival if it's newer
-            current = entry.get("last_arrival")
-            if current is None or la_iso > current:
-                entry["last_arrival"] = la_iso
-                entry["passed"] = True
+            # Real GPS detection — authoritative.
+            entry["last_arrival"] = la_iso
+            entry["passed"] = True
 
         stop_etas[stop_key] = entry
+
+    # Defensive scrub: if a stop has a future ETA but no real detection-based
+    # last_arrival, clear any la that might have been fabricated by a future
+    # code path. This preserves the invariant "entries with a la are backed
+    # by a real, loop-scoped detection."
+    first_upcoming_idx: Optional[int] = None
+    for i, stop_key in enumerate(stops_in_route):
+        eta_dt = eta_lookup.get(stop_key)
+        if eta_dt and eta_dt > now_utc:
+            first_upcoming_idx = i
+            break
+
+    if first_upcoming_idx is not None:
+        for i in range(first_upcoming_idx, len(stops_in_route)):
+            stop_key = stops_in_route[i]
+            entry = stop_etas[stop_key]
+            eta_dt = eta_lookup.get(stop_key)
+            if eta_dt and eta_dt > now_utc and stop_key not in last_arrivals:
+                # Stop is upcoming and has no real detection-based la —
+                # drop any stale la that might have been fabricated
+                # elsewhere (defensive).
+                entry["last_arrival"] = None
+                entry["passed"] = False
 
     # Fix detection gaps + enforce monotonic last_arrivals. Passed stops
     # should have last_arrival timestamps in ascending order within a
@@ -261,23 +270,82 @@ def build_trip_etas(
     # a stop from a PREVIOUS loop. Clamp the out-of-order stop's
     # last_arrival up to the preceding stop's value so the display
     # stays coherent.
-    last_passed_idx = -1
-    last_passed_la = None
+    # Detection-gap backfill: a shuttle moves through stops sequentially,
+    # so if any LATER stop has a real detection in last_arrivals, every
+    # EARLIER stop in route order must also have been passed (even if
+    # add_stops missed them). Find the farthest-reached real-detection
+    # index, then mark all earlier stops as passed.
+    farthest_detected_idx = -1
     for i, stop_key in enumerate(stops_in_route):
-        entry = stop_etas[stop_key]
-        if entry["passed"]:
-            # Enforce monotonic ordering: if this stop's la is earlier
-            # than the previous passed stop's la, use the previous.
-            if last_passed_la and entry["last_arrival"] and entry["last_arrival"] < last_passed_la:
-                entry["last_arrival"] = last_passed_la
-            last_passed_idx = i
-            last_passed_la = entry["last_arrival"]
-            continue
-        # Not passed — check if we should backfill (detection gap)
-        if entry["eta"] is None and last_passed_idx >= 0:
-            # Gap: no ETA, no last_arrival, but earlier stops are passed
-            entry["passed"] = True
-            entry["last_arrival"] = last_passed_la
+        if stop_key in last_arrivals:
+            farthest_detected_idx = i
+
+    if farthest_detected_idx >= 0:
+        # Build a list of (idx, iso_la) anchor points and monotonic-clamp
+        # them so any out-of-order real detections (cross-loop leaks
+        # that sneaked past the freshness filter) get clamped up to
+        # their preceding neighbor's la.
+        anchors: List[Tuple[int, str]] = []
+        for i in range(farthest_detected_idx + 1):
+            la = last_arrivals.get(stops_in_route[i])
+            if la:
+                if anchors and la < anchors[-1][1]:
+                    la = anchors[-1][1]  # clamp up
+                anchors.append((i, la))
+
+        def _interpolated_la(gap_idx: int) -> Optional[str]:
+            """Linearly interpolate an la between the nearest anchor pair.
+
+            If the gap is between two real detections, blend their
+            timestamps proportional to how far the gap's index is
+            between them — gives a realistic "Last: ~HH:MM" instead
+            of defaulting to the preceding detection's exact time.
+            If the gap is before any anchor, use the first anchor's
+            la (best effort). If after all anchors, use the last.
+            """
+            if not anchors:
+                return None
+            # Find surrounding anchors
+            prev_anchor = None
+            next_anchor = None
+            for idx, la in anchors:
+                if idx <= gap_idx:
+                    prev_anchor = (idx, la)
+                elif idx > gap_idx and next_anchor is None:
+                    next_anchor = (idx, la)
+                    break
+            if prev_anchor and next_anchor:
+                # Interpolate
+                p_idx, p_la = prev_anchor
+                n_idx, n_la = next_anchor
+                p_dt = datetime.fromisoformat(p_la)
+                n_dt = datetime.fromisoformat(n_la)
+                span = n_idx - p_idx
+                if span <= 0:
+                    return p_la
+                ratio = (gap_idx - p_idx) / span
+                interp_dt = p_dt + (n_dt - p_dt) * ratio
+                return interp_dt.isoformat()
+            if prev_anchor:
+                return prev_anchor[1]
+            if next_anchor:
+                return next_anchor[1]
+            return None
+
+        for i in range(farthest_detected_idx + 1):
+            stop_key = stops_in_route[i]
+            entry = stop_etas[stop_key]
+            real_la = last_arrivals.get(stop_key)
+            if real_la:
+                # Use the clamped value from anchors
+                clamped = next((la for idx, la in anchors if idx == i), real_la)
+                entry["last_arrival"] = clamped
+                entry["passed"] = True
+            else:
+                # Detection gap — interpolate between neighbors.
+                entry["passed"] = True
+                entry["last_arrival"] = _interpolated_la(i)
+                entry["eta"] = None
 
     return stop_etas
 
@@ -321,6 +389,18 @@ def compute_trips_from_vehicle_data(
     # Remaining vehicles (no match within window) become injected trips.
     assigned_scheduled_times: set = set()  # (route, iso) tuples of claimed schedule slots
 
+    # PERF: precompute a per-vehicle sorted-group lookup once so the
+    # per-vehicle loop below doesn't re-scan the full dataframe N times.
+    vehicle_groups: Dict[str, pd.DataFrame] = {}
+    if full_df is not None and not full_df.empty:
+        target_ids = {str(v) for v in vehicle_stop_etas.keys()}
+        filtered = full_df[full_df['vehicle_id'].astype(str).isin(target_ids)]
+        if not filtered.empty:
+            filtered = filtered.sort_values('timestamp', kind='mergesort')
+            vehicle_groups = {
+                str(vid): grp for vid, grp in filtered.groupby('vehicle_id', sort=False)
+            }
+
     # Pass 1: collect per-vehicle preconditions
     vehicle_meta: List[Dict[str, Any]] = []
     for vid, vdata in vehicle_stop_etas.items():
@@ -333,10 +413,7 @@ def compute_trips_from_vehicle_data(
         first_stop = route_stops[0]
         sched_deps = schedule.get(route, [])
 
-        if full_df is not None and not full_df.empty:
-            vehicle_df = full_df[full_df['vehicle_id'] == str(vid)].sort_values('timestamp')
-        else:
-            vehicle_df = pd.DataFrame()
+        vehicle_df = vehicle_groups.get(str(vid), pd.DataFrame())
 
         # Compute actual_departure without matching
         departures = _detect_vehicle_departures(vehicle_df, first_stop)
@@ -365,6 +442,14 @@ def compute_trips_from_vehicle_data(
 
             # Filter 1: idle at the route's first stop for longer than
             # a full loop (driver on break at Union, end-of-day, etc.)
+            #
+            # We use a distance-based motion check rather than
+            # speed_kmh. The stationary-override in ml/pipelines.py
+            # zeros out speed when raw GPS movement is <5m, so this
+            # check is now reliable — but the original `speed <= 1.0`
+            # was also fooled by polyline-projection jitter that
+            # produced phantom 30-60 km/h readings on parked shuttles.
+            # Distance-from-actual_departure is the simpler signal.
             latest_stop = last_point.get('stop_name')
             latest_speed = last_point.get('speed_kmh')
             idle_seconds = (now_utc - actual_departure).total_seconds()
@@ -395,40 +480,87 @@ def compute_trips_from_vehicle_data(
             # Catches shuttles stuck mid-route (driver on break at a
             # mid-route stop, broken-down vehicle, etc.) — Filter 1
             # only catches the first-stop case.
+            #
+            # IMPORTANT: compare the MAX distance from the current
+            # position across all points in the lookback window, not
+            # just the endpoint-to-endpoint distance. A shuttle that
+            # completes a full loop in 10 min returns to its starting
+            # point, so endpoint-to-endpoint would read ~0m even
+            # though the shuttle traveled the full route. Using max
+            # distance catches this correctly: if the shuttle ever
+            # got more than NO_MOVEMENT_DIST_M away from its current
+            # position within the window, it's moving.
             if 'latitude' in vehicle_df.columns and 'longitude' in vehicle_df.columns:
                 latest_ts = pd.to_datetime(last_point['timestamp']).to_pydatetime()
                 if latest_ts.tzinfo is None:
                     latest_ts = latest_ts.replace(tzinfo=timezone.utc)
                 lookback_cutoff = latest_ts - timedelta(seconds=NO_MOVEMENT_LOOKBACK_SEC)
                 vehicle_df_ts = pd.to_datetime(vehicle_df['timestamp'], utc=True)
-                old_points = vehicle_df[vehicle_df_ts <= lookback_cutoff]
-                if not old_points.empty:
-                    old_point = old_points.iloc[-1]  # most recent point >= lookback ago
+                window_points = vehicle_df[vehicle_df_ts >= lookback_cutoff]
+                if len(window_points) >= 2:
                     try:
-                        from shared.stops import Stops
                         latest_lat = float(last_point['latitude'])
                         latest_lon = float(last_point['longitude'])
-                        old_lat = float(old_point['latitude'])
-                        old_lon = float(old_point['longitude'])
-                        # Reuse haversine via Stops if available, else inline.
-                        import math
-                        R = 6371000
-                        phi1 = math.radians(old_lat)
-                        phi2 = math.radians(latest_lat)
-                        dphi = math.radians(latest_lat - old_lat)
-                        dlam = math.radians(latest_lon - old_lon)
-                        a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlam/2)**2
-                        dist_moved = 2 * R * math.asin(math.sqrt(a))
-                        if dist_moved < NO_MOVEMENT_DIST_M:
+                        R = 6371000  # Earth radius, meters
+                        # Compute haversine distance from current position to
+                        # every point in the window. If the max is less than
+                        # NO_MOVEMENT_DIST_M, the shuttle is parked (not just
+                        # at a temporary wrap-around).
+                        lats = window_points['latitude'].astype(float).values
+                        lons = window_points['longitude'].astype(float).values
+                        phi0 = np.radians(latest_lat)
+                        lam0 = np.radians(latest_lon)
+                        phis = np.radians(lats)
+                        lams = np.radians(lons)
+                        dphi = phis - phi0
+                        dlam = lams - lam0
+                        a = (np.sin(dphi / 2) ** 2
+                             + np.cos(phi0) * np.cos(phis) * np.sin(dlam / 2) ** 2)
+                        dists = 2 * R * np.arcsin(np.sqrt(a))
+                        max_dist = float(np.nanmax(dists)) if len(dists) else 0.0
+                        if max_dist < NO_MOVEMENT_DIST_M:
                             logger.debug(
                                 f"Skipping trip for vehicle {vid} on {route}: "
-                                f"moved only {dist_moved:.0f}m in last "
+                                f"max displacement only {max_dist:.0f}m in last "
                                 f"{NO_MOVEMENT_LOOKBACK_SEC}s"
                             )
                             continue
                     except Exception:
                         pass  # On any error, fall through and emit the trip
         # ------------------------------------------------------------
+
+        # Detect "dwelling at first_stop after a loop completed". When a
+        # shuttle finishes its loop and is sitting at Union waiting for
+        # its next departure, the most-recent first-stop detection is
+        # the ARRIVAL of the loop that just finished — not a real
+        # departure. Showing that arrival time on the timeline as
+        # "leaving at HH:MM" is misleading: the user sees the current
+        # time (~now) instead of the next scheduled departure.
+        #
+        # The signal: (a) latest point is at first_stop, (b) the
+        # cluster started recently enough to be a CURRENT dwell (not
+        # an idle shuttle from earlier in the day), (c) there's a
+        # future scheduled departure we can promote to.
+        #
+        # We deliberately do NOT check speed here. When a shuttle is
+        # parked at Union, GPS jitter projects onto the polyline in
+        # ways that produce wildly inflated `speed_kmh` values (a
+        # 1cm physical move can become 30+ km/h after polyline
+        # projection at an intersection). Stop-based detection is
+        # more reliable than speed at the dwell point.
+        is_dwelling = False
+        if not vehicle_df.empty:
+            latest_stop = last_point.get('stop_name')
+            at_first_stop = pd.notna(latest_stop) and str(latest_stop) == first_stop
+            age_of_departure = (now_utc - actual_departure).total_seconds()
+            # "Recent" cluster = the shuttle just rolled into Union.
+            # Upper bound generous enough to cover typical inter-loop
+            # dwells (~60-1200s) but short enough to stay out of the
+            # idle-filter territory (>1200s).
+            is_dwelling = (
+                at_first_stop
+                and 0 <= age_of_departure <= 1200
+            )
 
         # Compute best candidate distance for sort ordering
         best_diff = float('inf')
@@ -445,6 +577,7 @@ def compute_trips_from_vehicle_data(
             "actual_departure": actual_departure,
             "prior_departure": prior_departure,
             "best_diff": best_diff,
+            "is_dwelling": is_dwelling,
         })
 
     # Pass 2: assign in order of best-fit — vehicles closest to a schedule
@@ -460,17 +593,35 @@ def compute_trips_from_vehicle_data(
         sched_deps = meta["sched_deps"]
         actual_departure = meta["actual_departure"]
         prior_departure = meta.get("prior_departure")
+        is_dwelling = meta.get("is_dwelling", False)
 
-        # Find the closest UNCLAIMED scheduled time within the window
+        # When the shuttle is dwelling at Union after a loop just
+        # finished, promote it to the NEXT future scheduled departure
+        # rather than matching to the closest-in-either-direction slot.
+        # This makes the timeline row honor the static schedule: a
+        # shuttle that arrived at 14:27 and has a 14:30/14:45/15:00
+        # schedule will show as the 14:30 row (next future slot), not
+        # a phantom injected 14:27 row.
         matched_scheduled: Optional[datetime] = None
-        min_diff = float('inf')
-        for sched in sched_deps:
-            if (route, sched.isoformat()) in assigned_scheduled_times:
-                continue
-            diff = abs((sched - actual_departure).total_seconds())
-            if diff < min_diff and diff <= MATCH_WINDOW_SEC:
-                min_diff = diff
-                matched_scheduled = sched
+        if is_dwelling:
+            future_slots = sorted(
+                s for s in sched_deps
+                if s > now_utc
+                and (route, s.isoformat()) not in assigned_scheduled_times
+            )
+            if future_slots:
+                matched_scheduled = future_slots[0]
+
+        if matched_scheduled is None:
+            # Find the closest UNCLAIMED scheduled time within the window
+            min_diff = float('inf')
+            for sched in sched_deps:
+                if (route, sched.isoformat()) in assigned_scheduled_times:
+                    continue
+                diff = abs((sched - actual_departure).total_seconds())
+                if diff < min_diff and diff <= MATCH_WINDOW_SEC:
+                    min_diff = diff
+                    matched_scheduled = sched
 
         if matched_scheduled is not None:
             trip_time = matched_scheduled
@@ -480,7 +631,13 @@ def compute_trips_from_vehicle_data(
             trip_time = actual_departure
             scheduled = False
 
-        status = "scheduled" if actual_departure > now_utc else "active"
+        # When a shuttle is dwelling and we promoted it to a future
+        # scheduled slot, the trip status is "scheduled" (upcoming),
+        # not "active" — it hasn't actually started the next loop yet.
+        if is_dwelling and scheduled and trip_time > now_utc:
+            status = "scheduled"
+        else:
+            status = "scheduled" if actual_departure > now_utc else "active"
 
         # Trip completion: if the vehicle has arrived at the LAST stop of
         # the route recently, the current loop is done. Mark it completed
@@ -490,14 +647,18 @@ def compute_trips_from_vehicle_data(
         vehicle_las = last_arrivals_by_vehicle.get(str(vid), {})
         last_stop = route_stops[-1]
         vehicle_future_stops = vdata.get("stops", [])
-        if status == "active" and last_stop in vehicle_las:
-            last_stop_arrival = datetime.fromisoformat(vehicle_las[last_stop])
-            # If the vehicle reached the last stop within 10 minutes,
-            # it just finished a loop. Mark completed.
-            if (now_utc - last_stop_arrival).total_seconds() < 600:
-                status = "completed"
-        # Also mark completed if the vehicle has NO future stops at all
-        # (it's at or past the last stop in the ETA computation).
+        # Completion signal: the vehicle has no more future stops to
+        # predict. compute_per_stop_etas returns entries for every
+        # stop AHEAD of the shuttle's current position; when that's
+        # empty the shuttle has either finished its loop or the
+        # position is past the last polyline.
+        #
+        # We deliberately do NOT use `last_stop in vehicle_las`
+        # anymore. Now that STUDENT_UNION_RETURN is detected
+        # (resolve_duplicate_stops fix), that signal fires constantly
+        # for looping shuttles — the return detection is fresh every
+        # wrap-around. Relying on future-stop emptiness is robust
+        # against detection noise.
         if status == "active" and len(vehicle_future_stops) == 0:
             status = "completed"
 
@@ -511,12 +672,18 @@ def compute_trips_from_vehicle_data(
             "status": status,
         }
 
+        # Loop-scope the active trip's last_arrivals to detections at-or-after
+        # the current loop's start (= actual_departure). For a dwelling shuttle
+        # actual_departure is ~now, so the filter produces an empty dict — that
+        # is correct because the "active" trip for a dwelling shuttle represents
+        # the UPCOMING scheduled loop which hasn't started yet.
         stop_etas = build_trip_etas(
             trip=trip,
             vehicle_stops=vehicle_future_stops,
             last_arrivals=vehicle_las,
             stops_in_route=route_stops,
             now_utc=now_utc,
+            loop_cutoff=actual_departure,
         )
         trip["stop_etas"] = stop_etas
         trips.append(trip)
@@ -534,24 +701,60 @@ def compute_trips_from_vehicle_data(
             # new loop) and only if the loops are separated by at least
             # 3 minutes (avoids false positives from GPS noise).
             if gap > 180 and age_since_new_loop < 120:
+                # Match the prior_departure to a scheduled slot for the
+                # display time, so the completed trip aligns with the
+                # static schedule (e.g. shows "10:15 PM" instead of the
+                # raw "10:15:23"). This mirrors the active-trip matching
+                # done above.
+                prior_matched: Optional[datetime] = None
+                prior_min_diff = float('inf')
+                for sched in sched_deps:
+                    diff = abs((sched - prior_departure).total_seconds())
+                    if diff < prior_min_diff and diff <= MATCH_WINDOW_SEC:
+                        prior_min_diff = diff
+                        prior_matched = sched
+                prior_display = prior_matched if prior_matched else prior_departure
                 completed_trip = {
-                    "trip_id": f"{route}:{prior_departure.isoformat()}:{vid}:done",
+                    "trip_id": f"{route}:{prior_display.isoformat()}:{vid}:done",
                     "route": route,
-                    "departure_time": prior_departure.isoformat(),
+                    "departure_time": prior_display.isoformat(),
                     "actual_departure": prior_departure.isoformat(),
-                    "scheduled": False,
+                    "scheduled": prior_matched is not None,
                     "vehicle_id": vid,
                     "status": "completed",
                 }
-                # All stops passed — use arrival timestamps or synthetic ones
-                completed_stop_etas: Dict[str, Dict[str, Any]] = {}
+                # Loop-scope to the just-finished loop via prior_departure.
+                # Route through build_trip_etas so the completed trip goes
+                # through the same assembly (monotonic clamp, anchor
+                # interpolation) as the active trip — single source of truth.
+                # Pass an empty vehicle_stops list because a completed trip
+                # has no future ETAs.
+                completed_stop_etas = build_trip_etas(
+                    trip=completed_trip,
+                    vehicle_stops=[],
+                    last_arrivals=vehicle_las,
+                    stops_in_route=route_stops,
+                    now_utc=now_utc,
+                    loop_cutoff=prior_departure,
+                )
+                # Mark every stop as passed — the loop is done. Any stop
+                # missing a real detection (because add_stops missed it)
+                # still gets passed=True by the backfill logic inside
+                # build_trip_etas, which interpolates an la from
+                # neighbors. Only stops that have NO neighbors with la
+                # (e.g. the shuttle never fully completed the loop)
+                # remain passed=False — in that case we force passed=True
+                # here since the completed-trip emission only fires when
+                # we know the loop finished.
                 for stop_key in route_stops:
-                    la = vehicle_las.get(stop_key)
-                    completed_stop_etas[stop_key] = {
-                        "eta": None,
-                        "last_arrival": la,
-                        "passed": True,
-                    }
+                    entry = completed_stop_etas.get(stop_key)
+                    if entry is None:
+                        completed_stop_etas[stop_key] = {
+                            "eta": None, "last_arrival": None, "passed": True,
+                        }
+                    else:
+                        entry["eta"] = None  # completed trip has no future
+                        entry["passed"] = True
                 completed_trip["stop_etas"] = completed_stop_etas
                 trips.append(completed_trip)
 

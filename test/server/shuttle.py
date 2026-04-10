@@ -37,6 +37,12 @@ class QueuedAction:
     status: str = "pending"  # pending, in_progress, completed, failed
     route: Optional[str] = None
     duration: Optional[float] = None  # seconds, for ON_BREAK
+    # When True on a LOOPING action, the shuttle runs exactly ONE loop
+    # and then terminates the action (returning to idle) instead of
+    # entering the inter-loop dwell and repeating forever. Used by the
+    # schedule-strict mode so each scheduled departure produces exactly
+    # one run of the route.
+    single_loop: bool = False
 
 
 class Shuttle:
@@ -122,7 +128,13 @@ class Shuttle:
                 for a in self._action_queue
             ]
 
-    def push_action(self, action: ShuttleAction, route: Optional[str] = None, duration: Optional[float] = None) -> str:
+    def push_action(
+        self,
+        action: ShuttleAction,
+        route: Optional[str] = None,
+        duration: Optional[float] = None,
+        single_loop: bool = False,
+    ) -> str:
         """Add an action to the queue. Returns the action ID."""
         if action == ShuttleAction.LOOPING and route is None:
             raise ValueError("LOOPING action requires a route")
@@ -130,11 +142,21 @@ class Shuttle:
             raise ValueError(f"Invalid or inactive route: {route}")
 
         action_id = str(uuid.uuid4())
-        queued = QueuedAction(id=action_id, action=action, route=route, duration=duration)
+        queued = QueuedAction(
+            id=action_id,
+            action=action,
+            route=route,
+            duration=duration,
+            single_loop=single_loop,
+        )
 
         with self.lock:
             self._action_queue.append(queued)
-            logger.info(f"Shuttle {self.id}: queued {action.value}" + (f" on {route}" if route else ""))
+            logger.info(
+                f"Shuttle {self.id}: queued {action.value}"
+                + (f" on {route}" if route else "")
+                + (" (single_loop)" if single_loop else "")
+            )
 
         return action_id
 
@@ -260,7 +282,25 @@ class Shuttle:
             # The idle-shuttle filter (>20 min at first stop) is well
             # above this dwell so a normal dwell won't accidentally
             # hide the trip.
+            #
+            # EXCEPT in schedule-strict mode: when the queued action's
+            # single_loop flag is set, one pass around the route is
+            # enough. Mark completed and return to idle so the shuttle
+            # waits for its NEXT scheduled departure to fire another
+            # single_loop action.
             if self._current_action == ShuttleAction.LOOPING and self._current_route:
+                current_queued = (
+                    self._action_queue[self._action_index - 1]
+                    if self._action_index > 0 else None
+                )
+                if current_queued and current_queued.single_loop:
+                    current_queued.status = "completed"
+                    logger.info(
+                        f"Shuttle {self.id}: single loop complete on "
+                        f"{self._current_route}, returning to idle"
+                    )
+                    self._current_action = None
+                    return
                 self._loop_dwell_until = time.time() + INTER_LOOP_PAUSE_SEC
                 logger.info(
                     f"Shuttle {self.id}: loop complete on {self._current_route}, "

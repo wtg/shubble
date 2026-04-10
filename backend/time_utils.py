@@ -1,5 +1,4 @@
 """Time utility functions for timezone handling."""
-import os
 from datetime import datetime, timedelta, timezone
 
 from backend.config import settings

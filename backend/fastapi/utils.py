@@ -1,7 +1,8 @@
 """Utility functions for FastAPI."""
+from datetime import datetime, timezone
 from sqlalchemy import func, and_, select
 from sqlalchemy.orm import selectinload
-from typing import Dict, Tuple, Optional, List, TypedDict, Any
+from typing import Dict, Tuple, Optional, List, TypedDict
 import pandas as pd
 
 from backend.cache import cache
@@ -10,7 +11,8 @@ from backend.function_timer import timed
 from backend.models import VehicleLocation, DriverVehicleAssignment, ETA, PredictedLocation
 from backend.cache_dataframe import get_today_dataframe
 from backend.utils import get_vehicles_in_geofence_query
-from backend.time_utils import get_campus_start_of_day
+from backend.time_utils import dev_now, get_campus_start_of_day
+from shared.stops import Stops
 
 import logging
 
@@ -98,8 +100,10 @@ async def smart_closest_point(
                 results[vehicle_id] = (None, None, None, None, None, None)
             return results
 
-        df['vehicle_id'] = df['vehicle_id'].astype(str)
-        grouped = df.groupby('vehicle_id')
+        # PERF + correctness: no longer mutating the shared cached df.
+        # vehicle_id comes from the DB as String already; groupby on the
+        # existing column works without forcing an astype dance.
+        grouped = df.groupby('vehicle_id', sort=False)
 
         # Get the latest row for each vehicle
         for vehicle_id in vehicle_ids:
@@ -108,7 +112,8 @@ async def smart_closest_point(
                 results[vehicle_id] = (None, None, None, None, None, None)
                 continue
 
-            latest = grouped.get_group(vid_str).iloc[-1]
+            vehicle_rows = grouped.get_group(vid_str)
+            latest = vehicle_rows.iloc[-1]
 
             # Extract closest point data from the preprocessed columns
             # These columns are added by ml/data/preprocess.py pipeline
@@ -120,12 +125,38 @@ async def smart_closest_point(
             closest_lon = latest.get('closest_lon')
             stop_name = latest.get('stop_name')  # From stops pipeline
 
-            # Fallback: if dataframe has no route data, use real-time route matching
-            if (route_name is None or (isinstance(route_name, float) and pd.isna(route_name))):
+            def _is_na(v):
+                return v is None or (isinstance(v, float) and pd.isna(v))
+
+            # If the latest row has no route (e.g. shuttle currently at
+            # Union where multiple routes are ambiguous), walk
+            # BACKWARD through recent history to find the most recent
+            # row with a valid route. This eliminates the transient
+            # "Vehicle X has no route_name" that appears right after a
+            # shuttle starts or wraps between loops.
+            if _is_na(route_name):
+                # Only walk back a handful of rows — a stale route
+                # from 30+ minutes ago isn't useful.
+                look_back = min(len(vehicle_rows), 12)
+                for i in range(2, look_back + 1):
+                    prev = vehicle_rows.iloc[-i]
+                    prev_route = prev.get('route')
+                    if not _is_na(prev_route):
+                        route_name = prev_route
+                        # Also prefer the same row's closest-point
+                        # info so the response is internally coherent.
+                        distance = prev.get('dist_to_route')
+                        polyline_idx = prev.get('polyline_idx')
+                        segment_idx = prev.get('segment_idx')
+                        closest_lat = prev.get('closest_lat')
+                        closest_lon = prev.get('closest_lon')
+                        break
+
+            # Fallback: if still no route data, use real-time route matching
+            if _is_na(route_name):
                 lat = latest.get('latitude')
                 lon = latest.get('longitude')
                 if lat is not None and lon is not None:
-                    from shared.stops import Stops
                     rt_result = Stops.get_closest_point((float(lat), float(lon)))
                     if rt_result[0] is not None:
                         distance, closest_point_arr, route_name, polyline_idx, segment_idx = rt_result
@@ -299,9 +330,6 @@ async def get_latest_etas(vehicle_ids: List[str], session_factory) -> Dict[str, 
     """
     if not vehicle_ids:
         return {}
-
-    from datetime import datetime, timezone
-    from backend.time_utils import dev_now
 
     now_utc = dev_now(timezone.utc)
 

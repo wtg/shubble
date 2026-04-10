@@ -1,7 +1,5 @@
 """LSTM model deployment utilities."""
 import logging
-from pathlib import Path
-from typing import Optional
 
 from ml.cache import LSTM_CACHE_DIR, get_polyline_dir
 from ml.models.lstm import LSTMModel

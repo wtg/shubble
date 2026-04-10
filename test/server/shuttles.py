@@ -178,14 +178,24 @@ async def clear_shuttle_queue(shuttle_id: str):
 
 
 @router.post("/shuttles/schedule")
-async def start_schedule_shuttles():
-    """Start schedule-based shuttles (2 per route, alternating departure times)."""
-    count = await setup_schedule_shuttles()
+async def start_schedule_shuttles(strict: bool = False):
+    """Start schedule-based shuttles (2 per route, alternating departure times).
+
+    Query params:
+        strict: when true, each shuttle runs exactly ONE loop per
+            scheduled departure time (waiting idle at Union between
+            slots). When false (default), shuttles start looping
+            immediately and repeat continuously — useful for iterative
+            UX testing but doesn't mirror real schedule behavior.
+    """
+    count = await setup_schedule_shuttles(strict=strict)
     async with shuttle_lock:
         return {
             "shuttles": count,
             "ids": list(shuttles.keys()),
-            "message": f"Created {count} schedule-based shuttles",
+            "strict": strict,
+            "message": f"Created {count} schedule-based shuttles"
+                + (" (strict)" if strict else ""),
         }
 
 
@@ -214,8 +224,20 @@ def _parse_schedule_time(time_str: str) -> datetime:
     return result
 
 
-def _schedule_worker(shuttle: Shuttle, route: str, departure_times: list[datetime]):
-    """Background thread: queues a LOOPING action at each scheduled departure."""
+def _schedule_worker(
+    shuttle: Shuttle,
+    route: str,
+    departure_times: list[datetime],
+    strict: bool = False,
+):
+    """Background thread: queues a LOOPING action at each scheduled departure.
+
+    When strict=True, each queued LOOPING is single_loop=True so the
+    shuttle runs exactly one loop and then returns to idle at Union,
+    waiting for the next scheduled departure. When strict=False, the
+    queued actions are redundant (the shuttle is already looping
+    continuously) but kept for logging symmetry.
+    """
     for dep_time in departure_times:
         now = dev_now(CAMPUS_TZ)
         wait = (dep_time - now).total_seconds()
@@ -223,12 +245,27 @@ def _schedule_worker(shuttle: Shuttle, route: str, departure_times: list[datetim
             time.sleep(wait)
         if not shuttle._running:
             break
-        shuttle.push_action(ShuttleAction.LOOPING, route=route)
-        logger.info(f"Shuttle {shuttle.id}: scheduled departure on {route} at {dep_time.strftime('%I:%M %p')}")
+        shuttle.push_action(
+            ShuttleAction.LOOPING,
+            route=route,
+            single_loop=strict,
+        )
+        logger.info(
+            f"Shuttle {shuttle.id}: scheduled departure on {route} at "
+            f"{dep_time.strftime('%I:%M %p')}"
+            + (" (strict single-loop)" if strict else "")
+        )
 
 
-async def setup_schedule_shuttles() -> int:
-    """Create 2 shuttles per route with alternating departure times from the static schedule."""
+async def setup_schedule_shuttles(strict: bool = False) -> int:
+    """Create 2 shuttles per route with alternating departure times from the static schedule.
+
+    Args:
+        strict: when True, shuttles wait idle at Union between scheduled
+            departures and run exactly one loop per slot. When False
+            (legacy), shuttles start looping continuously regardless
+            of schedule times — still useful for fast UX iteration.
+    """
     global shuttle_counter
 
     schedule = _load_today_schedule()
@@ -247,12 +284,27 @@ async def setup_schedule_shuttles() -> int:
             dep_times = [_parse_schedule_time(t) for t in times]
             future_deps = [t for t in dep_times if t > now]
 
+            # End-of-day fallback: if the static schedule has no
+            # future departures today (e.g. testing after the last
+            # scheduled run), synthesize a pair of departures at
+            # now+30s and now+5min so iteration testing still works.
+            # Only triggers when fewer than 2 future slots remain.
             if len(future_deps) < 2:
-                logger.warning(f"Route {route_name}: fewer than 2 future departures, skipping")
-                continue
+                logger.warning(
+                    f"Route {route_name}: only {len(future_deps)} future "
+                    f"departures in schedule, synthesizing two immediate slots "
+                    f"for testing"
+                )
+                synthetic_base = now + timedelta(seconds=30)
+                future_deps = [
+                    synthetic_base,
+                    synthetic_base + timedelta(minutes=5),
+                ]
 
-            # Staggered two shuttles per route: first starts immediately,
-            # second starts ~2 minutes later (test sim is faster than real time)
+            # Staggered two shuttles per route: in legacy mode the
+            # first starts immediately and the second ~2 minutes later.
+            # In strict mode neither starts immediately — both wait
+            # for their first scheduled departure.
             su_coords = (42.730711, -73.676737)
             half_loop_sec = 120  # 2 minutes
             is_first_shuttle = True
@@ -265,16 +317,17 @@ async def setup_schedule_shuttles() -> int:
                 shuttle._location = su_coords
                 shuttle._send_webhook(entry=True)
 
-                if is_first_shuttle:
-                    shuttle.push_action(ShuttleAction.LOOPING, route=route_name)
-                    is_first_shuttle = False
-                else:
-                    # Delay the second shuttle's start by half a loop
-                    def delayed_start(sh=shuttle, rn=route_name):
-                        sh.push_action(ShuttleAction.LOOPING, route=rn)
-                    t = threading.Timer(half_loop_sec, delayed_start)
-                    t.daemon = True
-                    t.start()
+                if not strict:
+                    if is_first_shuttle:
+                        shuttle.push_action(ShuttleAction.LOOPING, route=route_name)
+                        is_first_shuttle = False
+                    else:
+                        # Delay the second shuttle's start by half a loop
+                        def delayed_start(sh=shuttle, rn=route_name):
+                            sh.push_action(ShuttleAction.LOOPING, route=rn)
+                        t = threading.Timer(half_loop_sec, delayed_start)
+                        t.daemon = True
+                        t.start()
 
                 shuttle.start()
                 shuttles[shuttle_id] = shuttle
@@ -282,7 +335,7 @@ async def setup_schedule_shuttles() -> int:
 
                 thread = threading.Thread(
                     target=_schedule_worker,
-                    args=(shuttle, route_name, shuttle_deps),
+                    args=(shuttle, route_name, shuttle_deps, strict),
                     daemon=True,
                     name=f"sched-{shuttle_id}-{route_name}",
                 )
@@ -293,10 +346,11 @@ async def setup_schedule_shuttles() -> int:
                     f"Shuttle {shuttle_id}: {route_name}, "
                     f"{len(shuttle_deps)} departures, "
                     f"first at {shuttle_deps[0].strftime('%I:%M %p')}"
+                    + (" [strict]" if strict else "")
                 )
 
     count = len(shuttles)
-    logger.info(f"Created {count} schedule-based shuttles")
+    logger.info(f"Created {count} schedule-based shuttles" + (" (strict)" if strict else ""))
     return count
 
 

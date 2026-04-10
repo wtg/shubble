@@ -495,7 +495,6 @@ def lstm_hyperparameters(
         Dictionary with best parameters and results
     """
     from ml.training.train import train_lstm
-    import torch
 
     # Generate parameter grid
     param_grid = {

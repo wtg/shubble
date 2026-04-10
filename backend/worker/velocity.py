@@ -29,6 +29,16 @@ class AverageSpeedPredictor:
         return self.DEFAULT_SPEED_KMH
 
 
+_VELOCITY_PREDICTOR_SINGLETON: VelocityPredictor | None = None
+
+
 def get_velocity_predictor() -> VelocityPredictor:
-    """Factory function. Change this single line to swap implementations."""
-    return AverageSpeedPredictor()
+    """Factory function. Change this single line to swap implementations.
+
+    Singleton so the per-vehicle ETA loop doesn't allocate a new predictor
+    every call — free CPU cycles for no behavioral change.
+    """
+    global _VELOCITY_PREDICTOR_SINGLETON
+    if _VELOCITY_PREDICTOR_SINGLETON is None:
+        _VELOCITY_PREDICTOR_SINGLETON = AverageSpeedPredictor()
+    return _VELOCITY_PREDICTOR_SINGLETON

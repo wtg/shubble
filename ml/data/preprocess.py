@@ -137,41 +137,53 @@ def add_closest_points(
         rows_to_process = df
         rows_to_process_mask = pd.Series([True] * len(df), index=df.index)
 
-    def process_row(row):
-        """Process a single row and return closest point information."""
-        lat = row[lat_column]
-        lon = row[lon_column]
+    # PERF: collect into columnar lists instead of progress_apply's per-row
+    # pd.Series construction. In additive mode this path processes only
+    # ~10-30 new rows per worker cycle, but the per-row Series overhead is
+    # the dominant cost — the haversine math is already vectorized inside
+    # Stops.get_closest_point.
+    #
+    # CRITICAL: normalize missing values to dtype-appropriate sentinels
+    # (np.nan for numeric columns, None for object columns). If we let
+    # Stops.get_closest_point's raw `None`s through into a list that's
+    # then assigned to a float64-dtype column, pandas will raise a
+    # TypeError because None is not a valid float. This crashed every
+    # worker cycle, producing empty /api/trips payloads.
+    FLOAT_KEYS = {'distance', 'closest_point_lat', 'closest_point_lon',
+                  'polyline_index', 'segment_index'}
+    out_cols: dict[str, list] = {output_col: [] for output_col in output_columns.values()}
+    na_defaults = {key: (None if key == 'route_name' else np.nan) for key in output_columns}
+    subset = rows_to_process[[lat_column, lon_column]]
 
-        # Return NaN/None for all outputs if coordinates are invalid
+    def _coerce(key: str, v):
+        if v is None:
+            return None if key == 'route_name' else np.nan
+        return v
+
+    for lat, lon in subset.itertuples(index=False, name=None):
         if pd.isna(lat) or pd.isna(lon):
-            result = {}
             for key, output_col in output_columns.items():
-                if key == 'route_name':
-                    result[output_col] = None
-                else:
-                    result[output_col] = np.nan
-            return pd.Series(result)
-
-        # Get closest point information
+                out_cols[output_col].append(na_defaults[key])
+            continue
         distance, closest_point, route_name, polyline_index, segment_index = Stops.get_closest_point((lat, lon))
-
-        # Build result dictionary with requested values
         value_map = {
             'distance': distance,
             'closest_point_lat': closest_point[0] if closest_point is not None else np.nan,
             'closest_point_lon': closest_point[1] if closest_point is not None else np.nan,
             'route_name': route_name,
             'polyline_index': polyline_index,
-            'segment_index': segment_index
+            'segment_index': segment_index,
         }
-        result = {output_col: value_map[key] for key, output_col in output_columns.items()}
+        for key, output_col in output_columns.items():
+            out_cols[output_col].append(_coerce(key, value_map[key]))
 
-        return pd.Series(result)
-
-    # Apply the function to rows that need processing
-    result_df = rows_to_process.progress_apply(process_row, axis=1)
-    print('Done! Adding columns to dataframe.')
-
-    # Assign results back to the original dataframe for the processed rows
-    for output_col in output_columns.values():
-        df.loc[rows_to_process_mask, output_col] = result_df[output_col].values
+    # Assign results back to the original dataframe for the processed rows.
+    # Cast the float-typed lists so pandas doesn't stumble on a mixed
+    # [None, np.float64, ...] list even when the None slots were converted.
+    for output_col, values in out_cols.items():
+        # Find the source key for this output_col to know the dtype intent
+        src_key = next((k for k, v in output_columns.items() if v == output_col), None)
+        if src_key in FLOAT_KEYS:
+            df.loc[rows_to_process_mask, output_col] = np.asarray(values, dtype=float)
+        else:
+            df.loc[rows_to_process_mask, output_col] = values
