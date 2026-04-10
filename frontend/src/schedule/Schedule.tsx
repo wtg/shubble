@@ -724,9 +724,22 @@ export default function Schedule({
               const info = loopTrip.stop_etas[stop];
               const nowMs = devNowMs();
               let etaTime: string | undefined;
+              // Interpolated passes come from the backend's detection-gap
+              // backfill — the `last_arrival` timestamp is a linear guess
+              // between two real anchors, not a real detection. Surface the
+              // "passed" state but don't render a fabricated "Last: HH:MM"
+              // that the user might take as a real arrival time.
+              const interpolated = !!info.passed_interpolated;
               // Completed trips: suppress all future ETAs — the loop is done.
               if (isCompletedTrip) {
-                return { etaTime: undefined, lastArrival: info.last_arrival ? new Date(info.last_arrival).toLocaleTimeString(undefined, TIME_FORMAT) : undefined, passed: true };
+                return {
+                  etaTime: undefined,
+                  lastArrival: !interpolated && info.last_arrival
+                    ? new Date(info.last_arrival).toLocaleTimeString(undefined, TIME_FORMAT)
+                    : undefined,
+                  passed: true,
+                  passedInterpolated: interpolated,
+                };
               }
               if (info.eta) {
                 const etaDate = new Date(info.eta);
@@ -740,7 +753,7 @@ export default function Schedule({
                 }
               }
               let lastArrival: string | undefined;
-              if (info.last_arrival) {
+              if (info.last_arrival && !interpolated) {
                 // Hide egregiously stale "Last:" timestamps. With the
                 // segment-based drive-by detection in ml/data/stops.py
                 // (add_stops_from_segments), most passes now register
@@ -755,7 +768,7 @@ export default function Schedule({
                   lastArrival = new Date(info.last_arrival).toLocaleTimeString(undefined, TIME_FORMAT);
                 }
               }
-              return { etaTime, lastArrival, passed: info.passed };
+              return { etaTime, lastArrival, passed: info.passed, passedInterpolated: interpolated };
             };
 
             const firstStopIsSelected = !!firstStop && firstStop === selectedStop;

@@ -6,6 +6,14 @@ export interface TripStopETA {
   eta: string | null; // ISO datetime, null if passed or no prediction
   last_arrival: string | null;
   passed: boolean;
+  /**
+   * True when `passed=true` but `last_arrival` was synthesized by the
+   * detection-gap interpolation path, not a real GPS detection. Consumers
+   * should treat the timestamp as untrustworthy and render "Passed" without
+   * a "Last: HH:MM" label. Optional for backwards compatibility — missing
+   * or false means the timestamp is anchored in a real detection.
+   */
+  passed_interpolated?: boolean;
 }
 
 /** A single trip — one shuttle's run through a route */

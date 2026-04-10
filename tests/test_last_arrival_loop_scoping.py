@@ -303,12 +303,176 @@ def test_mid_loop_backfill_still_works():
     # last_arrival somewhere between STUDENT_UNION (14:14) and GEORGIAN (14:20).
     assert result["COLONIE"]["passed"] is True
     assert result["COLONIE"]["last_arrival"] is not None
+    # And it must be flagged as interpolated so the frontend knows not
+    # to render the synthesized timestamp as a real arrival.
+    assert result["COLONIE"]["passed_interpolated"] is True
     colonie_la = datetime.fromisoformat(result["COLONIE"]["last_arrival"])
     assert datetime(2026, 4, 10, 14, 14, tzinfo=timezone.utc) <= colonie_la
     assert colonie_la <= datetime(2026, 4, 10, 14, 20, tzinfo=timezone.utc)
+    # Real-detection stops must NOT be flagged interpolated.
+    assert result["STUDENT_UNION"]["passed_interpolated"] is False
+    assert result["GEORGIAN"]["passed_interpolated"] is False
     # STAC_1 has a future ETA, not reached — must stay unpassed.
     assert result["STAC_1"]["passed"] is False
     assert result["STAC_1"]["last_arrival"] is None
+    # Unreached stops default to passed_interpolated=False.
+    assert result["STAC_1"]["passed_interpolated"] is False
+
+
+def test_spurious_scrub_allows_tick_boundary_race():
+    """The spurious-detection scrub must not drop a real detection just
+    because the predictor's polyline_idx hasn't advanced past it yet.
+
+    Scenario: shuttle physically arrives at STAC_1 (Bryckwyck) at 14:22.
+    add_stops registers the detection. The same worker cycle runs the
+    predictor, which has STAC_1 in vehicle_stops with an eta a few
+    seconds in the future (polyline projection lags the raw stop
+    match). Without a grace window, the scrub would drop STAC_1 from
+    last_arrivals as "spurious", which in turn collapses
+    farthest_detected_idx and leaves GEORGIAN (the earlier stop) stuck
+    with a future ETA for one worker cycle. Users see the stop flip
+    back to "live ETA" briefly after passing, or see Georgian's update
+    lag behind Bryckwyck's.
+
+    Contract: an upcoming eta within the SPURIOUS_UPCOMING_GRACE_SEC
+    window (60 s) is treated as a tick-boundary race, not noise, and
+    the detection is preserved.
+    """
+    now = datetime(2026, 4, 10, 14, 22, 5, tzinfo=timezone.utc)
+    loop_cutoff = datetime(2026, 4, 10, 14, 14, tzinfo=timezone.utc)
+
+    # Shuttle just arrived at STAC_1 at 14:22:00 — 5s before "now".
+    last_arrivals = {
+        "STUDENT_UNION": _iso(datetime(2026, 4, 10, 14, 14, tzinfo=timezone.utc)),
+        "COLONIE": _iso(datetime(2026, 4, 10, 14, 18, tzinfo=timezone.utc)),
+        "STAC_1": _iso(datetime(2026, 4, 10, 14, 22, tzinfo=timezone.utc)),
+    }
+    # Predictor has STAC_1 still listed as "upcoming" with an eta ~15s
+    # in the future — tick-boundary lag (polyline_idx not yet advanced
+    # past STAC_1). This is a TRUE real detection, not noise.
+    stops = ["STUDENT_UNION", "COLONIE", "GEORGIAN", "STAC_1", "STAC_2"]
+    trip = {"trip_id": "t", "route": "NORTH", "vehicle_id": "v1", "status": "active"}
+
+    result = build_trip_etas(
+        trip=trip,
+        vehicle_stops=[
+            ("STAC_1", now + timedelta(seconds=15)),  # tick-boundary race
+            ("STAC_2", now + timedelta(seconds=75)),
+        ],
+        last_arrivals=last_arrivals,
+        stops_in_route=stops,
+        now_utc=now,
+        loop_cutoff=loop_cutoff,
+    )
+
+    # STAC_1 must be kept as passed despite the future eta from the
+    # lagging predictor — the detection is real.
+    assert result["STAC_1"]["passed"] is True, (
+        f"tick-boundary race dropped: {result['STAC_1']}"
+    )
+    # And GEORGIAN (earlier, no real detection) must be backfilled as
+    # passed via interpolation, not stuck with its upcoming ETA.
+    assert result["GEORGIAN"]["passed"] is True, (
+        f"Georgian not backfilled: {result['GEORGIAN']}"
+    )
+    assert result["GEORGIAN"]["passed_interpolated"] is True
+    # STAC_2 is still truly upcoming (eta is 75s away, well past the
+    # 60 s grace window — if it had been in last_arrivals, the scrub
+    # should drop it because the predictor's "upcoming" signal is
+    # clearer there. But we didn't put it in last_arrivals, so just
+    # check that it stays unreached.)
+    assert result["STAC_2"]["passed"] is False
+    assert result["STAC_2"]["eta"] is not None
+
+
+def test_spurious_scrub_still_kills_far_future_noise():
+    """The scrub must still drop detections whose eta is >60 s future.
+
+    This is the original WEST bug: a GPS ping near STUDENT_UNION got
+    mis-attributed to STUDENT_UNION_RETURN (different stop, same
+    physical location) with an "upcoming eta" several minutes away.
+    That's noise and must be dropped.
+    """
+    now = datetime(2026, 4, 10, 15, 58, tzinfo=timezone.utc)
+    actual_departure = datetime(2026, 4, 10, 15, 39, tzinfo=timezone.utc)
+
+    stops = [
+        "STUDENT_UNION",
+        "ACADEMY_HALL",
+        "POLYTECHNIC",
+        "CITY_STATION",
+        "STUDENT_UNION_RETURN",
+    ]
+    last_arrivals = {
+        "STUDENT_UNION": _iso(datetime(2026, 4, 10, 15, 39, tzinfo=timezone.utc)),
+        "POLYTECHNIC": _iso(datetime(2026, 4, 10, 15, 56, tzinfo=timezone.utc)),
+        # Spurious: physical Union position mis-attributed to the loop-end stop
+        "STUDENT_UNION_RETURN": _iso(datetime(2026, 4, 10, 15, 56, tzinfo=timezone.utc)),
+    }
+    vehicle_stops = [
+        ("CITY_STATION", now + timedelta(minutes=1)),
+        ("STUDENT_UNION_RETURN", now + timedelta(minutes=8)),  # 8 minutes out
+    ]
+    trip = {"trip_id": "t", "route": "WEST", "vehicle_id": "v4", "status": "active"}
+
+    result = build_trip_etas(
+        trip=trip,
+        vehicle_stops=vehicle_stops,
+        last_arrivals=last_arrivals,
+        stops_in_route=stops,
+        now_utc=now,
+        loop_cutoff=actual_departure,
+    )
+
+    # STUDENT_UNION_RETURN must still be rejected — its eta is 8 min
+    # out, well past the 60 s grace window.
+    assert result["STUDENT_UNION_RETURN"]["passed"] is False
+    assert result["STUDENT_UNION_RETURN"]["last_arrival"] is None
+    # And the invariant must hold everywhere.
+    for stop_key, entry in result.items():
+        if entry["passed"] and entry["eta"]:
+            eta_dt = datetime.fromisoformat(entry["eta"])
+            assert eta_dt <= now, (
+                f"{stop_key} is passed but eta is in the future: {entry}"
+            )
+
+
+def test_passed_interpolated_default_is_false_for_real_detections():
+    """Every real-detection entry must have passed_interpolated=False.
+
+    Defends against a regression where the flag is accidentally set
+    on an anchor point because the anchor-clamp loop reuses `entry`
+    from a previous iteration.
+    """
+    now = datetime(2026, 4, 10, 14, 20, tzinfo=timezone.utc)
+    loop_cutoff = datetime(2026, 4, 10, 14, 14, tzinfo=timezone.utc)
+    last_arrivals = {
+        "STUDENT_UNION": _iso(datetime(2026, 4, 10, 14, 14, tzinfo=timezone.utc)),
+        "COLONIE": _iso(datetime(2026, 4, 10, 14, 17, tzinfo=timezone.utc)),
+        "GEORGIAN": _iso(datetime(2026, 4, 10, 14, 19, tzinfo=timezone.utc)),
+    }
+    stops = ["STUDENT_UNION", "COLONIE", "GEORGIAN", "STAC_1"]
+    trip = {"trip_id": "t", "route": "NORTH", "vehicle_id": "v1", "status": "active"}
+
+    result = build_trip_etas(
+        trip=trip,
+        vehicle_stops=[("STAC_1", now + timedelta(minutes=2))],
+        last_arrivals=last_arrivals,
+        stops_in_route=stops,
+        now_utc=now,
+        loop_cutoff=loop_cutoff,
+    )
+
+    # Every stop with a real detection has passed_interpolated=False.
+    for passed_stop in ("STUDENT_UNION", "COLONIE", "GEORGIAN"):
+        entry = result[passed_stop]
+        assert entry["passed"] is True, f"{passed_stop} should be passed"
+        assert entry["passed_interpolated"] is False, (
+            f"{passed_stop} has a real detection and must not be "
+            f"flagged interpolated: {entry}"
+        )
+    # Upcoming stop defaults to False too.
+    assert result["STAC_1"]["passed_interpolated"] is False
 
 
 # ---- Integration tests: full compute_trips_from_vehicle_data ----------------

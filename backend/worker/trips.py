@@ -216,25 +216,40 @@ def build_trip_etas(
         eta_lookup[stop_key] = eta_dt
 
     # SPURIOUS-DETECTION SCRUB: if the predictor says a stop still has a
-    # FUTURE eta (shuttle is on its way) but the detection pipeline also
-    # has a `last_arrival` for that same stop, one of those must be
-    # wrong — and the predictor has far more context (vehicle position,
-    # speed, polyline index) than the raw nearest-stop matcher. The
-    # "detection" is almost certainly a polyline-projection artifact at
-    # a loop-boundary self-intersection. Example: the WEST route's
-    # STUDENT_UNION and STUDENT_UNION_RETURN share a physical location,
-    # so GPS pings at Union after `actual_departure` can get mis-
-    # attributed to STUDENT_UNION_RETURN and pass the loop_cutoff filter.
-    # Left in place, those stale detections become anchors in the
-    # monotonic clamp below and copy the earlier-stop timestamps into
-    # every downstream stop, producing a self-contradictory display
+    # significantly-future eta (minutes away) but the detection pipeline
+    # also has a `last_arrival` for that same stop, the detection is
+    # almost certainly a polyline-projection artifact at a loop-boundary
+    # self-intersection. Example: the WEST route's STUDENT_UNION and
+    # STUDENT_UNION_RETURN share a physical location, so GPS pings at
+    # Union after `actual_departure` can get mis-attributed to
+    # STUDENT_UNION_RETURN and pass the loop_cutoff filter. Left in
+    # place, those stale detections become anchors in the monotonic
+    # clamp below and copy the earlier-stop timestamps into every
+    # downstream stop, producing a self-contradictory display
     # ("passed=True, last_arrival=15:56, eta=15:58") on the unreached
-    # part of the route. Drop them here.
+    # part of the route.
+    #
+    # TICK-BOUNDARY RACE CAVEAT: we only drop detections whose predictor
+    # eta is MORE than SPURIOUS_UPCOMING_GRACE_SEC in the future. Within
+    # a few seconds of "now", the predictor and the detection pipeline
+    # can legitimately disagree: the GPS ping registered a stop arrival
+    # (detection pipeline) but the polyline_idx hasn't advanced past
+    # that stop yet (predictor still lists it as upcoming). In that
+    # race, the detection IS real and dropping it causes the earlier-
+    # stops backfill to stall — users see "Georgian still upcoming
+    # even though Bryckwyck was just passed" for one worker cycle.
+    # 60 s is large enough to catch the original WEST bug (which had
+    # upcoming ETAs 2–8 minutes ahead) while small enough to let tick-
+    # boundary races through.
+    SPURIOUS_UPCOMING_GRACE_SEC = 60
     if last_arrivals and eta_lookup:
         cleaned_las: Dict[str, str] = {}
         for k, v in last_arrivals.items():
             upcoming = eta_lookup.get(k)
-            if upcoming is not None and upcoming > now_utc:
+            if (
+                upcoming is not None
+                and (upcoming - now_utc).total_seconds() > SPURIOUS_UPCOMING_GRACE_SEC
+            ):
                 continue  # predictor says not yet arrived — detection is noise
             cleaned_las[k] = v
         last_arrivals = cleaned_las
@@ -244,6 +259,13 @@ def build_trip_etas(
             "eta": None,
             "last_arrival": None,
             "passed": False,
+            # `passed_interpolated` is True when `passed=True` but the
+            # `last_arrival` timestamp came from the gap-backfill
+            # interpolation path, not from a real GPS detection. The
+            # frontend should render "Passed" without a timestamp for
+            # these, reserving "Last: HH:MM" for real-detection anchors.
+            # See the backfill loop below for where this gets set.
+            "passed_interpolated": False,
         }
 
         if stop_key in eta_lookup:
@@ -361,13 +383,24 @@ def build_trip_etas(
             entry = stop_etas[stop_key]
             real_la = last_arrivals.get(stop_key)
             if real_la:
-                # Use the clamped value from anchors
+                # Use the clamped value from anchors. Real detection —
+                # passed_interpolated stays False, timestamp is honest.
                 clamped = next((la for idx, la in anchors if idx == i), real_la)
                 entry["last_arrival"] = clamped
                 entry["passed"] = True
+                entry["passed_interpolated"] = False
             else:
-                # Detection gap — interpolate between neighbors.
+                # Detection gap — interpolate between neighbors. The
+                # shuttle physically passed this stop (a later stop has
+                # a real detection), but we never caught a GPS ping at
+                # this particular stop. Mark it as passed so the UI
+                # shows it behind the shuttle, but flag
+                # `passed_interpolated=True` so the frontend renders
+                # "Passed" without a fabricated "Last: HH:MM" timestamp.
+                # Students shouldn't see a synthesized time presented as
+                # a real arrival.
                 entry["passed"] = True
+                entry["passed_interpolated"] = True
                 entry["last_arrival"] = _interpolated_la(i)
                 entry["eta"] = None
 
@@ -773,11 +806,26 @@ def compute_trips_from_vehicle_data(
                 for stop_key in route_stops:
                     entry = completed_stop_etas.get(stop_key)
                     if entry is None:
+                        # No real detection and no neighbor to interpolate
+                        # from — mark as passed (loop is done) but flag
+                        # passed_interpolated=True since there's no real
+                        # arrival timestamp to show.
                         completed_stop_etas[stop_key] = {
-                            "eta": None, "last_arrival": None, "passed": True,
+                            "eta": None,
+                            "last_arrival": None,
+                            "passed": True,
+                            "passed_interpolated": True,
                         }
                     else:
                         entry["eta"] = None  # completed trip has no future
+                        # If the stop was force-marked passed here but had
+                        # no real detection (passed was False coming out of
+                        # build_trip_etas), the value is inferred. Preserve
+                        # passed_interpolated state from build_trip_etas
+                        # when it's already set; otherwise default to True
+                        # if we're about to flip `passed` from False to True.
+                        if not entry.get("passed"):
+                            entry["passed_interpolated"] = True
                         entry["passed"] = True
                 completed_trip["stop_etas"] = completed_stop_etas
                 trips.append(completed_trip)
