@@ -203,16 +203,41 @@ export default function Schedule({
     return currentIdx;
   };
 
-  // Scroll to current time on route/day change (only within the timeline container)
+  // Scroll to current time on route/day change, AND once more after
+  // trips data first loads (the initial render has trips=[], so the
+  // "current loop" rows don't exist in the DOM yet). We also re-trigger
+  // when trips transitions from empty to non-empty, but NOT on every
+  // update — hasTrips is a boolean flag, so the effect only re-fires
+  // when it flips, not on regular polling updates.
+  const hasTrips = trips.length > 0;
   useEffect(() => {
     const timelineContainer = document.querySelector('.timeline-container') as HTMLElement;
     if (!timelineContainer) return;
     if (selectedDay !== now.getDay()) return;
 
-    // Prioritize the item with current-loop class (where ETAs are displayed)
-    let targetItem = timelineContainer.querySelector('.timeline-item.current-loop') as HTMLElement | null;
+    // Priority 1: the first current-loop row that is NOT a completed
+    // (DONE-badged) trip. Completed trips are still marked current-loop
+    // for 2 minutes after their shuttle finishes, which lets the user
+    // see "loop just finished". But on initial scroll we want to land
+    // on the LIVE loop (the one actively running), not on a DONE row
+    // that's already in the past from a user's perspective. The user
+    // can scroll up to see the DONE rows — we just don't park them
+    // there by default.
+    const currentLoopItems = Array.from(
+      timelineContainer.querySelectorAll('.timeline-item.current-loop')
+    ) as HTMLElement[];
+    let targetItem: HTMLElement | null = currentLoopItems.find(
+      item => !item.querySelector('.trip-completed-badge')
+    ) ?? null;
 
-    // Fall back to first non-past item if no current loop
+    // Priority 2: any current-loop row (covers the case where ALL
+    // current-loop rows are completed — rare but possible for a
+    // 2-minute window after the last shuttle finishes its final loop).
+    if (!targetItem && currentLoopItems.length > 0) {
+      targetItem = currentLoopItems[0];
+    }
+
+    // Priority 3: the first non-past item (no current loop exists).
     if (!targetItem) {
       targetItem = Array.from(timelineContainer.querySelectorAll('.timeline-item')).find(item =>
         !item.classList.contains('past-time')
@@ -226,7 +251,7 @@ export default function Schedule({
       timelineContainer.scrollTop = Math.max(0, targetOffsetInContainer);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRoute, selectedDay, schedule]);
+  }, [selectedRoute, selectedDay, schedule, hasTrips]);
 
   const toggleExpand = (key: string) => {
     setExpandedLoops(prev => {
