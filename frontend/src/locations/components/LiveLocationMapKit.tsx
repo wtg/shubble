@@ -57,13 +57,27 @@ export default function LiveLocationMapKit({
   const [vehicles, setVehicles] = useState<VehicleCombinedMap | null>(null);
   const [vehicleAnnotations, setVehicleAnnotations] = useState<Record<string, mapkit.Annotation>>({});
 
-  // Fetch location and velocity data on component mount and set up polling
+  // Fetch location and velocity data on component mount.
+  //
+  // Transport: SSE push via `/api/locations/stream` is the primary
+  // trigger. Every time the worker commits new GPS rows it publishes
+  // `shubble:locations_updated` on Redis; the SSE handler forwards that
+  // to this client. On each trigger we re-fetch /api/locations AND
+  // /api/velocities (velocities has no stream yet — they're updated at
+  // the same worker cycle, so re-fetching together keeps them in sync).
+  //
+  // Fallback: if the stream endpoint is unreachable or the browser has
+  // no EventSource, fall back to setInterval polling at 3s.
   useEffect(() => {
     if (!displayVehicles) return;
 
     let abortController: AbortController | null = null;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    let es: EventSource | null = null;
+    let cancelled = false;
 
     const pollLocation = async () => {
+      if (cancelled) return;
       // Cancel any in-flight request before starting a new one
       if (abortController) {
         abortController.abort();
@@ -107,22 +121,60 @@ export default function LiveLocationMapKit({
           };
         }
 
-        setVehicles(combined);
+        if (!cancelled) setVehicles(combined);
       } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') return;
         console.error('Error fetching location:', error);
       }
+    };
+
+    const startPolling = () => {
+      if (pollTimer !== null || cancelled) return;
+      pollTimer = setInterval(() => { void pollLocation(); }, 3000);
+    };
+
+    const stopPolling = () => {
+      if (pollTimer !== null) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    };
+
+    // Kick off an initial fetch so the map isn't blank while SSE opens.
+    void pollLocation();
+
+    // Try SSE push first; fall back to polling on permanent failure.
+    if (typeof EventSource !== 'undefined') {
+      try {
+        es = new EventSource(`${config.apiBaseUrl}/api/locations/stream`);
+        es.onopen = () => { stopPolling(); };
+        es.onmessage = () => {
+          // Trigger-only: SSE payload is informational. Always go
+          // through pollLocation() so locations + velocities stay in
+          // sync via a single code path.
+          void pollLocation();
+        };
+        es.onerror = () => {
+          if (es?.readyState === EventSource.CLOSED) {
+            startPolling();
+          }
+        };
+      } catch {
+        startPolling();
+      }
+    } else {
+      startPolling();
     }
-
-    pollLocation();
-
-    // refresh location every 3 seconds
-    const refreshLocation = setInterval(pollLocation, 3000);
 
     return () => {
-      clearInterval(refreshLocation);
+      cancelled = true;
+      stopPolling();
+      if (es) {
+        es.close();
+        es = null;
+      }
       if (abortController) abortController.abort();
-    }
+    };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

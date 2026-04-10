@@ -5,8 +5,10 @@ from hashlib import sha256
 from datetime import datetime, timezone
 from pathlib import Path
 
+from typing import Any, Optional
+
 from fastapi import APIRouter, Request, Depends, HTTPException, Response
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from sqlalchemy import and_, select
 
 import json
@@ -36,39 +38,41 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/api/locations")
-@timed
-@cache(soft_ttl=3, hard_ttl=300, lock_timeout=0.0, namespace="locations")
-async def get_locations(response: Response, request: Request):
-    """
-    Returns the latest location for each vehicle currently inside the geofence.
-    The vehicle is considered inside the geofence if its latest geofence event
-    today is a 'geofenceEntry'.
+# SSE stream keepalive interval. If no pub/sub message arrives, emit a
+# comment line so intermediate proxies don't close the connection as idle.
+_SSE_KEEPALIVE_SEC = 15.0
+# Common SSE response headers. Disable nginx buffering so events flush
+# to the client as soon as they're yielded.
+_SSE_HEADERS = {
+    "Cache-Control": "no-cache, no-transform",
+    "X-Accel-Buffering": "no",
+    "Connection": "keep-alive",
+}
 
-    This endpoint returns raw vehicle location data without ML predictions
-    or route matching. Use /api/predictions for that data.
-    """
-    # Get latest locations for vehicles in geofence
-    # Uses cached function that returns dicts
-    results = await get_latest_vehicle_locations(request.app.state.session_factory)
 
+async def _build_locations_payload(session_factory) -> tuple[dict[str, Any], Optional[str]]:
+    """Assemble the /api/locations response body.
+
+    Shared by the REST handler (GET /api/locations) and the SSE handler
+    (GET /api/locations/stream). Returns (response_data, oldest_iso) so
+    the REST path can still set data-age headers on cache miss.
+    """
+    results = await get_latest_vehicle_locations(session_factory)
     vehicle_ids = [loc["vehicle_id"] for loc in results]
-    
-    # Get current driver assignments for all vehicles in results
+
     current_assignments = await get_current_driver_assignments(
-        vehicle_ids, request.app.state.session_factory
+        vehicle_ids, session_factory
     )
 
-    # Format response. PERF: ISO-8601 timestamps sort lexicographically in
-    # the same order as chronological order (when UTC / same timezone), so we
-    # can find the oldest via string min() and only do one fromisoformat call.
-    response_data = {}
+    # PERF: ISO-8601 timestamps sort lexicographically in the same order
+    # as chronological order (when UTC / same timezone), so we can find
+    # the oldest via string min() and only do one fromisoformat call.
+    response_data: dict[str, Any] = {}
     oldest_iso = min((loc["timestamp"] for loc in results), default=None)
 
     for loc in results:
         vehicle = loc["vehicle"]
 
-        # Get current driver info
         driver_info = None
         assignment = current_assignments.get(loc["vehicle_id"])
         if assignment and assignment.get("driver"):
@@ -82,7 +86,7 @@ async def get_locations(response: Response, request: Request):
             "name": loc["name"],
             "latitude": loc["latitude"],
             "longitude": loc["longitude"],
-            "timestamp": loc["timestamp"], # Already ISO string
+            "timestamp": loc["timestamp"],  # Already ISO string
             "heading_degrees": loc["heading_degrees"],
             "speed_mph": loc["speed_mph"],
             "is_ecu_speed": loc["is_ecu_speed"],
@@ -96,6 +100,25 @@ async def get_locations(response: Response, request: Request):
             "gateway_serial": vehicle["gateway_serial"],
             "driver": driver_info,
         }
+
+    return response_data, oldest_iso
+
+
+@router.get("/api/locations")
+@timed
+@cache(soft_ttl=3, hard_ttl=300, lock_timeout=0.0, namespace="locations")
+async def get_locations(response: Response, request: Request):
+    """
+    Returns the latest location for each vehicle currently inside the geofence.
+    The vehicle is considered inside the geofence if its latest geofence event
+    today is a 'geofenceEntry'.
+
+    This endpoint returns raw vehicle location data without ML predictions
+    or route matching. Use /api/predictions for that data.
+    """
+    response_data, oldest_iso = await _build_locations_payload(
+        request.app.state.session_factory
+    )
 
     # Add timing metadata as HTTP headers to help frontend synchronize with Samsara API
     now = dev_now(timezone.utc)
@@ -111,6 +134,74 @@ async def get_locations(response: Response, request: Request):
     return response_data
 
 
+@router.get("/api/locations/stream")
+async def stream_locations(request: Request):
+    """
+    Server-Sent Events stream of /api/locations data. Pushes a fresh
+    payload whenever the worker publishes to the `shubble:locations_updated`
+    Redis channel (fired after each worker cycle that ingested new GPS rows).
+
+    Client contract: each SSE message body is the same JSON shape as
+    GET /api/locations. Comment lines (`: ka`) are keepalives and should
+    be ignored.
+    """
+    session_factory = request.app.state.session_factory
+    redis = get_redis()
+
+    async def gen():
+        # Initial emit so the client doesn't wait up to _SSE_KEEPALIVE_SEC
+        # or a worker cycle for their first data point.
+        try:
+            payload, _ = await _build_locations_payload(session_factory)
+            yield f"data: {json.dumps(payload)}\n\n"
+        except Exception as e:
+            logger.warning(f"stream_locations initial emit failed: {e}")
+
+        if redis is None:
+            # Without Redis we can't subscribe to pub/sub. Close the stream;
+            # the client will fall back to polling.
+            return
+
+        pubsub = redis.pubsub()
+        try:
+            await pubsub.subscribe("shubble:locations_updated")
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    msg = await pubsub.get_message(
+                        ignore_subscribe_messages=True,
+                        timeout=_SSE_KEEPALIVE_SEC,
+                    )
+                except Exception as e:
+                    logger.warning(f"stream_locations pubsub error: {e}")
+                    break
+
+                if msg is None:
+                    # Keepalive so proxies don't time out the idle connection.
+                    yield ": ka\n\n"
+                    continue
+
+                try:
+                    payload, _ = await _build_locations_payload(session_factory)
+                    yield f"data: {json.dumps(payload)}\n\n"
+                except Exception as e:
+                    logger.warning(f"stream_locations payload build failed: {e}")
+        finally:
+            try:
+                await pubsub.unsubscribe("shubble:locations_updated")
+            except Exception:
+                pass
+            try:
+                await pubsub.close()
+            except Exception:
+                pass
+
+    return StreamingResponse(
+        gen(), media_type="text/event-stream", headers=_SSE_HEADERS
+    )
+
+
 @router.get("/api/trips")
 @timed
 async def get_trips(request: Request, response: Response):
@@ -123,6 +214,75 @@ async def get_trips(request: Request, response: Response):
         if raw:
             return json.loads(raw)
     return []
+
+
+@router.get("/api/trips/stream")
+async def stream_trips(request: Request):
+    """
+    Server-Sent Events stream of /api/trips data. Pushes the latest
+    `shubble:trips_live` payload whenever the worker publishes to the
+    `shubble:trips_updated` Redis channel (fired at the end of each worker
+    cycle).
+
+    Client contract: each SSE message body is the same JSON array as
+    GET /api/trips. Comment lines (`: ka`) are keepalives.
+    """
+    redis = get_redis()
+
+    async def _current_payload() -> str:
+        """Return the SSE data frame for the current Redis trips blob."""
+        if redis is None:
+            return "data: []\n\n"
+        try:
+            raw = await redis.get("shubble:trips_live")
+        except Exception as e:
+            logger.warning(f"stream_trips Redis read failed: {e}")
+            return "data: []\n\n"
+        if raw is None:
+            return "data: []\n\n"
+        text = raw.decode() if isinstance(raw, (bytes, bytearray)) else raw
+        return f"data: {text}\n\n"
+
+    async def gen():
+        # Initial emit so the client gets the current snapshot immediately.
+        yield await _current_payload()
+
+        if redis is None:
+            return
+
+        pubsub = redis.pubsub()
+        try:
+            await pubsub.subscribe("shubble:trips_updated")
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    msg = await pubsub.get_message(
+                        ignore_subscribe_messages=True,
+                        timeout=_SSE_KEEPALIVE_SEC,
+                    )
+                except Exception as e:
+                    logger.warning(f"stream_trips pubsub error: {e}")
+                    break
+
+                if msg is None:
+                    yield ": ka\n\n"
+                    continue
+
+                yield await _current_payload()
+        finally:
+            try:
+                await pubsub.unsubscribe("shubble:trips_updated")
+            except Exception:
+                pass
+            try:
+                await pubsub.close()
+            except Exception:
+                pass
+
+    return StreamingResponse(
+        gen(), media_type="text/event-stream", headers=_SSE_HEADERS
+    )
 
 
 @router.get("/api/velocities")

@@ -99,9 +99,17 @@ export function deriveStopEtasFromTrips(trips: Trip[]): {
 }
 
 /**
- * Fetches per-trip ETAs from the backend. Each trip is independently
- * tracked so concurrent shuttles on the same route don't fight over
- * displayed data.
+ * Fetches per-trip ETAs from the backend.
+ *
+ * Transport: server-sent events (SSE) via `/api/trips/stream` as the
+ * primary push channel, with `/api/trips` polling as a slow fallback.
+ * The backend publishes to the `shubble:trips_updated` Redis channel
+ * at the end of every worker cycle, so SSE delivery is ~immediate.
+ *
+ * Failure mode: if the SSE connection permanently closes (endpoint
+ * missing, proxy blocking, etc.), the hook switches to polling at
+ * `pollInterval`. Transient reconnects (handled by the browser's
+ * built-in EventSource retry) do not trigger the fallback.
  */
 export function useTrips(enabled = true, pollInterval = 5000) {
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -111,6 +119,12 @@ export function useTrips(enabled = true, pollInterval = 5000) {
 
     const controller = new AbortController();
     let cancelled = false;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    let es: EventSource | null = null;
+
+    const applyTrips = (data: unknown) => {
+      if (Array.isArray(data) && !cancelled) setTrips(data as Trip[]);
+    };
 
     const fetchTrips = async () => {
       try {
@@ -119,22 +133,68 @@ export function useTrips(enabled = true, pollInterval = 5000) {
           signal: controller.signal,
         });
         if (!response.ok || cancelled) return;
-        const data = (await response.json()) as Trip[];
-        if (Array.isArray(data) && !cancelled) setTrips(data);
+        const data = (await response.json()) as unknown;
+        applyTrips(data);
       } catch (error) {
-        // Ignore AbortError (component unmount) and network failures
-        // during polling — the next interval tick will retry.
         if ((error as Error).name === 'AbortError') return;
-        // Silent: network issues are common and handled by retry.
+        // Silent: network issues are common and the next tick will retry.
       }
     };
 
-    fetchTrips();
-    const interval = setInterval(fetchTrips, pollInterval);
+    const startPolling = () => {
+      if (pollTimer !== null || cancelled) return;
+      void fetchTrips();
+      pollTimer = setInterval(() => { void fetchTrips(); }, pollInterval);
+    };
+
+    const stopPolling = () => {
+      if (pollTimer !== null) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    };
+
+    // Kick off an initial fetch so the UI isn't blank while the SSE
+    // connection is still opening. Subsequent updates come via SSE.
+    void fetchTrips();
+
+    // Try SSE push first. If EventSource isn't available (very old
+    // browser), fall straight back to polling.
+    if (typeof EventSource !== 'undefined') {
+      try {
+        es = new EventSource(`${config.apiBaseUrl}/api/trips/stream`);
+        es.onopen = () => { stopPolling(); };
+        es.onmessage = (ev: MessageEvent<string>) => {
+          if (cancelled) return;
+          try {
+            const data = JSON.parse(ev.data) as unknown;
+            applyTrips(data);
+          } catch {
+            // Malformed event — ignore; next message will overwrite.
+          }
+        };
+        es.onerror = () => {
+          // readyState CLOSED = permanent failure (e.g., 404 on /stream).
+          // CONNECTING = browser is retrying; leave it alone.
+          if (es?.readyState === EventSource.CLOSED) {
+            startPolling();
+          }
+        };
+      } catch {
+        startPolling();
+      }
+    } else {
+      startPolling();
+    }
+
     return () => {
       cancelled = true;
       controller.abort();
-      clearInterval(interval);
+      stopPolling();
+      if (es) {
+        es.close();
+        es = null;
+      }
     };
   }, [enabled, pollInterval]);
 

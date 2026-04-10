@@ -1041,6 +1041,12 @@ async def generate_and_save_predictions(vehicle_ids: List[str]):
             json.dumps(trips).encode(),
             ex=120,
         )
+        # PUSH: notify /api/trips/stream SSE subscribers. Fire-and-forget;
+        # if nobody's listening the publish is a ~0ms no-op.
+        try:
+            await redis.publish("shubble:trips_updated", b"1")
+        except Exception as e:
+            logger.warning(f"Failed to publish shubble:trips_updated: {e}")
 
     # save_predictions still writes PredictedLocation rows for /api/velocities;
     # passing an empty per_stop_etas dict makes it a no-op for the ETA table.

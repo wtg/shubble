@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects import postgresql
 
 from backend.config import settings
-from backend.cache import init_cache, close_cache, soft_clear_namespace
+from backend.cache import init_cache, close_cache, soft_clear_namespace, get_redis
 from backend.database import create_async_db_engine, create_session_factory
 from backend.models import VehicleLocation, Driver, DriverVehicleAssignment
 from backend.utils import get_vehicles_in_geofence
@@ -173,6 +173,15 @@ async def update_locations(session_factory):
                     )
                     # Invalidate cache for locations
                     await soft_clear_namespace("locations")
+                    # PUSH: notify /api/locations/stream SSE subscribers. The
+                    # cache has been cleared, so next read pulls fresh data.
+                    # Fire-and-forget; publish is a ~0ms no-op with no listeners.
+                    redis = get_redis()
+                    if redis is not None:
+                        try:
+                            await redis.publish("shubble:locations_updated", b"1")
+                        except Exception as e:
+                            logger.warning(f"Failed to publish shubble:locations_updated: {e}")
                 else:
                     logger.info(
                         f"No new location data for {len(current_vehicle_ids)} vehicles"
