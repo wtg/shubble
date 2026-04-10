@@ -54,6 +54,15 @@ export function deriveStopEtasFromTrips(trips: Trip[]): {
 } {
   const stopETAs: StopETAs = {};
   const stopETADetails: StopETADetails = {};
+  // Two parallel earliest/latest trackers: one keyed by plain stop (for
+  // route-agnostic consumers like the map tooltip) and one keyed by
+  // `${stop}:${route}` (for route-scoped consumers like the schedule
+  // page fallback). Without the scoped keys, a stop that appears on
+  // both NORTH and WEST — STUDENT_UNION, STUDENT_UNION_RETURN — collapses
+  // into a single entry owned by whichever route has the earliest ETA,
+  // and the schedule page would leak that entry onto the other route's
+  // rows. See Schedule.tsx:887 where `${stop}:${route}` is the first
+  // lookup; that lookup only works if we populate it here.
   const earliestEtaMs: Record<string, number> = {};
   const latestLaMs: Record<string, number> = {};
   const now = Date.now();
@@ -62,20 +71,36 @@ export function deriveStopEtasFromTrips(trips: Trip[]): {
     // Only active and scheduled trips contribute upcoming ETAs. Completed
     // trips contribute last_arrival history.
     const contributesEta = trip.status === 'active' || trip.status === 'scheduled';
+    const route = trip.route;
     for (const [stop, info] of Object.entries(trip.stop_etas)) {
+      const routedKey = `${stop}:${route}`;
       if (contributesEta && info.eta) {
         const etaMs = new Date(info.eta).getTime();
         if (etaMs > now) {
-          const prev = earliestEtaMs[stop];
-          if (prev === undefined || etaMs < prev) {
+          const formatted = new Date(etaMs).toLocaleTimeString(undefined, TIME_FORMAT);
+          // Route-agnostic: earliest across all trips.
+          const prevGlobal = earliestEtaMs[stop];
+          if (prevGlobal === undefined || etaMs < prevGlobal) {
             earliestEtaMs[stop] = etaMs;
-            const formatted = new Date(etaMs).toLocaleTimeString(undefined, TIME_FORMAT);
             stopETAs[stop] = formatted;
             stopETADetails[stop] = {
               ...(stopETADetails[stop] ?? {}),
               eta: formatted,
               etaISO: info.eta,
-              route: trip.route,
+              route,
+              vehicleId: trip.vehicle_id ?? '',
+            };
+          }
+          // Route-scoped: earliest within this route.
+          const prevScoped = earliestEtaMs[routedKey];
+          if (prevScoped === undefined || etaMs < prevScoped) {
+            earliestEtaMs[routedKey] = etaMs;
+            stopETAs[routedKey] = formatted;
+            stopETADetails[routedKey] = {
+              ...(stopETADetails[routedKey] ?? {}),
+              eta: formatted,
+              etaISO: info.eta,
+              route,
               vehicleId: trip.vehicle_id ?? '',
             };
           }
@@ -83,14 +108,24 @@ export function deriveStopEtasFromTrips(trips: Trip[]): {
       }
       if (info.last_arrival) {
         const laMs = new Date(info.last_arrival).getTime();
-        const prev = latestLaMs[stop];
-        if (prev === undefined || laMs > prev) {
+        const formatted = new Date(laMs).toLocaleTimeString(undefined, TIME_FORMAT);
+        // Route-agnostic: latest across all trips.
+        const prevGlobal = latestLaMs[stop];
+        if (prevGlobal === undefined || laMs > prevGlobal) {
           latestLaMs[stop] = laMs;
-          const formatted = new Date(laMs).toLocaleTimeString(undefined, TIME_FORMAT);
           const existing = stopETADetails[stop] ?? {
-            eta: '', etaISO: '', route: trip.route, vehicleId: trip.vehicle_id ?? '',
+            eta: '', etaISO: '', route, vehicleId: trip.vehicle_id ?? '',
           };
           stopETADetails[stop] = { ...existing, lastArrival: formatted };
+        }
+        // Route-scoped: latest within this route.
+        const prevScoped = latestLaMs[routedKey];
+        if (prevScoped === undefined || laMs > prevScoped) {
+          latestLaMs[routedKey] = laMs;
+          const existing = stopETADetails[routedKey] ?? {
+            eta: '', etaISO: '', route, vehicleId: trip.vehicle_id ?? '',
+          };
+          stopETADetails[routedKey] = { ...existing, lastArrival: formatted };
         }
       }
     }

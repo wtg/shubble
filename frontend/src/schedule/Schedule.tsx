@@ -883,20 +883,29 @@ export default function Schedule({
                         } as const;
                       }
                     }
-                    // Legacy fallback
+                    // Legacy fallback. Only fires when loopTrip is null or
+                    // getTripStopInfo returned null (unassigned scheduled row
+                    // or stop missing from trip.stop_etas). `activeETAs` and
+                    // `liveETADetails` from deriveStopEtasFromTrips are
+                    // aggregated ACROSS routes — a stop that appears on both
+                    // NORTH and WEST (Student Union, Student Union Return) is
+                    // stored once, owned by whichever route has the earliest
+                    // future ETA or most recent last_arrival. Gate BOTH the
+                    // ETA and the last_arrival reads on `routeMatch` so a
+                    // NORTH shuttle's data never leaks onto a WEST row.
                     const rk = `${stop}:${safeSelectedRoute}`;
                     const eta = activeETAs[rk] || activeETAs[stop];
                     const det = liveETADetails[rk] || liveETADetails[stop];
                     const routeMatch = !det?.route || det.route === safeSelectedRoute;
                     const hasETA = !!(isCurrentLoop && eta && routeMatch);
-                    const hasLast = !!(isCurrentLoop && det?.lastArrival);
+                    const hasLast = !!(isCurrentLoop && det?.lastArrival && routeMatch);
                     return {
                       stop,
                       hasETA,
                       hasLast,
                       hasAnyLive: hasETA || hasLast,
-                      etaTime: eta,
-                      lastArrival: det?.lastArrival,
+                      etaTime: routeMatch ? eta : undefined,
+                      lastArrival: routeMatch ? det?.lastArrival : undefined,
                       passed: false,
                     } as const;
                   });
