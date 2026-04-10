@@ -182,6 +182,96 @@ def test_loop_cutoff_none_keeps_everything():
     assert result["COLONIE"]["passed"] is True
 
 
+def test_spurious_detection_at_downstream_stop_rejected():
+    """Detections at stops the predictor thinks are still upcoming must
+    be rejected as spurious.
+
+    Reproduces the bug where the WEST route's active trip showed
+    passed=True + last_arrival + a simultaneous future eta on every
+    stop after POLYTECHNIC. Root cause: the WEST polyline wraps back
+    to Student Union, and add_stops occasionally mis-attributes a GPS
+    ping near Union to STUDENT_UNION_RETURN. That post-departure
+    "detection" passes the loop_cutoff filter, becomes the farthest
+    anchor, and the monotonic clamp copies the earlier stops' real
+    timestamps forward onto the unreached downstream stops.
+
+    The scrub is: if the predictor has a FUTURE eta for a stop, any
+    "last_arrival" for that same stop is physically impossible and
+    must be dropped before the backfill runs.
+    """
+    # Shuttle physically at POLYTECHNIC (just arrived 15:56). Current
+    # time is 15:58. actual_departure was 15:39.
+    now = datetime(2026, 4, 10, 15, 58, tzinfo=timezone.utc)
+    actual_departure = datetime(2026, 4, 10, 15, 39, tzinfo=timezone.utc)
+
+    stops = [
+        "STUDENT_UNION",
+        "ACADEMY_HALL",
+        "POLYTECHNIC",
+        "CITY_STATION",
+        "BLITMAN",
+        "STUDENT_UNION_RETURN",
+    ]
+    last_arrivals = {
+        "STUDENT_UNION": _iso(datetime(2026, 4, 10, 15, 39, tzinfo=timezone.utc)),
+        "ACADEMY_HALL": _iso(datetime(2026, 4, 10, 15, 55, tzinfo=timezone.utc)),
+        "POLYTECHNIC": _iso(datetime(2026, 4, 10, 15, 56, tzinfo=timezone.utc)),
+        # SPURIOUS: polyline jitter at Union mis-attributed to STUDENT_UNION_RETURN.
+        # Must be dropped because the predictor has a future eta for it.
+        "STUDENT_UNION_RETURN": _iso(datetime(2026, 4, 10, 15, 56, tzinfo=timezone.utc)),
+    }
+    # Predictor's view: shuttle is upcoming at CITY_STATION, BLITMAN,
+    # and STUDENT_UNION_RETURN (all future ETAs).
+    vehicle_stops = [
+        ("CITY_STATION", now + timedelta(minutes=1)),
+        ("BLITMAN", now + timedelta(minutes=2)),
+        ("STUDENT_UNION_RETURN", now + timedelta(minutes=8)),
+    ]
+    trip = {"trip_id": "WEST:t", "route": "WEST", "vehicle_id": "v4", "status": "active"}
+
+    result = build_trip_etas(
+        trip=trip,
+        vehicle_stops=vehicle_stops,
+        last_arrivals=last_arrivals,
+        stops_in_route=stops,
+        now_utc=now,
+        loop_cutoff=actual_departure,
+    )
+
+    # STUDENT_UNION_RETURN has a future eta → detection is spurious,
+    # must be dropped. The stop is not yet reached.
+    surn = result["STUDENT_UNION_RETURN"]
+    assert surn["passed"] is False, (
+        f"STUDENT_UNION_RETURN should be unreached, got {surn}"
+    )
+    assert surn["last_arrival"] is None
+    assert surn["eta"] is not None, "future eta must be preserved"
+
+    # CITY_STATION and BLITMAN had no la in input — stay unreached with
+    # their future ETAs. (Regression check — they must not acquire a
+    # backfilled la from the now-absent spurious anchor.)
+    for upcoming_stop in ("CITY_STATION", "BLITMAN"):
+        entry = result[upcoming_stop]
+        assert entry["passed"] is False, f"{upcoming_stop}: {entry}"
+        assert entry["last_arrival"] is None, f"{upcoming_stop}: {entry}"
+        assert entry["eta"] is not None, f"{upcoming_stop}: {entry}"
+
+    # The real detections must still stand.
+    assert result["STUDENT_UNION"]["passed"] is True
+    assert result["ACADEMY_HALL"]["passed"] is True
+    assert result["POLYTECHNIC"]["passed"] is True
+
+    # Invariant: no stop may have both passed=True and a future eta.
+    for stop_key, entry in result.items():
+        if entry["passed"]:
+            eta_iso = entry["eta"]
+            if eta_iso is not None:
+                eta_dt = datetime.fromisoformat(eta_iso)
+                assert eta_dt <= now, (
+                    f"{stop_key} is passed=True but eta {eta_iso} is in the future"
+                )
+
+
 def test_mid_loop_backfill_still_works():
     """Within-loop detection-gap interpolation must still fire.
 

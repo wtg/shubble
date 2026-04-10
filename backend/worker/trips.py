@@ -215,6 +215,30 @@ def build_trip_etas(
     for stop_key, eta_dt in vehicle_stops:
         eta_lookup[stop_key] = eta_dt
 
+    # SPURIOUS-DETECTION SCRUB: if the predictor says a stop still has a
+    # FUTURE eta (shuttle is on its way) but the detection pipeline also
+    # has a `last_arrival` for that same stop, one of those must be
+    # wrong — and the predictor has far more context (vehicle position,
+    # speed, polyline index) than the raw nearest-stop matcher. The
+    # "detection" is almost certainly a polyline-projection artifact at
+    # a loop-boundary self-intersection. Example: the WEST route's
+    # STUDENT_UNION and STUDENT_UNION_RETURN share a physical location,
+    # so GPS pings at Union after `actual_departure` can get mis-
+    # attributed to STUDENT_UNION_RETURN and pass the loop_cutoff filter.
+    # Left in place, those stale detections become anchors in the
+    # monotonic clamp below and copy the earlier-stop timestamps into
+    # every downstream stop, producing a self-contradictory display
+    # ("passed=True, last_arrival=15:56, eta=15:58") on the unreached
+    # part of the route. Drop them here.
+    if last_arrivals and eta_lookup:
+        cleaned_las: Dict[str, str] = {}
+        for k, v in last_arrivals.items():
+            upcoming = eta_lookup.get(k)
+            if upcoming is not None and upcoming > now_utc:
+                continue  # predictor says not yet arrived — detection is noise
+            cleaned_las[k] = v
+        last_arrivals = cleaned_las
+
     for stop_key in stops_in_route:
         entry: Dict[str, Any] = {
             "eta": None,
