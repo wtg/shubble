@@ -976,33 +976,111 @@ async def _compute_vehicle_etas_and_arrivals(
     # already know per-trip departure times).
     last_arrivals_by_vehicle: Dict[str, Dict[str, str]] = {}
 
-    # Perf (P1): single vectorized groupby instead of per-vehicle
-    # filter scans. With ~30K rows and 4 vehicles, the old code did
-    # O(n*v) boolean masks; this does one O(n) groupby + per-group
-    # max. Measured ~50-100ms saving per cycle.
+    # Build per-vehicle last_arrivals from the raw stop_name column, but
+    # use the ACTUAL CLOSEST-APPROACH timestamp — not the max timestamp
+    # over every ping tagged with a given stop_name.
+    #
+    # Why: the ML pipeline's `stop_name` column is over-permissive. A
+    # single stop crossing gets tagged on MANY consecutive pings along
+    # the approach, the drive-by, and the departure — not just the one
+    # closest-approach ping. (See add_stops_from_segments, clean_stops,
+    # _assign_multi_jump_stops in ml/data/stops.py. They backfill
+    # stop_name from polyline-index transitions and segment
+    # perpendiculars, both of which can assign a stop to a row whose
+    # GPS is hundreds of meters away from the stop's real coordinate.)
+    # Live example seen while debugging: rows at 16:57:54 (533 m from
+    # COLONIE), 16:58:04 (419 m), 16:58:09 (343 m), 16:58:14 (248 m),
+    # 16:58:19 (156 m) were all tagged stop_name=COLONIE before the
+    # shuttle was actually anywhere near the stop.
+    #
+    # Using max(timestamp) per (vehicle, stop) treats the last tagged
+    # ping as "the arrival", but that's often a post-drive-by or
+    # lingering approach sample. Users then see "Last: HH:MM" on stops
+    # the shuttle hasn't really arrived at yet.
+    #
+    # Fix (two parts):
+    #  1. Filter to pings that are PHYSICALLY within CLOSE_APPROACH_M
+    #     of the stop's coordinate. 40 m is 2x the 20 m pipeline
+    #     threshold, leaves headroom for GPS jitter, and still rejects
+    #     the far-away approach tags.
+    #  2. Among the surviving pings, pick the one with the SMALLEST
+    #     distance (the true closest approach) and use ITS timestamp
+    #     as the last_arrival. Not max, not min — closest-approach.
+    CLOSE_APPROACH_M = 40.0
     if 'stop_name' in full_df.columns:
         tracked_vids_set = {str(v) for v in vehicle_ids}
-        stops_df = full_df.dropna(subset=['stop_name'])
+        stops_df = full_df.dropna(subset=['stop_name', 'latitude', 'longitude'])
         if not stops_df.empty:
-            # Coerce timestamp once so per-group max is cheap
-            timestamps_utc = pd.to_datetime(stops_df['timestamp'], utc=True)
-            # Vectorized max per (vehicle_id, stop_name) pair
-            grouped = (
-                stops_df.assign(_ts=timestamps_utc)
-                .groupby(['vehicle_id', 'stop_name'], sort=False)['_ts']
-                .max()
+            routes = Stops.routes_data
+            # Build a stop_name -> (lat, lon) lookup on the union of
+            # every known route. Same key may exist under multiple
+            # routes (STUDENT_UNION_RETURN on NORTH+WEST) with the same
+            # coordinate — first occurrence wins, that's fine.
+            stop_coord_lookup: Dict[str, Tuple[float, float]] = {}
+            for route_info in routes.values():
+                for stop_name, stop_data in route_info.items():
+                    if not isinstance(stop_data, dict):
+                        continue
+                    coord = stop_data.get("COORDINATES")
+                    if coord and stop_name not in stop_coord_lookup:
+                        stop_coord_lookup[stop_name] = (float(coord[0]), float(coord[1]))
+
+            # Vectorized haversine: compute distance from each (lat, lon)
+            # to the stop coordinate its row was tagged with.
+            sn = stops_df['stop_name'].astype(str).values
+            lats = stops_df['latitude'].astype(float).values
+            lons = stops_df['longitude'].astype(float).values
+            stop_lats = np.empty(len(sn), dtype=float)
+            stop_lons = np.empty(len(sn), dtype=float)
+            for i, name in enumerate(sn):
+                coord = stop_coord_lookup.get(name)
+                if coord is None:
+                    stop_lats[i] = np.nan
+                    stop_lons[i] = np.nan
+                else:
+                    stop_lats[i], stop_lons[i] = coord
+
+            # Haversine in meters (vectorized). R = 6,371,000 m.
+            R = 6371000.0
+            phi1 = np.radians(lats)
+            phi2 = np.radians(stop_lats)
+            dphi = np.radians(stop_lats - lats)
+            dlam = np.radians(stop_lons - lons)
+            a = (
+                np.sin(dphi / 2.0) ** 2
+                + np.cos(phi1) * np.cos(phi2) * np.sin(dlam / 2.0) ** 2
             )
-            for (vid, stop_key), latest_ts in grouped.items():
-                vid_str = str(vid)
-                if vid_str not in tracked_vids_set:
-                    continue
-                if pd.isna(latest_ts):
-                    continue
-                latest_dt = latest_ts.to_pydatetime()
-                if latest_dt.tzinfo is None:
-                    latest_dt = latest_dt.replace(tzinfo=timezone.utc)
-                vehicle_las = last_arrivals_by_vehicle.setdefault(vid_str, {})
-                vehicle_las[str(stop_key)] = latest_dt.isoformat()
+            dists_m = 2.0 * R * np.arcsin(np.sqrt(np.clip(a, 0.0, 1.0)))
+
+            close_mask = dists_m <= CLOSE_APPROACH_M
+            close_rows = stops_df[close_mask].copy()
+            close_rows['_dist_m'] = dists_m[close_mask]
+
+            if not close_rows.empty:
+                # Sort by distance ASCENDING within each (vehicle, stop)
+                # group, then drop_duplicates keeping the first row —
+                # that's the closest-approach ping. Its timestamp is the
+                # real last_arrival.
+                close_rows = close_rows.sort_values('_dist_m', kind='mergesort')
+                closest_approach = close_rows.drop_duplicates(
+                    subset=['vehicle_id', 'stop_name'], keep='first'
+                )
+                ts_series = pd.to_datetime(closest_approach['timestamp'], utc=True)
+                for (vid, stop_key, ts) in zip(
+                    closest_approach['vehicle_id'].values,
+                    closest_approach['stop_name'].astype(str).values,
+                    ts_series,
+                ):
+                    vid_str = str(vid)
+                    if vid_str not in tracked_vids_set:
+                        continue
+                    if pd.isna(ts):
+                        continue
+                    ts_dt = ts.to_pydatetime()
+                    if ts_dt.tzinfo is None:
+                        ts_dt = ts_dt.replace(tzinfo=timezone.utc)
+                    vehicle_las = last_arrivals_by_vehicle.setdefault(vid_str, {})
+                    vehicle_las[str(stop_key)] = ts_dt.isoformat()
 
     return vehicle_stop_etas, last_arrivals_by_vehicle
 
