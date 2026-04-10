@@ -280,9 +280,15 @@ def build_trip_etas(
 
         if stop_key in last_arrivals:
             la_iso = last_arrivals[stop_key]
-            # Real GPS detection — authoritative.
+            # Real GPS detection — authoritative. Clear any "future eta"
+            # the predictor set in eta_lookup: a stop can't simultaneously
+            # be "in the past" (la set) and "still upcoming" (eta in the
+            # future). Happens at tick boundaries where the predictor's
+            # polyline_idx hasn't advanced past a just-detected stop yet —
+            # the detection wins, the stale predictor ETA must go.
             entry["last_arrival"] = la_iso
             entry["passed"] = True
+            entry["eta"] = None
 
         stop_etas[stop_key] = entry
 
@@ -385,10 +391,14 @@ def build_trip_etas(
             if real_la:
                 # Use the clamped value from anchors. Real detection —
                 # passed_interpolated stays False, timestamp is honest.
+                # Clear any residual future eta so the invariant
+                # "passed => eta is None" holds even when the backfill
+                # re-enters an entry whose initial pass set both.
                 clamped = next((la for idx, la in anchors if idx == i), real_la)
                 entry["last_arrival"] = clamped
                 entry["passed"] = True
                 entry["passed_interpolated"] = False
+                entry["eta"] = None
             else:
                 # Detection gap — interpolate between neighbors. The
                 # shuttle physically passed this stop (a later stop has

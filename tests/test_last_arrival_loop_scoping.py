@@ -319,6 +319,63 @@ def test_mid_loop_backfill_still_works():
     assert result["STAC_1"]["passed_interpolated"] is False
 
 
+def test_passed_stop_never_has_future_eta():
+    """Invariant: a stop with passed=True must never have a future eta.
+
+    Direct regression for live data seen in production where GEORGIAN
+    showed passed=True, la=16:39:39, eta=16:40:13 simultaneously — the
+    predictor's polyline_idx lagged behind the detection pipeline and
+    still listed GEORGIAN in vehicle_stops with an eta ~30 s in the
+    future. The initial pass of build_trip_etas set both fields from
+    their respective inputs without ever clearing `eta` when a real
+    detection marked the stop as passed. Result: the UI shows "Last:
+    16:39" AND "ETA: 16:40 LIVE" on the same stop.
+
+    Contract: whenever a real last_arrival lands on a stop, the
+    corresponding eta must be cleared to None.
+    """
+    now = datetime(2026, 4, 10, 16, 40, tzinfo=timezone.utc)
+    loop_cutoff = datetime(2026, 4, 10, 16, 33, tzinfo=timezone.utc)
+
+    last_arrivals = {
+        "STUDENT_UNION": _iso(datetime(2026, 4, 10, 16, 33, 44, tzinfo=timezone.utc)),
+        "GEORGIAN": _iso(datetime(2026, 4, 10, 16, 39, 39, tzinfo=timezone.utc)),
+    }
+    # Predictor still has GEORGIAN in vehicle_stops with a future eta
+    # (polyline_idx lagged the detection pipeline by one cycle).
+    vehicle_stops = [
+        ("GEORGIAN", now + timedelta(seconds=13)),   # 16:40:13 — the bug
+        ("STAC_1", now + timedelta(seconds=73)),
+        ("STAC_2", now + timedelta(seconds=133)),
+    ]
+    stops = ["STUDENT_UNION", "COLONIE", "GEORGIAN", "STAC_1", "STAC_2"]
+    trip = {"trip_id": "t", "route": "NORTH", "vehicle_id": "v1", "status": "active"}
+
+    result = build_trip_etas(
+        trip=trip,
+        vehicle_stops=vehicle_stops,
+        last_arrivals=last_arrivals,
+        stops_in_route=stops,
+        now_utc=now,
+        loop_cutoff=loop_cutoff,
+    )
+
+    # The specific bug: GEORGIAN is passed AND has no future eta.
+    georgian = result["GEORGIAN"]
+    assert georgian["passed"] is True, georgian
+    assert georgian["last_arrival"] is not None, georgian
+    assert georgian["eta"] is None, (
+        f"GEORGIAN has passed=True but eta is still set: {georgian}"
+    )
+
+    # General invariant check across every stop.
+    for stop_key, entry in result.items():
+        if entry["passed"]:
+            assert entry["eta"] is None, (
+                f"{stop_key} violates invariant: passed=True but eta={entry['eta']}"
+            )
+
+
 def test_spurious_scrub_allows_tick_boundary_race():
     """The spurious-detection scrub must not drop a real detection just
     because the predictor's polyline_idx hasn't advanced past it yet.
