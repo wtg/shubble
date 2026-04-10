@@ -815,6 +815,7 @@ export default function Schedule({
                       {(() => {
                         if (isCompletedTrip) return null;
                         // Prefer trip-based first-stop ETA if loop has a trip
+                        // WITH a vehicle (live prediction source).
                         if (loopTrip && firstStop) {
                           const ti = getTripStopInfo(firstStop);
                           if (ti?.etaTime) {
@@ -825,20 +826,33 @@ export default function Schedule({
                               </>
                             );
                           }
+                          // loopTrip exists but getTripStopInfo returned no
+                          // etaTime. Two possible reasons:
+                          //   1. Unassigned scheduled trip (vehicle_id=null) —
+                          //      there's NO live prediction source for this
+                          //      row, so a "LIVE" badge is a lie regardless of
+                          //      what activeETAs says. Show nothing.
+                          //   2. loopTrip has a vehicle but STUDENT_UNION.eta
+                          //      is null because the shuttle already departed
+                          //      (passed=True with a real last_arrival). In
+                          //      that case the last_arrival is rendered
+                          //      elsewhere; nothing to show here either.
+                          // In both cases, skip the fallback to prevent
+                          // activeETAs from surfacing another trip's static
+                          // departure time with a misleading "LIVE" badge.
+                          return null;
                         }
+                        // Pure scheduled row with NO loopTrip at all (no trip
+                        // matched this row). Legacy fallback: if the global
+                        // activeETAs has a live prediction for this route's
+                        // first stop AND this is the current loop, show it.
+                        // This only fires on routes where the backend hasn't
+                        // produced a trip for this row, which is rare.
                         const fRouteKey = `${firstStop}:${safeSelectedRoute}`;
                         const fEta = activeETAs[fRouteKey] || activeETAs[firstStop];
                         const fDetails = liveETADetails[fRouteKey] || liveETADetails[firstStop];
                         const fMatch = !fDetails?.route || fDetails.route === safeSelectedRoute;
-                        // Suppress the "LIVE ETA" label when it's just the row's
-                        // own scheduled departure time. That happens for
-                        // unassigned scheduled trips whose STUDENT_UNION entry
-                        // has eta=departure_time (OFFSET=0) — rendering "4:10 PM
-                        // - ETA: 4:10 PM LIVE" is redundant and the "LIVE" badge
-                        // is misleading because that value came from a static
-                        // offset, not a live prediction.
-                        const isRedundantWithRowTime = fEta === time;
-                        return isCurrentLoop && fEta && fMatch && !isRedundantWithRowTime ? (
+                        return isCurrentLoop && fEta && fMatch ? (
                           <>
                             <span className="live-eta"> - ETA: {fEta}</span>
                             <span className="source-badge source-live">LIVE</span>
