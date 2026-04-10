@@ -64,11 +64,13 @@ case "$1" in
         # Create Session
         tmux new-session -d -s "$SESSION" -n "docker"      -c "$SHUBBLE_DIR" "docker compose up -d postgres redis"
         tmux new-window  -t "$SESSION" -n "worker"         -c "$SHUBBLE_DIR" "uv run python -m backend.worker"
-        tmux new-window  -t "$SESSION" -n "test-server"    -c "$SHUBBLE_DIR" "uv run uvicorn test.server.server:app --port 4000"
+        tmux new-window  -t "$SESSION" -n "test-server"    -c "$SHUBBLE_DIR" \
+            "until docker compose exec postgres pg_isready -q 2>/dev/null; do echo 'Waiting for postgres...'; sleep 1; done; \
+             while true; do uv run uvicorn test.server.server:app --port 4000; echo 'test-server crashed, restarting in 2s...'; sleep 2; done"
         tmux new-window  -t "$SESSION" -n "api"            -c "$SHUBBLE_DIR" "uv run uvicorn shubble:app --reload --port 8000"
         tmux new-window  -t "$SESSION" -n "frontend"       -c "$SHUBBLE_DIR" "docker compose --profile frontend up"
         tmux new-window  -t "$SESSION" -n "vite-client"    -c "$VITE_DIR"    "npm run dev -- --port 5174 --host"
-        tmux new-window  -t "$SESSION" -n "command"        -c "$SHUBBLE_DIR" bash
+        tmux new-window  -t "$SESSION" -n "command"        -c "$SHUBBLE_DIR/scripts" bash
 
         echo "✅ Shubble services started."
         tmux attach -t "$SESSION"
