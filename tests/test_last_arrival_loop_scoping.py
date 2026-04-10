@@ -598,3 +598,70 @@ def test_active_trip_scoped_via_compute_trips_from_vehicle_data():
     georgian = active["stop_etas"]["GEORGIAN"]
     assert georgian["passed"] is False
     assert georgian["last_arrival"] is None
+
+
+def test_detect_vehicle_departures_includes_boundary_stops():
+    """Loop-boundary stops that share a coordinate must count as the
+    first stop for departure detection.
+
+    Regression for the stuck-actual_departure bug: ML's
+    resolve_duplicate_stops remaps back-half Union pings to
+    STUDENT_UNION_RETURN, so after a few loops the shuttle's dataframe
+    has mostly STUDENT_UNION_RETURN tags at the physical Union location,
+    not STUDENT_UNION. _detect_vehicle_departures used to filter by
+    stop_name == first_stop only and missed those, so actual_departure
+    got stuck at whatever the last raw STUDENT_UNION detection was —
+    potentially hours or days stale.
+
+    Contract: passing boundary_stops=['STUDENT_UNION_RETURN'] in
+    addition to first_stop='STUDENT_UNION' makes the function see BOTH
+    names as the same physical boundary, and each cluster of either
+    name (separated by >120 s) counts as a departure event.
+    """
+    from backend.worker.trips import _detect_vehicle_departures
+
+    # Shuttle did three loops. Only the first departure was tagged
+    # STUDENT_UNION; the two subsequent boundary crossings were tagged
+    # STUDENT_UNION_RETURN (the ML pipeline's post-first-loop remap).
+    base = datetime(2026, 4, 10, 15, 0, tzinfo=timezone.utc)
+    rows = [
+        # Loop 1: initial dwell at Union, tagged STUDENT_UNION
+        {"vehicle_id": "v1", "timestamp": base + timedelta(seconds=i * 5),
+         "stop_name": "STUDENT_UNION", "latitude": 42.7307, "longitude": -73.6767,
+         "route": "NORTH", "polyline_idx": 0, "speed_kmh": 0}
+        for i in range(10)  # 50s dwell
+    ] + [
+        # Loop 1 return boundary at ~15:12, tagged STUDENT_UNION_RETURN
+        {"vehicle_id": "v1", "timestamp": base + timedelta(minutes=12, seconds=i * 5),
+         "stop_name": "STUDENT_UNION_RETURN", "latitude": 42.7307, "longitude": -73.6767,
+         "route": "NORTH", "polyline_idx": 10, "speed_kmh": 0}
+        for i in range(6)  # 30s at boundary
+    ] + [
+        # Loop 2 return boundary at ~15:27, tagged STUDENT_UNION_RETURN
+        {"vehicle_id": "v1", "timestamp": base + timedelta(minutes=27, seconds=i * 5),
+         "stop_name": "STUDENT_UNION_RETURN", "latitude": 42.7307, "longitude": -73.6767,
+         "route": "NORTH", "polyline_idx": 10, "speed_kmh": 0}
+        for i in range(6)
+    ]
+    df = pd.DataFrame(rows)
+    df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
+
+    # OLD behavior (first_stop only): only the initial STUDENT_UNION
+    # cluster is detected. departures = [first-cluster-end].
+    old = _detect_vehicle_departures(df, "STUDENT_UNION")
+    assert len(old) == 1, f"expected 1 cluster without boundary_stops, got {len(old)}"
+
+    # NEW behavior (with boundary_stops): all three clusters are
+    # detected. departures = [cluster1_end, cluster2_end, cluster3_end].
+    new = _detect_vehicle_departures(
+        df, "STUDENT_UNION", boundary_stops=["STUDENT_UNION_RETURN"]
+    )
+    assert len(new) == 3, (
+        f"expected 3 clusters with boundary_stops, got {len(new)}. "
+        f"STUDENT_UNION_RETURN tags are not being treated as loop "
+        f"boundaries."
+    )
+    # Monotonic ordering
+    assert new[0] < new[1] < new[2]
+    # First cluster end is the initial dwell's last timestamp
+    assert new[0] == base + timedelta(seconds=45)

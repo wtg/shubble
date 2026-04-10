@@ -309,3 +309,212 @@ async def test_past_etas_filtered_out():
 
     # All ETAs should be filtered out since they're in 2020
     assert len(result) == 0
+
+
+# --- Tests for polyline-intersection confusion in _compute_vehicle_etas_and_arrivals ---
+#
+# The NORTH route's outbound segment (Union → COLONIE) physically crosses
+# its return segment (HFH → ... → Union) somewhere near HFH. When a
+# shuttle is on the return leg near HFH, the closest-point match can
+# resolve its position to the outbound polyline_idx=0 even though the
+# shuttle never touched Union. Without the physical-distance guard on
+# `is_loop_restart`, the predictor then builds vehicle_stops starting
+# from COLONIE, puts HFH in the upcoming list with a future eta, and
+# the spurious-detection scrub in build_trip_etas drops HFH's real
+# last_arrival as "noise". Users see HFH flip from "Last:" to
+# "ETA: LIVE" for the minute or two until the shuttle's polyline_idx
+# resolves back to the true return value.
+
+
+def _make_intersection_confusion_df(
+    vid: str,
+    now: datetime,
+    ping_lat: float,
+    ping_lon: float,
+    polyline_idx: float,
+    last_stop_name: str,
+    last_row_has_stop: bool = True,
+) -> pd.DataFrame:
+    """Build a vehicle_df where the latest ping has a specific physical
+    position, polyline_idx, and last detected stop_name.
+
+    When `last_row_has_stop=True` the latest row is tagged with
+    last_stop_name — this triggers the `now_stop_key` override branch
+    in _compute_vehicle_etas_and_arrivals (line ~889). When False, the
+    tag is one row BEFORE the latest, so the latest row has
+    `stop_name=None`. Use False to exercise the polyline_idx branch
+    (line ~848) in isolation without the now_stop_key override.
+    """
+    rows = []
+    stop_tag_idx = 11 if last_row_has_stop else 10
+    for i in range(12):
+        ts = now - timedelta(seconds=(11 - i) * 5)
+        rows.append({
+            "vehicle_id": str(vid),
+            "latitude": ping_lat,
+            "longitude": ping_lon,
+            "speed_kmh": 20.0,
+            "timestamp": ts,
+            "route": "NORTH",
+            "polyline_idx": polyline_idx,
+            "stop_name": last_stop_name if i == stop_tag_idx else None,
+        })
+    return pd.DataFrame(rows)
+
+
+@pytest.mark.asyncio
+async def test_polyline_intersection_does_not_trigger_loop_restart():
+    """The intersection-confusion case must NOT be mistaken for a loop restart.
+
+    Setup: shuttle physically at HFH coordinates (~500 m from Union),
+    last detected stop_name = HFH (one row before the latest, so the
+    latest row's now_stop_key is None and we exercise the polyline_idx
+    branch rather than the now_stop_key override). Current polyline_idx
+    = 0 (the closest-point match picked a point on the first-outbound
+    polyline because the two polylines geographically intersect near
+    HFH).
+
+    Contract: the predictor must recognize this as polyline-intersection
+    confusion (NOT a loop restart) and override current_polyline_idx to
+    last_stop_idx. The resulting vehicle_stops should start from the
+    stop AFTER HFH (STUDENT_UNION_RETURN), NOT from COLONIE.
+    """
+    from backend.worker.data import _compute_vehicle_etas_and_arrivals
+
+    now = datetime.now(timezone.utc)
+    # HFH's actual coordinates (from shared/routes.json)
+    hfh_coord = Stops.routes_data["NORTH"]["HOUSTON_FIELD_HOUSE"]["COORDINATES"]
+    df = _make_intersection_confusion_df(
+        vid="v_intersect",
+        now=now,
+        ping_lat=hfh_coord[0],
+        ping_lon=hfh_coord[1],
+        polyline_idx=0.0,  # <-- the bug trigger: polyline match returns 0
+        last_stop_name="HOUSTON_FIELD_HOUSE",
+        last_row_has_stop=False,  # isolate the polyline_idx branch
+    )
+
+    # Mock predict_eta so the test doesn't require LSTM models.
+    sur_eta = now + timedelta(minutes=2)
+    mock_predict = AsyncMock(return_value={"v_intersect": sur_eta})
+
+    with patch("backend.worker.data.predict_eta", mock_predict):
+        vehicle_stop_etas, _ = await _compute_vehicle_etas_and_arrivals(
+            ["v_intersect"], df
+        )
+
+    # The vehicle should be in the output (not dropped as out-of-range)
+    assert "v_intersect" in vehicle_stop_etas, (
+        "vehicle was dropped — override likely produced next_stop_idx out of range"
+    )
+    stops_list = vehicle_stop_etas["v_intersect"]["stops"]
+    assert stops_list, "vehicle has no upcoming stops"
+
+    first_upcoming = stops_list[0][0]  # (stop_key, eta_dt)
+    # The shuttle is PAST HFH (index 7). Next upcoming stop must be
+    # STUDENT_UNION_RETURN (index 8). It MUST NOT be COLONIE or
+    # anything earlier — that would mean the override didn't fire.
+    assert first_upcoming == "STUDENT_UNION_RETURN", (
+        f"expected next stop STUDENT_UNION_RETURN (override fired), "
+        f"got {first_upcoming} — intersection confusion treated as loop restart"
+    )
+
+    # HFH itself must NOT appear in the upcoming stops — the shuttle
+    # already passed it. This is the crucial anti-regression check:
+    # if HFH shows up in vehicle_stops with a future eta, the spurious
+    # scrub in build_trip_etas will drop HFH's real last_arrival,
+    # flipping the UI from "Last:" to "ETA: LIVE".
+    upcoming_stop_keys = [s[0] for s in stops_list]
+    assert "HOUSTON_FIELD_HOUSE" not in upcoming_stop_keys, (
+        f"HFH leaked into upcoming stops: {upcoming_stop_keys} — the "
+        f"predictor still thinks HFH is ahead of the shuttle"
+    )
+
+
+@pytest.mark.asyncio
+async def test_true_loop_restart_still_respected():
+    """A genuine loop restart (shuttle physically at Union) must still be
+    recognized. This is the counter-case to the intersection test — the
+    override must NOT fire when the shuttle really is at the start of a
+    new loop.
+    """
+    from backend.worker.data import _compute_vehicle_etas_and_arrivals
+
+    now = datetime.now(timezone.utc)
+    # Student Union's actual coordinates
+    union_coord = Stops.routes_data["NORTH"]["STUDENT_UNION"]["COORDINATES"]
+    df = _make_intersection_confusion_df(
+        vid="v_restart",
+        now=now,
+        ping_lat=union_coord[0],
+        ping_lon=union_coord[1],
+        polyline_idx=0.0,  # polyline correctly reports "new loop starting"
+        last_stop_name="STUDENT_UNION_RETURN",
+        last_row_has_stop=False,  # latest row has stop_name=None so the
+                                  # now_stop_key override doesn't fire and
+                                  # we test the polyline_idx branch
+    )
+
+    colonie_eta = now + timedelta(minutes=3)
+    mock_predict = AsyncMock(return_value={"v_restart": colonie_eta})
+
+    with patch("backend.worker.data.predict_eta", mock_predict):
+        vehicle_stop_etas, _ = await _compute_vehicle_etas_and_arrivals(
+            ["v_restart"], df
+        )
+
+    assert "v_restart" in vehicle_stop_etas
+    stops_list = vehicle_stop_etas["v_restart"]["stops"]
+    assert stops_list, "vehicle has no upcoming stops"
+
+    # True loop restart: the new loop is starting, next stop is COLONIE.
+    # Override must NOT have fired (the shuttle is physically at Union).
+    first_upcoming = stops_list[0][0]
+    assert first_upcoming == "COLONIE", (
+        f"expected next stop COLONIE (true loop restart), got "
+        f"{first_upcoming} — the override incorrectly fired"
+    )
+
+
+@pytest.mark.asyncio
+async def test_intersection_confusion_with_stop_detection_fallback():
+    """If `now_stop_key` is set to HFH on the latest row, the existing
+    now_stop_key override (line 889) already fires. This test documents
+    that the intersection fix is redundant with the now_stop_key path
+    but still fires correctly when now_stop_key is set.
+    """
+    from backend.worker.data import _compute_vehicle_etas_and_arrivals
+
+    now = datetime.now(timezone.utc)
+    hfh_coord = Stops.routes_data["NORTH"]["HOUSTON_FIELD_HOUSE"]["COORDINATES"]
+    # This variant has stop_name=HOUSTON_FIELD_HOUSE on the LATEST row,
+    # so the now_stop_key override will also fire.
+    rows = []
+    for i in range(12):
+        ts = now - timedelta(seconds=(11 - i) * 5)
+        rows.append({
+            "vehicle_id": "v_both",
+            "latitude": hfh_coord[0],
+            "longitude": hfh_coord[1],
+            "speed_kmh": 20.0,
+            "timestamp": ts,
+            "route": "NORTH",
+            "polyline_idx": 0.0,
+            "stop_name": "HOUSTON_FIELD_HOUSE" if i >= 10 else None,
+        })
+    df = pd.DataFrame(rows)
+
+    sur_eta = now + timedelta(minutes=2)
+    mock_predict = AsyncMock(return_value={"v_both": sur_eta})
+
+    with patch("backend.worker.data.predict_eta", mock_predict):
+        vehicle_stop_etas, _ = await _compute_vehicle_etas_and_arrivals(
+            ["v_both"], df
+        )
+
+    assert "v_both" in vehicle_stop_etas
+    stops_list = vehicle_stop_etas["v_both"]["stops"]
+    upcoming_keys = [s[0] for s in stops_list]
+    assert "HOUSTON_FIELD_HOUSE" not in upcoming_keys
+    # Next stop is SUR (index 8 = HFH index 7 + 1)
+    assert stops_list[0][0] == "STUDENT_UNION_RETURN"

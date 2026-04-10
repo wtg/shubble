@@ -115,6 +115,7 @@ def _load_today_schedule(campus_tz) -> Dict[str, List[datetime]]:
 def _detect_vehicle_departures(
     vehicle_df: pd.DataFrame,
     first_stop: str,
+    boundary_stops: Optional[List[str]] = None,
 ) -> List[datetime]:
     """Find all times this vehicle departed from the first stop of its route.
 
@@ -129,6 +130,19 @@ def _detect_vehicle_departures(
     scheduled departure: a 22-minute dwell from 9:53 to 10:15 should
     register as departing at 10:15 (matching the 10:15 schedule slot),
     NOT 9:53 (which would mismatch and snap to the prior 9:50 slot).
+
+    Args:
+        vehicle_df: the vehicle's sorted processed dataframe.
+        first_stop: the route's first stop name (e.g. "STUDENT_UNION").
+        boundary_stops: additional stop names that share first_stop's
+            physical location. NORTH/WEST have STUDENT_UNION and
+            STUDENT_UNION_RETURN at the SAME coordinate; the ML
+            pipeline's resolve_duplicate_stops remaps back-half Union
+            pings to STUDENT_UNION_RETURN. Without matching both names
+            here, every loop-end crossing is invisible to the departure
+            detector and `actual_departure` gets stuck at whatever the
+            last raw STUDENT_UNION detection was (potentially hours or
+            days ago). Pass the full list of co-located stop names.
     """
     if vehicle_df.empty or 'stop_name' not in vehicle_df.columns:
         return []
@@ -136,7 +150,10 @@ def _detect_vehicle_departures(
     # PERF: vectorized cluster detection. Caller provides timestamp-sorted
     # input (compute_trips_from_vehicle_data does a single upstream sort +
     # groupby), so we skip the per-call sort_values and the iterrows walk.
-    mask = vehicle_df['stop_name'] == first_stop
+    match_names = {first_stop}
+    if boundary_stops:
+        match_names.update(boundary_stops)
+    mask = vehicle_df['stop_name'].isin(match_names)
     if not mask.any():
         return []
     ts = pd.to_datetime(vehicle_df.loc[mask, 'timestamp']).reset_index(drop=True)
@@ -482,8 +499,36 @@ def compute_trips_from_vehicle_data(
 
         vehicle_df = vehicle_groups.get(str(vid), pd.DataFrame())
 
+        # Find any stops co-located with first_stop (same physical coord).
+        # On NORTH and WEST, STUDENT_UNION and STUDENT_UNION_RETURN share
+        # one coordinate — the ML pipeline's resolve_duplicate_stops
+        # remaps back-half Union pings to STUDENT_UNION_RETURN, so without
+        # passing both names into the departure detector, loop returns
+        # are invisible and `actual_departure` stays stuck at the first
+        # raw STUDENT_UNION detection (which may be hours old).
+        route_route_data = routes_data.get(route, {})
+        first_stop_coord = route_route_data.get(first_stop, {}).get("COORDINATES")
+        boundary_stops: List[str] = []
+        if first_stop_coord is not None:
+            target_key = (
+                round(float(first_stop_coord[0]), 6),
+                round(float(first_stop_coord[1]), 6),
+            )
+            for stop_name in route_stops:
+                if stop_name == first_stop:
+                    continue
+                stop_data = route_route_data.get(stop_name, {})
+                coord = stop_data.get("COORDINATES")
+                if not coord:
+                    continue
+                key = (round(float(coord[0]), 6), round(float(coord[1]), 6))
+                if key == target_key:
+                    boundary_stops.append(stop_name)
+
         # Compute actual_departure without matching
-        departures = _detect_vehicle_departures(vehicle_df, first_stop)
+        departures = _detect_vehicle_departures(
+            vehicle_df, first_stop, boundary_stops=boundary_stops or None
+        )
         prior_departure: Optional[datetime] = None
         if departures:
             actual_departure = departures[-1]

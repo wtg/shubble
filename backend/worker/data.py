@@ -19,7 +19,7 @@ from backend.cache import soft_clear_namespace, get_redis
 from backend.function_timer import timed
 from backend.time_utils import dev_now
 from backend.worker.velocity import get_velocity_predictor
-from shared.stops import Stops
+from shared.stops import Stops, haversine
 
 logger = logging.getLogger(__name__)
 
@@ -864,9 +864,81 @@ async def _compute_vehicle_etas_and_arrivals(
                         polyline_was_reset = True
                     current_polyline_idx = 0
                 else:
-                    is_loop_restart = (current_polyline_idx < half_route and last_stop_idx >= half_route)
+                    # POLYLINE-INTERSECTION GUARD: the same
+                    # (current_polyline_idx < half_route,
+                    #  last_stop_idx >= half_route)
+                    # pattern is produced by TWO different situations:
+                    #
+                    #  (a) TRUE loop restart. Shuttle physically reached
+                    #      Union, new loop starting. polyline_idx correctly
+                    #      points at the start of the new loop.
+                    #
+                    #  (b) INTERSECTION CONFUSION. The return-leg polyline
+                    #      (HFH → ... → Union) geographically crosses the
+                    #      first-outbound polyline (Union → COLONIE)
+                    #      somewhere near HFH. When the shuttle is physically
+                    #      at HFH on its return leg, closest-point matching
+                    #      can pick a point on the first-outbound polyline
+                    #      instead of the return polyline — giving a spurious
+                    #      current_polyline_idx = 0 even though the shuttle
+                    #      never touched Union.
+                    #
+                    # Without this guard, case (b) was misclassified as a
+                    # loop restart: the override below was skipped, the
+                    # predictor built vehicle_stops starting from COLONIE,
+                    # and HFH landed in eta_lookup with a future eta. The
+                    # spurious-detection scrub in build_trip_etas then saw
+                    # "HFH has a future eta 5 min out AND a real detection"
+                    # and DROPPED the real detection as noise — flipping the
+                    # UI from "Last: HH:MM" to "ETA: HH:MM LIVE" on HFH
+                    # despite the shuttle having just passed it.
+                    #
+                    # Distinguishing signal: a TRUE loop restart requires
+                    # the shuttle's physical GPS to be near the first stop's
+                    # coordinate. Intersection confusion has the GPS
+                    # hundreds of meters away (still near HFH). 100 m is a
+                    # generous threshold — well beyond GPS jitter, tight
+                    # enough to reject the HFH-area intersection.
+                    is_physically_at_first_stop = False
+                    first_stop_data = route_data.get(stops[0], {})
+                    first_stop_coord = first_stop_data.get("COORDINATES")
+                    last_lat = last_point.get('latitude')
+                    last_lon = last_point.get('longitude')
+                    if (
+                        first_stop_coord is not None
+                        and not pd.isna(last_lat)
+                        and not pd.isna(last_lon)
+                    ):
+                        try:
+                            d_km = haversine(
+                                (float(last_lat), float(last_lon)),
+                                (float(first_stop_coord[0]), float(first_stop_coord[1])),
+                            )
+                            is_physically_at_first_stop = d_km < 0.100  # 100 m
+                        except (TypeError, ValueError):
+                            pass
+
+                    is_loop_restart = (
+                        current_polyline_idx < half_route
+                        and last_stop_idx >= half_route
+                        and is_physically_at_first_stop
+                    )
                     if not is_loop_restart and current_polyline_idx < last_stop_idx:
-                        current_polyline_idx = last_stop_idx
+                        # INDEX-SPACE CORRECTION: `last_stop_idx` is an
+                        # index into STOPS, which excludes ghost stops.
+                        # `current_polyline_idx` indexes into the ROUTES
+                        # polyline list, which does include them
+                        # (NORTH has GHOST_STOP_1 between COLONIE and
+                        # GEORGIAN, GHOST_STOP_2 between HFH and SUR).
+                        # Assigning last_stop_idx directly produces an
+                        # off-by-ghost-count polyline index for any
+                        # last_stop past the first ghost. Map through
+                        # POLYLINE_STOPS to get the correct index.
+                        polyline_stops_list = route_data.get('POLYLINE_STOPS', stops)
+                        if last_stop in polyline_stops_list:
+                            current_polyline_idx = polyline_stops_list.index(last_stop)
+                        else:
+                            current_polyline_idx = last_stop_idx
 
         # POLYLINE_STOPS → STOPS mapping
         polyline_stops = route_data.get('POLYLINE_STOPS', stops)
