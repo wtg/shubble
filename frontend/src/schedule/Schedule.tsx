@@ -817,7 +817,15 @@ export default function Schedule({
                         const fEta = activeETAs[fRouteKey] || activeETAs[firstStop];
                         const fDetails = liveETADetails[fRouteKey] || liveETADetails[firstStop];
                         const fMatch = !fDetails?.route || fDetails.route === safeSelectedRoute;
-                        return isCurrentLoop && fEta && fMatch ? (
+                        // Suppress the "LIVE ETA" label when it's just the row's
+                        // own scheduled departure time. That happens for
+                        // unassigned scheduled trips whose STUDENT_UNION entry
+                        // has eta=departure_time (OFFSET=0) — rendering "4:10 PM
+                        // - ETA: 4:10 PM LIVE" is redundant and the "LIVE" badge
+                        // is misleading because that value came from a static
+                        // offset, not a live prediction.
+                        const isRedundantWithRowTime = fEta === time;
+                        return isCurrentLoop && fEta && fMatch && !isRedundantWithRowTime ? (
                           <>
                             <span className="live-eta"> - ETA: {fEta}</span>
                             <span className="source-badge source-live">LIVE</span>
