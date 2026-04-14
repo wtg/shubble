@@ -1157,6 +1157,134 @@ async def _compute_vehicle_etas_and_arrivals(
     #     that cutoff is the tip of the prior loop, which is exactly
     #     what a completed trip should display).
     CLOSE_APPROACH_M = 60.0
+
+    # ---- Stop-centric pass: detect close approaches even for pings the
+    # ML stop_name tagger missed. The ML `add_stops` threshold is 20 m
+    # (ml/data/stops.py:114), which a 20 mph test shuttle (~44 m per 5 s
+    # poll) routinely overshoots — and the `add_stops_from_segments`
+    # retro-tag often writes to the EARLIER endpoint of a segment, which
+    # the incremental cache (backend/cache_dataframe.py:379-384) then
+    # filters out as a context-row update. Net effect: HOUSTON_FIELD_HOUSE
+    # and any other fast-drive-by stop never gets a real `last_arrival`.
+    #
+    # Fix: ignore the stop_name column for this pass entirely. For each
+    # route stop, compute haversine distance from EVERY ping in full_df
+    # to the stop's coord and keep pings within CLOSE_APPROACH_M (60 m).
+    # Per (vehicle_id, stop), take the LATEST timestamp.
+    #
+    # We MUST skip duplicate-coordinate stop pairs here (e.g.
+    # STUDENT_UNION + STUDENT_UNION_RETURN both at 42.730711, -73.676737).
+    # A stop-centric pass would tag every ping at Union for BOTH names,
+    # which silently breaks trip-completion logic that treats the
+    # "_RETURN" detection as the loop end. The tag-based pass below
+    # already handles duplicates correctly via `resolve_duplicate_stops`
+    # (it uses polyline_idx to decide which name applies). Look up the
+    # set of duplicates from the same cache that resolver uses, so a
+    # routes.json change automatically propagates here.
+    #
+    # Order: this pass runs FIRST and writes results into the same dict
+    # as the tag-based pass. The tag-based pass below merges via
+    # max-timestamp, so order doesn't change the final values — but
+    # writing the stop-centric result first means the tag-based path
+    # only does a max() comparison instead of a plain overwrite when the
+    # same (vehicle, stop) is detected by both passes.
+    #
+    # NOTE: import the module (not the names) — `_ROUTE_REMAP_CACHE` is
+    # rebound by `_build_route_remap_cache()` (uses `global` and
+    # reassigns to a new dict), so an `import _ROUTE_REMAP_CACHE` would
+    # capture the empty initial value forever.
+    from ml.data import stops as _ml_stops
+    _ml_stops._build_route_remap_cache()
+    duplicate_stop_names: set = set()
+    for _route, entries in _ml_stops._ROUTE_REMAP_CACHE.items():
+        for first_name, last_name, _threshold_idx in entries:
+            duplicate_stop_names.add(first_name)
+            duplicate_stop_names.add(last_name)
+
+    if (
+        not full_df.empty
+        and 'latitude' in full_df.columns
+        and 'longitude' in full_df.columns
+        and 'vehicle_id' in full_df.columns
+        and 'timestamp' in full_df.columns
+    ):
+        coord_df = full_df.dropna(subset=['latitude', 'longitude', 'vehicle_id', 'timestamp'])
+        if not coord_df.empty:
+            tracked_vids_set_sc = {str(v) for v in vehicle_ids}
+            mask_tracked = coord_df['vehicle_id'].astype(str).isin(tracked_vids_set_sc)
+            coord_df = coord_df[mask_tracked]
+
+        if not coord_df.empty:
+            ping_lats = coord_df['latitude'].astype(float).to_numpy()
+            ping_lons = coord_df['longitude'].astype(float).to_numpy()
+            ping_vids = coord_df['vehicle_id'].astype(str).to_numpy()
+            ping_ts = pd.to_datetime(coord_df['timestamp'], utc=True).to_numpy()
+
+            R_sc = 6371000.0
+            phi1_sc = np.radians(ping_lats)
+            cos_phi1_sc = np.cos(phi1_sc)
+
+            # Build the unique set of (stop_name, lat, lon) across all
+            # routes, skipping duplicate-coord stops. First occurrence
+            # wins (matches the existing tag-based block's
+            # `if stop_name not in stop_coord_lookup`).
+            seen_stops: set = set()
+            for route_info in Stops.routes_data.values():
+                if not isinstance(route_info, dict):
+                    continue
+                for stop_name_sc, stop_data_sc in route_info.items():
+                    if not isinstance(stop_data_sc, dict):
+                        continue
+                    if stop_name_sc in duplicate_stop_names:
+                        continue
+                    if stop_name_sc in seen_stops:
+                        continue
+                    coord_sc = stop_data_sc.get('COORDINATES')
+                    if not coord_sc:
+                        continue
+                    seen_stops.add(stop_name_sc)
+                    s_lat = float(coord_sc[0])
+                    s_lon = float(coord_sc[1])
+
+                    phi2_sc = np.radians(s_lat)
+                    dphi_sc = np.radians(s_lat - ping_lats)
+                    dlam_sc = np.radians(s_lon - ping_lons)
+                    a_sc = (
+                        np.sin(dphi_sc / 2.0) ** 2
+                        + cos_phi1_sc * np.cos(phi2_sc) * np.sin(dlam_sc / 2.0) ** 2
+                    )
+                    dists_sc = 2.0 * R_sc * np.arcsin(np.sqrt(np.clip(a_sc, 0.0, 1.0)))
+                    close_sc = dists_sc <= CLOSE_APPROACH_M
+                    if not close_sc.any():
+                        continue
+
+                    # Per-vehicle: keep the LATEST within-60 m timestamp
+                    # for this stop. Small N (typically <50 close pings
+                    # per stop per day), so a Python loop with
+                    # dict.setdefault is cheaper than building a temp
+                    # DataFrame.
+                    vids_close = ping_vids[close_sc]
+                    ts_close = ping_ts[close_sc]
+                    per_vid_max: Dict[str, pd.Timestamp] = {}
+                    for vid_v, ts_v in zip(vids_close, ts_close):
+                        prev = per_vid_max.get(vid_v)
+                        if prev is None or ts_v > prev:
+                            per_vid_max[vid_v] = ts_v
+
+                    for vid_v, ts_v in per_vid_max.items():
+                        ts_dt = pd.Timestamp(ts_v).to_pydatetime()
+                        if ts_dt.tzinfo is None:
+                            ts_dt = ts_dt.replace(tzinfo=timezone.utc)
+                        vehicle_las_sc = last_arrivals_by_vehicle.setdefault(vid_v, {})
+                        existing_sc = vehicle_las_sc.get(stop_name_sc)
+                        if existing_sc is None:
+                            vehicle_las_sc[stop_name_sc] = ts_dt.isoformat()
+                        else:
+                            existing_dt_sc = datetime.fromisoformat(existing_sc)
+                            if ts_dt > existing_dt_sc:
+                                vehicle_las_sc[stop_name_sc] = ts_dt.isoformat()
+    # ---- end stop-centric pass ----
+
     if 'stop_name' in full_df.columns:
         tracked_vids_set = {str(v) for v in vehicle_ids}
         stops_df = full_df.dropna(subset=['stop_name', 'latitude', 'longitude'])
@@ -1235,7 +1363,16 @@ async def _compute_vehicle_etas_and_arrivals(
                     if ts_dt.tzinfo is None:
                         ts_dt = ts_dt.replace(tzinfo=timezone.utc)
                     vehicle_las = last_arrivals_by_vehicle.setdefault(vid_str, {})
-                    vehicle_las[str(stop_key)] = ts_dt.isoformat()
+                    # Merge with the stop-centric pass: keep whichever
+                    # timestamp is newer. The stop-centric pass writes
+                    # the same dict above using max-ts semantics, so
+                    # mirror that here. For stops the stop-centric pass
+                    # didn't touch (duplicate-coord pairs), `existing`
+                    # is None and this reduces to a plain assignment —
+                    # preserving the original tag-based behavior.
+                    existing = vehicle_las.get(str(stop_key))
+                    if existing is None or ts_dt > datetime.fromisoformat(existing):
+                        vehicle_las[str(stop_key)] = ts_dt.isoformat()
 
     return vehicle_stop_etas, last_arrivals_by_vehicle
 
