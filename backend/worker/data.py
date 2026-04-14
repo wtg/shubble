@@ -1126,13 +1126,20 @@ async def _compute_vehicle_etas_and_arrivals(
     #
     # Fix (two parts):
     #  1. Filter to pings that are PHYSICALLY within CLOSE_APPROACH_M
-    #     of the stop's coordinate. 40 m is 2x the 20 m pipeline
-    #     threshold, leaves headroom for GPS jitter, and still rejects
-    #     the far-away approach tags.
+    #     of the stop's coordinate. 60 m is ~1.5x typical inter-tick
+    #     travel at the 20 mph test-shuttle speed (~44 m per 5 s tick),
+    #     so a single GPS ping mid-drive-by still lands inside the
+    #     radius. (The previous 40 m — 2x the 20 m pipeline threshold —
+    #     was tight enough that a shuttle moving at test speed could
+    #     straddle the radius between ticks and skip the detection
+    #     entirely, e.g. at GEORGIAN.) 60 m still leaves plenty of
+    #     headroom for GPS jitter while staying well below the ~80–120 m
+    #     inter-stop spacing on campus, so it doesn't cause
+    #     adjacent-stop false positives.
     #  2. Among the surviving pings, pick the one with the SMALLEST
     #     distance (the true closest approach) and use ITS timestamp
     #     as the last_arrival. Not max, not min — closest-approach.
-    CLOSE_APPROACH_M = 40.0
+    CLOSE_APPROACH_M = 60.0
     if 'stop_name' in full_df.columns:
         tracked_vids_set = {str(v) for v in vehicle_ids}
         stops_df = full_df.dropna(subset=['stop_name', 'latitude', 'longitude'])
