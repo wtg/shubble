@@ -324,11 +324,40 @@ async def compute_per_stop_etas(vehicle_ids: List[str], df: Optional[pd.DataFram
         else:
             next_stop_idx = None
 
-        # If vehicle is AT the next stop, advance to the one after
+        # If vehicle is AT or PAST the next stop, advance to the one after.
+        # `>=` (not ==) handles the case where polyline_idx lags two or more
+        # stops behind the true position: without the broader check, the
+        # advance was skipped and the predictor kept picking the stale
+        # next_stop for multiple ticks.
         if not pd.isna(now_stop_key) and str(now_stop_key) in stops:
             now_stop_idx = stops.index(str(now_stop_key))
-            if next_stop_idx is not None and now_stop_idx == next_stop_idx:
+            if next_stop_idx is not None and now_stop_idx >= next_stop_idx:
                 next_stop_idx = now_stop_idx + 1
+
+        # Dwelling-at-Union: the vehicle's latest stop_name is the LAST stop
+        # in STOPS (e.g. STUDENT_UNION_RETURN) AND that stop's coordinates
+        # coincide with the FIRST stop's coordinates (loop-boundary stop
+        # like STUDENT_UNION ≡ STUDENT_UNION_RETURN on NORTH/WEST). In that
+        # case the shuttle is physically at the boundary between loops —
+        # emit ETAs starting from stop index 1 so the dwell-promote logic
+        # in compute_trips_from_vehicle_data can match it to the next
+        # scheduled slot instead of dropping the vehicle entirely.
+        if (
+            not pd.isna(now_stop_key)
+            and str(now_stop_key) in stops
+            and stops.index(str(now_stop_key)) == len(stops) - 1
+            and len(stops) >= 2
+        ):
+            first_stop_data = route_data.get(stops[0])
+            last_stop_data = route_data.get(stops[-1])
+            if (
+                isinstance(first_stop_data, dict)
+                and isinstance(last_stop_data, dict)
+                and first_stop_data.get("COORDINATES") is not None
+                and last_stop_data.get("COORDINATES") is not None
+                and tuple(first_stop_data["COORDINATES"]) == tuple(last_stop_data["COORDINATES"])
+            ):
+                next_stop_idx = 1
 
         if next_stop_idx is None or next_stop_idx >= len(stops):
             continue
@@ -971,6 +1000,31 @@ async def _compute_vehicle_etas_and_arrivals(
             # clamp it down — polyline matching is likely wrong.
             if next_stop_idx > last_stop_idx + 2:
                 next_stop_idx = last_stop_idx + 1
+
+        # Dwelling-at-Union: the vehicle's latest stop_name is the LAST stop
+        # in STOPS (e.g. STUDENT_UNION_RETURN) AND that stop's coordinates
+        # coincide with the FIRST stop's coordinates. In that case the shuttle
+        # is physically at the boundary between loops — emit ETAs starting
+        # from stop index 1 so the dwell-promote logic in
+        # compute_trips_from_vehicle_data can match it to the next scheduled
+        # slot instead of dropping the vehicle entirely (it would otherwise
+        # fall through the `next_stop_idx >= len(stops)` guard below).
+        if (
+            not pd.isna(now_stop_key)
+            and str(now_stop_key) in stops
+            and stops.index(str(now_stop_key)) == len(stops) - 1
+            and len(stops) >= 2
+        ):
+            first_stop_data = route_data.get(stops[0])
+            last_stop_data = route_data.get(stops[-1])
+            if (
+                isinstance(first_stop_data, dict)
+                and isinstance(last_stop_data, dict)
+                and first_stop_data.get("COORDINATES") is not None
+                and last_stop_data.get("COORDINATES") is not None
+                and tuple(first_stop_data["COORDINATES"]) == tuple(last_stop_data["COORDINATES"])
+            ):
+                next_stop_idx = 1
 
         if next_stop_idx is None or next_stop_idx >= len(stops):
             continue
