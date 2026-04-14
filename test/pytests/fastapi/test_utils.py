@@ -9,6 +9,7 @@ from backend.fastapi.utils import (
     get_latest_vehicle_locations,
     VehicleLocationDict,
     VehicleInfoDict,
+    get_current_driver_assignments, # Added for driver tests
     # make mock data in database
     # use get_locatest
 
@@ -187,14 +188,6 @@ def make_velocity(
     v.speed_kmh = speed_kmh
     v.timestamp = timestamp
     return v
-
-
-
-
- 
- 
-
- 
 
 
 # TEST - Location tests
@@ -404,8 +397,6 @@ LOCATION_CASES = [
         id="three_shuttles_last_is_latest",
     ),
 ]
- 
-
 
 
 #WIP
@@ -424,57 +415,74 @@ def make_driver(
     d.name = name
     return d
 
+# UPDATED Driver_Cases
 Driver_Cases = [
     pytest.param(
-        [[make_driver(id="driver1", name="John Doe")],
-        [
-            {
-                "id": "driver1",
-                "name": "John Doe",
+        ["shuttle_01"], # vehicle_ids to query
+        lambda: (
+            # Create the vehicle
+            (shuttle_1 := make_vehicle(license_plate="TEST-01", vin="VIN-01")),
+            # Create the driver
+            (driver_1 := make_driver(id="d1", name="John Doe")),
+            # Create the assignment linking the vehicle_id to the driver object
+            [make_driver_assignment(vehicle_id="shuttle_01", driver=driver_1)]
+        )[-1], # Return only the list of rows for the mock DB
+        {
+            "shuttle_01": {
+                "vehicle_id": "shuttle_01",
+                "driver": {"id": "d1", "name": "John Doe"}
             }
-        ]],
-        id="1driver",
+        },
+        id="1driver_assignment",
     ),
+
     pytest.param(
-        [make_driver(id="driver1", name="Jane Doe"),
-        make_driver(id="driver2", name="DriverF DriverL")],
-        [
-            {
-                "id": "driver1",
-                "name": "Jane Doe",
-            },
-            {
-                "id": "driver2",
-                "name": "DriverF DriverL",
-            }
-        ],
-        id="multiDriver",
+        ["shuttle_east", "shuttle_west"],
+        lambda: (
+            (east_veh := make_vehicle(license_plate="EAST-1")),
+            (west_veh := make_vehicle(license_plate="WEST-1")),
+            (jane := make_driver(id="d2", name="Jane Doe")),
+            (bob := make_driver(id="d3", name="Bob Driver")),
+            [
+                make_driver_assignment(vehicle_id="shuttle_east", driver=jane),
+                make_driver_assignment(vehicle_id="shuttle_west", driver=bob)
+            ]
+        )[-1],
+        {
+            "shuttle_east": {"vehicle_id": "shuttle_east", "driver": {"id": "d2", "name": "Jane Doe"}},
+            "shuttle_west": {"vehicle_id": "shuttle_west", "driver": {"id": "d3", "name": "Bob Driver"}}
+        },
+        id="multi_driver_assignment",
     ),
+
     pytest.param(
-        [make_driver(id="driver1", name="Shubble Bot")],
-        [
-            {
-                "id": "driver1",
-                "name": "Shubble Bot",
+        ["bot_veh"],
+        lambda: (
+            (bot_shuttle := make_vehicle(license_plate="BOT-999")),
+            (bot_user := make_driver(id="bot_01", name="Shubble Bot")),
+            [make_driver_assignment(vehicle_id="bot_veh", driver=bot_user)]
+        )[-1],
+        {
+            "bot_veh": {
+                "vehicle_id": "bot_veh",
+                "driver": {"id": "bot_01", "name": "Shubble Bot"}
             }
-        ],
-        id="driverTestBot",
+        },
+        id="driver_test_bot",
     )
 ]
- 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("rows, expected", Driver_Cases)
-async def confirm_driver_info_dict(rows, expected):
-    db = make_db(rows)
-    with patch("backend.fastapi.utils.get_vehicles_in_geofence_query", return_value=make_geofence()):
-        result = await get_current_driver_assignments(make_session_factory(db))
+@pytest.mark.parametrize("v_ids, rows_factory, expected", Driver_Cases)
+async def test_confirm_driver_info_dict(v_ids, rows_factory, expected):
+    # Execute the lambda to "create" vehicles and drivers, then get the rows
+    rows = rows_factory()
     
-    drivers = [make_driver(id=driver["id"], name=driver["name"]) for driver in rows]
-    for actual_driver, expected_driver in zip(drivers, expected):
-        assert actual_driver.id == expected_driver["id"]
-        assert actual_driver.name == expected_driver["name"]
-
+    db = make_db(rows)
+    # Testing get_current_driver_assignments specifically
+    result = await get_current_driver_assignments(v_ids, make_session_factory(db))
+    
+    assert result == expected
 
 #Tests to do 
 # async def smart_closest_point(
@@ -498,25 +506,25 @@ async def test_get_latest_vehicle_locations(rows, expected):
     db = make_db(rows)
     with patch("backend.fastapi.utils.get_vehicles_in_geofence_query", return_value=make_geofence()):
         result = await get_latest_vehicle_locations(make_session_factory(db))
- 
+
     # Check for exact amount of shuttles
     assert len(result) == len(expected)
 
     # Check each returned shuttle dict matches the expected dict for that index.
     for actual_loc, expected_loc in zip(result, expected):
         assert actual_loc == expected_loc
- 
- 
+
+
 @pytest.mark.asyncio
 async def test_get_latest_vehicle_locations_empty():
     # Empty DB should return an empty list.
     db = make_db([])
     with patch("backend.fastapi.utils.get_vehicles_in_geofence_query", return_value=make_geofence()):
         result = await get_latest_vehicle_locations(make_session_factory(db))
- 
+
     assert result == []
- 
- 
+
+
 @pytest.mark.asyncio
 async def test_three_shuttles_last_inserted_is_distinct():
     # Insert three shuttles; assert the last one (Shuttle North) is present
@@ -545,24 +553,26 @@ async def test_three_shuttles_last_inserted_is_distinct():
         timestamp=datetime(2026, 4, 1, 9, 20, 0),
         vehicle=make_vehicle(license_plate="NORTH01", vin="VIN_NORTH"),
     )
- 
+
     db = make_db([shuttle_east, shuttle_west, shuttle_north])
     with patch("backend.fastapi.utils.get_vehicles_in_geofence_query", return_value=make_geofence()):
         result = await get_latest_vehicle_locations(make_session_factory(db))
- 
+
     assert len(result) == 3
- 
+
     first = result[0]   # shuttle_east check
     second = result[1]  # shuttle_west check
     last = result[2]    # shuttle_north check
- 
+
     # Last inserted shuttle is present with correct data
     assert last["vehicle_id"] == "veh_north"
     assert last["vehicle"]["license_plate"] == "NORTH01"
     assert last["timestamp"] == "2026-04-01T09:20:00"
- 
+
     # Unique shuttles
     assert first != last
     assert first != second
     assert second != last
 
+
+    #Work on velocities and etas next
