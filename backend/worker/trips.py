@@ -258,14 +258,39 @@ def build_trip_etas(
     # 60 s is large enough to catch the original WEST bug (which had
     # upcoming ETAs 2–8 minutes ahead) while small enough to let tick-
     # boundary races through.
+    #
+    # DUPLICATE-COORD GATING (260414-nq4): even within 60 s, the scrub
+    # only fires for stops that share a coordinate with another stop on
+    # the same route. Non-duplicate stops (e.g. HOUSTON_FIELD_HOUSE) get
+    # legitimate close-approach detections that race the predictor's
+    # polyline_idx — dropping them caused a "Last → live eta → Last"
+    # flicker in the schedule UI for one worker cycle after each pass.
+    # NOTE: import the module (not the names) — `_ROUTE_REMAP_CACHE` is
+    # rebound by `_build_route_remap_cache()` (uses `global` and
+    # reassigns to a new dict), so an `import _ROUTE_REMAP_CACHE` would
+    # capture the empty initial value forever.
+    from ml.data import stops as _ml_stops
+    _ml_stops._build_route_remap_cache()
+    duplicate_stop_names: set = set()
+    for _route, entries in _ml_stops._ROUTE_REMAP_CACHE.items():
+        for first_name, last_name, _threshold_idx in entries:
+            duplicate_stop_names.add(first_name)
+            duplicate_stop_names.add(last_name)
+
     SPURIOUS_UPCOMING_GRACE_SEC = 60
     if last_arrivals and eta_lookup:
         cleaned_las: Dict[str, str] = {}
         for k, v in last_arrivals.items():
             upcoming = eta_lookup.get(k)
+            # Only drop as spurious when the stop is a duplicate-coord
+            # stop (e.g. STUDENT_UNION ≡ STUDENT_UNION_RETURN). For
+            # every other stop, a la-plus-future-eta is a normal
+            # tick-boundary situation — detection wins. See the HFH
+            # flicker bug investigation (quick task 260414-nq4).
             if (
                 upcoming is not None
                 and (upcoming - now_utc).total_seconds() > SPURIOUS_UPCOMING_GRACE_SEC
+                and k in duplicate_stop_names
             ):
                 continue  # predictor says not yet arrived — detection is noise
             cleaned_las[k] = v
