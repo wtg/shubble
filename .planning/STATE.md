@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-05)
 Phase: 3 of 4 (countdown & freshness)
 Plan: Not started
 Status: Executing phase 02
-Last activity: 2026-04-14 - Completed quick task 260414-kg2: Fix three ETA bugs: dwelling shuttles missing from trips, live ETA lingers past stop, detection radius too small
+Last activity: 2026-04-14 - Completed quick task 260414-m1p: Keep latest close-approach ping for last_arrivals (not global closest) so multi-loop detection reaches the UI
 
 Progress: [===.......] 30%
 
@@ -79,6 +79,7 @@ None yet.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260414-kg2 | Fix three ETA bugs: dwelling shuttles missing from trips, live ETA lingers past stop, detection radius too small | 2026-04-14 | 238811b | [260414-kg2-fix-three-eta-bugs-dwelling-shuttles-mis](./quick/260414-kg2-fix-three-eta-bugs-dwelling-shuttles-mis/) |
+| 260414-m1p | Keep latest close-approach ping for last_arrivals (not global closest) so multi-loop detection reaches the UI | 2026-04-14 | db276e3 | [260414-m1p-keep-latest-close-approach-ping-for-last](./quick/260414-m1p-keep-latest-close-approach-ping-for-last/) |
 
 ## Session Continuity
 
