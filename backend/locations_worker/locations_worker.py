@@ -140,8 +140,10 @@ async def update_locations(session_factory):
                         logger.info(
                             f"Updated locations for {len(current_vehicle_ids)} vehicles - {new_records_added} new records"
                         )
-                        # Invalidate cache for locations
+                        # Invalidate cache for locations and ML values
                         await soft_clear_namespace("locations")
+                        await soft_clear_namespace("etas")
+                        await soft_clear_namespace("velocities")
                     else:
                         logger.info(
                             f"No new location data for {len(current_vehicle_ids)} vehicles"
