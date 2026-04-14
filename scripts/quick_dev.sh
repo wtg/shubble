@@ -12,7 +12,7 @@ set -e
 # ================================== #
 
 # -------- CONFIG --------
-SHUBBLE_DIR="$HOME/shubble" # <--- Replace "" with "$PARENT_DIR_NAME/shubble_work_dir_name"
+SHUBBLE_DIR="${SHUBBLE_DIR}"
 VITE_DIR="$SHUBBLE_DIR/test/client"
 SESSION="shubble-dev"
 
