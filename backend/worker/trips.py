@@ -271,6 +271,123 @@ def build_trip_etas(
             cleaned_las[k] = v
         last_arrivals = cleaned_las
 
+    # CROSS-LOOP la LEAK SCRUB (covers the "stale actual_departure" case):
+    # The upstream loop_cutoff filter uses `trip.actual_departure` to drop
+    # prior-loop detections. That works as long as `_detect_vehicle_departures`
+    # correctly identifies every re-departure from the first stop. When the
+    # shuttle's return dwell at Union produces no GPS pings tagged
+    # STUDENT_UNION / STUDENT_UNION_RETURN (a real production case — GPS
+    # gaps, or ML stop-remap ambiguity at the boundary), the detector
+    # returns the PRIOR loop's departure timestamp and loop_cutoff becomes
+    # the trip-N start instead of trip-N+1. In that world every prior-loop
+    # la (STUDENT_UNION, COLONIE, HFH from trip N) trivially satisfies
+    # `la >= loop_cutoff` and survives — the bug then surfaces as
+    # COLONIE.passed=True on what the user sees as trip N+1.
+    #
+    # The existing spurious-upcoming scrub above only catches stops still
+    # in `eta_lookup` (the WEST STUDENT_UNION_RETURN self-intersection case).
+    # When the predictor has already advanced past a stop and dropped it
+    # from vehicle_stops, the stop has no future eta to contradict its
+    # stale la — the scrub can't fire and the backfill happily anchors on
+    # the cross-loop timestamp.
+    #
+    # Two complementary rules extend the scrub:
+    #   (a) Literal frontier rule: if a stop's index is at-or-past the
+    #       first upcoming-stop frontier AND it has no corresponding eta
+    #       in eta_lookup, the shuttle cannot physically have reached it
+    #       (it'd be in vehicle_stops otherwise). Drop. This guards the
+    #       rare case where vehicle_stops is truncated past the frontier.
+    #   (b) Stale-before-frontier rule: iteratively inspect the la whose
+    #       stop_idx is highest AND not in eta_lookup (the "most
+    #       recently passed" stop per the last_arrivals chain). If the
+    #       gap from la_ts to the first upcoming-stop's eta exceeds
+    #       STALE_PRIOR_LOOP_GAP_SEC (10 min — comfortably larger than
+    #       any adjacent-stop leg on the NORTH/WEST/EAST routes), the
+    #       la can't belong to the current journey. Drop it and repeat —
+    #       dropping the highest stale la may expose the next-highest
+    #       as also stale, and we peel the whole prior-loop chain off
+    #       in one pass.
+    #
+    # IMPORTANT: this rule only touches la entries for stops NOT in
+    # eta_lookup. Stops still in eta_lookup are already covered by the
+    # grace-window scrub above, and must preserve the tick-boundary race
+    # behavior (STAC_1 just-arrived with eta a few seconds future).
+    STALE_PRIOR_LOOP_GAP_SEC = 600  # 10 minutes
+    if last_arrivals:
+        stop_to_idx = {s: i for i, s in enumerate(stops_in_route)}
+        # Find first upcoming eta: first stop in route order whose
+        # eta_lookup entry is strictly in the future.
+        first_upcoming_idx: Optional[int] = None
+        first_upcoming_eta: Optional[datetime] = None
+        for i, s in enumerate(stops_in_route):
+            eta = eta_lookup.get(s)
+            if eta is not None and eta > now_utc:
+                first_upcoming_idx = i
+                first_upcoming_eta = eta
+                break
+
+        # Rule (a): drop any la for stops AT-OR-PAST the frontier that
+        # are not in eta_lookup. A stop past the frontier with no eta
+        # cannot physically have been reached yet.
+        if first_upcoming_idx is not None:
+            frontier_cleaned: Dict[str, str] = {}
+            for k, v in last_arrivals.items():
+                if k in eta_lookup:
+                    frontier_cleaned[k] = v
+                    continue
+                idx = stop_to_idx.get(k, -1)
+                if idx >= first_upcoming_idx:
+                    # At/past frontier but not in eta_lookup — drop.
+                    continue
+                frontier_cleaned[k] = v
+            last_arrivals = frontier_cleaned
+
+        # Rule (b): iteratively drop the highest-idx la (among stops
+        # not in eta_lookup) whose gap to first_upcoming_eta exceeds
+        # the implausible-journey threshold. Peels the whole stale
+        # prior-loop chain off in one pass.
+        if first_upcoming_eta is not None and last_arrivals:
+            while True:
+                # Find highest-idx la stop that is NOT in eta_lookup.
+                candidate_stop: Optional[str] = None
+                candidate_idx = -1
+                for stop_key in last_arrivals:
+                    if stop_key in eta_lookup:
+                        continue  # tick-boundary cases handled above
+                    idx = stop_to_idx.get(stop_key, -1)
+                    if idx > candidate_idx:
+                        candidate_idx = idx
+                        candidate_stop = stop_key
+                if candidate_stop is None:
+                    break
+                try:
+                    la_dt = datetime.fromisoformat(last_arrivals[candidate_stop])
+                    if la_dt.tzinfo is None:
+                        la_dt = la_dt.replace(tzinfo=timezone.utc)
+                except (ValueError, TypeError):
+                    break
+                gap = (first_upcoming_eta - la_dt).total_seconds()
+                if gap <= STALE_PRIOR_LOOP_GAP_SEC:
+                    break  # highest plausible la reached — stop peeling
+                # Implausibly long journey — drop and recheck.
+                last_arrivals = {
+                    k: v for k, v in last_arrivals.items() if k != candidate_stop
+                }
+
+    # Frontier: index of the first stop (in route order) with a strictly-
+    # future predicted ETA. Stops whose index is BEFORE the frontier and
+    # which have no real detection cannot still be "arriving" — the
+    # predictor has advanced past them, even if a past-eta entry lingered
+    # in eta_lookup from OFFSET-diff propagation. Surfacing those as
+    # live countdowns produces negative timers on the UI.
+    stop_to_idx_early = {s: i for i, s in enumerate(stops_in_route)}
+    first_upcoming_idx_build: Optional[int] = None
+    for _i, _s in enumerate(stops_in_route):
+        _eta = eta_lookup.get(_s)
+        if _eta is not None and _eta > now_utc:
+            first_upcoming_idx_build = _i
+            break
+
     for stop_key in stops_in_route:
         entry: Dict[str, Any] = {
             "eta": None,
@@ -287,7 +404,19 @@ def build_trip_etas(
 
         if stop_key in eta_lookup:
             eta_dt = eta_lookup[stop_key]
-            entry["eta"] = eta_dt.isoformat()
+            # Only surface the predicted ETA if this stop is at-or-after
+            # the shuttle's current frontier. Stops whose index is before
+            # first_upcoming_idx_build have been passed by the predictor
+            # (or never entered its ahead-of-shuttle window) and must not
+            # show a ticking live countdown. Real passage is asserted by
+            # the separate `last_arrivals` branch below.
+            stop_idx_here = stop_to_idx_early.get(stop_key, -1)
+            if (
+                first_upcoming_idx_build is None
+                or stop_idx_here >= first_upcoming_idx_build
+            ):
+                entry["eta"] = eta_dt.isoformat()
+            # else: leave entry["eta"] = None (initialized above)
             # Do NOT infer passed=True from an expired ETA. The predictor
             # can easily overshoot (say "shuttle will be at ECAV at
             # 22:30" when the shuttle is still 2 minutes away), and
