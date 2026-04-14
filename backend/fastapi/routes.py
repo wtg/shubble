@@ -445,33 +445,23 @@ async def get_shuttle_routes2(db: AsyncSession = Depends(get_db)):
 
     return response
 
+from fastapi.responses import JSONResponse
+
 @router.get("/api/routes")
 async def get_shuttle_routes(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(Route)
-        .options(
-            selectinload(Route.stops)
-            .selectinload(Stop.departure_polyline)
-        )
-    )
-
+    result = await db.execute(select(Route))
     routes = result.scalars().all()
     response = {}
 
     for route in routes:
-        if route.name.startswith("ENTRY") or route.name.startswith("EXIT"):
-            continue
-
-        stops = sorted(route.stops, key=lambda s: s.id)
+        stops = list(route.stops)
 
         route_obj = {
             "COLOR": route.route_color,
             "STOPS": [],
             "POLYLINE_STOPS": [],
-            "ROUTES": []
         }
 
-        # Build stops
         for i, stop in enumerate(stops):
             stop_key = stop.name.upper().replace(" ", "_")
 
@@ -484,18 +474,20 @@ async def get_shuttle_routes(db: AsyncSession = Depends(get_db)):
                 "NAME": stop.name
             }
 
-        # Build ROUTES (polyline segments)
+        routes_list = []
         for stop in stops:
             for poly in stop.departure_polyline:
                 coords = [
                     [float(lat), float(lng)]
                     for lat, lng in (c.split(",") for c in poly.coordinates)
                 ]
-                route_obj["ROUTES"].append(coords)
+                routes_list.append(coords)
 
+        route_obj["ROUTES"] = routes_list
         response[route.name] = route_obj
 
-    return response
+    return JSONResponse(content=response)
+
 
 @router.get("/api/schedule")
 async def get_shuttle_schedule(db: AsyncSession = Depends(get_db)):
