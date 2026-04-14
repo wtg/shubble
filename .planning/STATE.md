@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-05)
 Phase: 3 of 4 (countdown & freshness)
 Plan: Not started
 Status: Executing phase 02
-Last activity: 2026-04-06
+Last activity: 2026-04-14 - Completed quick task 260414-kg2: Fix three ETA bugs: dwelling shuttles missing from trips, live ETA lingers past stop, detection radius too small
 
 Progress: [===.......] 30%
 
@@ -73,6 +73,12 @@ None yet.
 
 - Live-to-schedule handoff (Phase 4) has no standard UX pattern -- will need iterative design
 - Deviation thresholds (2 min dead zone, on-time/late/very-late) need validation against real data
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260414-kg2 | Fix three ETA bugs: dwelling shuttles missing from trips, live ETA lingers past stop, detection radius too small | 2026-04-14 | 238811b | [260414-kg2-fix-three-eta-bugs-dwelling-shuttles-mis](./quick/260414-kg2-fix-three-eta-bugs-dwelling-shuttles-mis/) |
 
 ## Session Continuity
 
