@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-05)
 Phase: 3 of 4 (countdown & freshness)
 Plan: Not started
 Status: Executing phase 02
-Last activity: 2026-04-14 - Completed quick task 260414-mxq: Stop-centric close-approach detection in _compute_vehicle_etas_and_arrivals so untagged pings within 60m of a stop still count as last_arrivals
+Last activity: 2026-04-14 - Completed quick task 260414-nq4: Restrict spurious-upcoming la scrub to duplicate-coord stops only so HFH real detection doesn't flicker
 
 Progress: [===.......] 30%
 
@@ -81,6 +81,7 @@ None yet.
 | 260414-kg2 | Fix three ETA bugs: dwelling shuttles missing from trips, live ETA lingers past stop, detection radius too small | 2026-04-14 | 238811b | [260414-kg2-fix-three-eta-bugs-dwelling-shuttles-mis](./quick/260414-kg2-fix-three-eta-bugs-dwelling-shuttles-mis/) |
 | 260414-m1p | Keep latest close-approach ping for last_arrivals (not global closest) so multi-loop detection reaches the UI | 2026-04-14 | db276e3 | [260414-m1p-keep-latest-close-approach-ping-for-last](./quick/260414-m1p-keep-latest-close-approach-ping-for-last/) |
 | 260414-mxq | Stop-centric close-approach detection in _compute_vehicle_etas_and_arrivals so untagged pings within 60m of a stop still count as last_arrivals | 2026-04-14 | 0e8efd4 | [260414-mxq-stop-centric-close-approach-detection-in](./quick/260414-mxq-stop-centric-close-approach-detection-in/) |
+| 260414-nq4 | Restrict spurious-upcoming la scrub to duplicate-coord stops only so HFH real detection doesn't flicker | 2026-04-14 | 66aa7df | [260414-nq4-restrict-spurious-upcoming-la-scrub-to-d](./quick/260414-nq4-restrict-spurious-upcoming-la-scrub-to-d/) |
 
 ## Session Continuity
 
