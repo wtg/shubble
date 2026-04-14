@@ -1103,8 +1103,9 @@ async def _compute_vehicle_etas_and_arrivals(
     last_arrivals_by_vehicle: Dict[str, Dict[str, str]] = {}
 
     # Build per-vehicle last_arrivals from the raw stop_name column, but
-    # use the ACTUAL CLOSEST-APPROACH timestamp — not the max timestamp
-    # over every ping tagged with a given stop_name.
+    # use the LATEST within-60m timestamp — not the max timestamp over
+    # every ping tagged with a given stop_name, and not the globally
+    # closest-distance ping either.
     #
     # Why: the ML pipeline's `stop_name` column is over-permissive. A
     # single stop crossing gets tagged on MANY consecutive pings along
@@ -1135,10 +1136,26 @@ async def _compute_vehicle_etas_and_arrivals(
     #     entirely, e.g. at GEORGIAN.) 60 m still leaves plenty of
     #     headroom for GPS jitter while staying well below the ~80–120 m
     #     inter-stop spacing on campus, so it doesn't cause
-    #     adjacent-stop false positives.
-    #  2. Among the surviving pings, pick the one with the SMALLEST
-    #     distance (the true closest approach) and use ITS timestamp
-    #     as the last_arrival. Not max, not min — closest-approach.
+    #     adjacent-stop false positives. This filter is the ONLY
+    #     geometric gate — every row that survives it is a genuine
+    #     arrival at the stop.
+    #  2. Among those surviving within-60m pings, pick the one with
+    #     the LATEST timestamp and use it as the last_arrival. For a
+    #     looping shuttle this is by construction the current loop's
+    #     detection. An earlier choice here (global closest-distance)
+    #     silently preferred whichever prior loop happened to hit the
+    #     stop geometrically closest, causing the current loop's ping
+    #     to be discarded from the dedup — and then discarded AGAIN by
+    #     the `loop_cutoff` filter in `build_trip_etas` as a stale
+    #     prior-loop leak. Net effect: stops the shuttle passes every
+    #     loop (Houston Field House, the WEST-route stops on return)
+    #     never surfaced a "Last:" timestamp on the active trip even
+    #     after the shuttle just passed them. Keeping the latest
+    #     within-60m ping fixes this while still preserving correct
+    #     behavior for completed trips (their `loop_cutoff` =
+    #     prior_departure; the latest within-60m ping that survives
+    #     that cutoff is the tip of the prior loop, which is exactly
+    #     what a completed trip should display).
     CLOSE_APPROACH_M = 60.0
     if 'stop_name' in full_df.columns:
         tracked_vids_set = {str(v) for v in vehicle_ids}
@@ -1190,18 +1207,23 @@ async def _compute_vehicle_etas_and_arrivals(
             close_rows['_dist_m'] = dists_m[close_mask]
 
             if not close_rows.empty:
-                # Sort by distance ASCENDING within each (vehicle, stop)
-                # group, then drop_duplicates keeping the first row —
-                # that's the closest-approach ping. Its timestamp is the
-                # real last_arrival.
-                close_rows = close_rows.sort_values('_dist_m', kind='mergesort')
-                closest_approach = close_rows.drop_duplicates(
-                    subset=['vehicle_id', 'stop_name'], keep='first'
+                # Sort by timestamp ASCENDING within each (vehicle, stop)
+                # group, then drop_duplicates keeping the LAST row —
+                # that's the most recent within-60m ping. Its timestamp
+                # is the current loop's last_arrival (see rationale
+                # above). Every row in close_rows already passed the
+                # 60 m CLOSE_APPROACH_M gate, so tiebreaking among
+                # already-valid rows is semantically free — "latest" is
+                # the only choice that survives the downstream
+                # `loop_cutoff` filter in `build_trip_etas`.
+                close_rows = close_rows.sort_values('timestamp', kind='mergesort')
+                latest_approach = close_rows.drop_duplicates(
+                    subset=['vehicle_id', 'stop_name'], keep='last'
                 )
-                ts_series = pd.to_datetime(closest_approach['timestamp'], utc=True)
+                ts_series = pd.to_datetime(latest_approach['timestamp'], utc=True)
                 for (vid, stop_key, ts) in zip(
-                    closest_approach['vehicle_id'].values,
-                    closest_approach['stop_name'].astype(str).values,
+                    latest_approach['vehicle_id'].values,
+                    latest_approach['stop_name'].astype(str).values,
                     ts_series,
                 ):
                     vid_str = str(vid)
