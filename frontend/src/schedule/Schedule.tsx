@@ -273,11 +273,14 @@ export default function Schedule({
     localStorage.setItem(`shubble-stop:${safeSelectedRoute}`, stopId);
   }, [safeSelectedRoute]);
 
-  // Re-render countdown every 30 seconds. Most countdown labels round to
-  // the nearest minute, so 10s updates were wasted; 30s stays within
-  // minute resolution and cuts full-component re-renders by 3x.
+  // Re-render countdown every 5 seconds, matching the worker cycle so
+  // sub-minute ETA shifts are visible to the user. The render cost is
+  // higher than a 30s tick, but users perceived the 30s variant as
+  // "not updating with each Samsara update". Countdown responsiveness
+  // trumps render-budget savings for an app where freshness is the
+  // core value.
   useEffect(() => {
-    const interval = setInterval(() => setTick(t => t + 1), 30_000);
+    const interval = setInterval(() => setTick(t => t + 1), 5_000);
     return () => clearInterval(interval);
   }, []);
 
