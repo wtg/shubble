@@ -600,6 +600,181 @@ def test_active_trip_scoped_via_compute_trips_from_vehicle_data():
     assert georgian["last_arrival"] is None
 
 
+def test_stale_la_dropped_by_defensive_guard():
+    """Defense-in-depth: an la strictly older than `trip.actual_departure`
+    must never appear on a built entry, even when `loop_cutoff` is None
+    (the upstream per-trip filter bypassed) or when the caller passes a
+    stale `loop_cutoff` that the filter would miss.
+
+    This locks in the Colonie live-repro: active NORTH trip with
+    actual_departure=41+00 showed COLONIE.last_arrival=33+00 (eight
+    minutes before the trip's own departure), which flipped the stop
+    to passed=True on the UI.
+
+    Passing loop_cutoff=None (legacy caller path) would previously
+    leave stale la on the entry; the defensive guard at every entry-
+    write point must catch it using trip["actual_departure"].
+    """
+    now = datetime(2026, 4, 15, 13, 54, tzinfo=timezone.utc)
+    actual_departure = datetime(2026, 4, 15, 13, 41, tzinfo=timezone.utc)
+
+    # Two stale (pre-actual_departure) entries + one valid (post) entry.
+    stale_ts = datetime(2026, 4, 15, 13, 33, tzinfo=timezone.utc)
+    valid_ts = datetime(2026, 4, 15, 13, 46, tzinfo=timezone.utc)
+    last_arrivals = {
+        "STUDENT_UNION": _iso(stale_ts),
+        "COLONIE": _iso(stale_ts),
+        "GEORGIAN": _iso(valid_ts),
+    }
+
+    stops = ["STUDENT_UNION", "COLONIE", "GEORGIAN", "STAC_1"]
+    trip = {
+        "trip_id": "NORTH:...",
+        "route": "NORTH",
+        "vehicle_id": "v1",
+        "status": "active",
+        "actual_departure": _iso(actual_departure),
+    }
+
+    # Bypass the upstream loop_cutoff filter by passing None. The
+    # defensive guard must still catch the stale entries using
+    # trip['actual_departure'].
+    result = build_trip_etas(
+        trip=trip,
+        vehicle_stops=[("STAC_1", now + timedelta(minutes=2))],
+        last_arrivals=last_arrivals,
+        stops_in_route=stops,
+        now_utc=now,
+        loop_cutoff=None,
+    )
+
+    # Both stale entries must be suppressed.
+    assert result["STUDENT_UNION"]["last_arrival"] is None, (
+        f"Stale STUDENT_UNION la leaked: {result['STUDENT_UNION']}"
+    )
+    assert result["STUDENT_UNION"]["passed"] is False, result["STUDENT_UNION"]
+    assert result["COLONIE"]["last_arrival"] is None, (
+        f"Stale COLONIE la leaked (the live bug): {result['COLONIE']}"
+    )
+    assert result["COLONIE"]["passed"] is False, result["COLONIE"]
+
+    # The valid post-departure la must be preserved.
+    assert result["GEORGIAN"]["last_arrival"] == _iso(valid_ts)
+    assert result["GEORGIAN"]["passed"] is True
+
+    # Backfill must never fabricate a last_arrival earlier than
+    # actual_departure even via interpolation.
+    for stop_key, entry in result.items():
+        la = entry.get("last_arrival")
+        if la is not None:
+            la_dt = datetime.fromisoformat(la)
+            assert la_dt >= actual_departure, (
+                f"{stop_key} has la {la} strictly older than "
+                f"actual_departure {_iso(actual_departure)}: {entry}"
+            )
+
+
+def test_stale_la_never_resurrected_by_monotonic_clamp():
+    """The monotonic-clamp anchor path must not resurrect a stale la
+    that predates actual_departure.
+
+    Scenario: STUDENT_UNION has a pre-actual_departure la (stale),
+    GEORGIAN has a post-actual_departure la (real). Without the
+    defensive guard at the clamp-write site, the anchor pass would
+    write STUDENT_UNION's stale la onto the entry. The guard must
+    drop it and let the stop fall through as unreached in the
+    current loop.
+    """
+    now = datetime(2026, 4, 15, 13, 54, tzinfo=timezone.utc)
+    actual_departure = datetime(2026, 4, 15, 13, 41, tzinfo=timezone.utc)
+
+    # GEORGIAN valid_ts must be within STALE_PRIOR_LOOP_GAP_SEC (10m)
+    # of the first upcoming eta to survive the "Rule (b) stale peeler"
+    # in the existing cross-loop scrub — we want this test to isolate
+    # the defensive guard's behavior, not the peeler's.
+    stale_ts = datetime(2026, 4, 15, 13, 33, tzinfo=timezone.utc)
+    valid_ts = datetime(2026, 4, 15, 13, 52, tzinfo=timezone.utc)
+    last_arrivals = {
+        "STUDENT_UNION": _iso(stale_ts),  # stale
+        "GEORGIAN": _iso(valid_ts),        # real
+    }
+    stops = ["STUDENT_UNION", "COLONIE", "GEORGIAN", "STAC_1"]
+    trip = {
+        "trip_id": "NORTH:...",
+        "route": "NORTH",
+        "vehicle_id": "v1",
+        "status": "active",
+        "actual_departure": _iso(actual_departure),
+    }
+
+    # STAC_1 upcoming in 2 min; gap from GEORGIAN (13:52) to STAC_1 eta
+    # (13:56) is 4 min — well under the 10-minute peeler threshold.
+    result = build_trip_etas(
+        trip=trip,
+        vehicle_stops=[("STAC_1", now + timedelta(minutes=2))],
+        last_arrivals=last_arrivals,
+        stops_in_route=stops,
+        now_utc=now,
+        loop_cutoff=None,  # bypass upstream filter
+    )
+
+    # STUDENT_UNION stale → must be null/unpassed.
+    su = result["STUDENT_UNION"]
+    assert su["last_arrival"] is None, f"STUDENT_UNION stale la leaked: {su}"
+    assert su["passed"] is False, su
+    # passed_interpolated should also be False — nothing valid to
+    # interpolate toward behind the trip's departure moment.
+    assert su["passed_interpolated"] is False, su
+
+    # Any interpolated la on COLONIE (the gap between SU and GEORGIAN)
+    # must be >= actual_departure — the guard must fire on the
+    # interpolated branch too.
+    colonie_la = result["COLONIE"].get("last_arrival")
+    if colonie_la is not None:
+        colonie_dt = datetime.fromisoformat(colonie_la)
+        assert colonie_dt >= actual_departure, (
+            f"COLONIE interpolated la {colonie_la} predates "
+            f"actual_departure {_iso(actual_departure)}: "
+            f"{result['COLONIE']}"
+        )
+
+    # GEORGIAN real detection preserved.
+    assert result["GEORGIAN"]["last_arrival"] == _iso(valid_ts)
+    assert result["GEORGIAN"]["passed"] is True
+
+
+def test_defensive_guard_is_noop_when_actual_departure_missing():
+    """When trip has no actual_departure (pure scheduled trips with no
+    vehicle data), the guard must be a no-op — preserving the existing
+    behavior for unassigned scheduled trips.
+    """
+    now = datetime(2026, 4, 15, 13, 54, tzinfo=timezone.utc)
+
+    la_ts = datetime(2026, 4, 15, 13, 33, tzinfo=timezone.utc)
+    last_arrivals = {"COLONIE": _iso(la_ts)}
+    stops = ["STUDENT_UNION", "COLONIE"]
+    trip = {
+        "trip_id": "t",
+        "route": "NORTH",
+        "vehicle_id": None,
+        "status": "scheduled",
+        # actual_departure intentionally absent
+    }
+
+    result = build_trip_etas(
+        trip=trip,
+        vehicle_stops=[],
+        last_arrivals=last_arrivals,
+        stops_in_route=stops,
+        now_utc=now,
+        loop_cutoff=None,
+    )
+    # With no cutoff at all (no actual_departure, no loop_cutoff), the
+    # guard is a no-op and legacy behavior is preserved: the la survives.
+    assert result["COLONIE"]["last_arrival"] == _iso(la_ts)
+    assert result["COLONIE"]["passed"] is True
+
+
 def test_detect_vehicle_departures_includes_boundary_stops():
     """Loop-boundary stops that share a coordinate must count as the
     first stop for departure detection.
