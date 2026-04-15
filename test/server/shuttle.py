@@ -21,6 +21,17 @@ logger = logging.getLogger(__name__)
 # backend's IDLE_THRESHOLD_SEC (1200s) so a normal dwell isn't filtered.
 INTER_LOOP_PAUSE_SEC = 60  # 1 minute (real life: ~5 min)
 
+# Fixed off-route parking coordinate all shuttles drive to when taking a break.
+# Verified during planning to be >400m from both NORTH and WEST polylines so
+# the backend's Filter 2 (off-route) triggers cleanly. Shared across routes
+# for simulation simplicity.
+BREAK_SPOT: tuple[float, float] = (42.7265, -73.672)
+
+# Small straight-line segment count used when generating the drive-to / drive-back
+# paths. Keeping it at 1 is fine because _follow_path interpolates smoothly within
+# a single segment and the break "drive" isn't meant to follow a real road.
+_BREAK_PATH_SEGMENTS = 1
+
 
 class ShuttleAction(Enum):
     ENTERING = "entering"
@@ -74,6 +85,19 @@ class Shuttle:
         # When non-None, the shuttle is dwelling at Union between loops
         # until time.time() reaches this value.
         self._loop_dwell_until: Optional[float] = None
+
+        # Break phase: None | "drive_out" | "waiting" | "drive_back"
+        # "drive_out": following straight-line path from current location to BREAK_SPOT
+        # "waiting":   stationary at BREAK_SPOT, counting down duration
+        # "drive_back": following straight-line path from BREAK_SPOT to first on-route stop
+        self._break_phase: Optional[str] = None
+        # Wall-clock time.time() stamp for when the "waiting" phase began. Duration
+        # is measured from this, NOT from _action_start_time, so drive-out travel
+        # time doesn't eat into the stationary break window.
+        self._break_wait_start: Optional[float] = None
+        # Route used for the drive_back target. Snapshotted at break start so a
+        # downstream action that mutates _current_route can't misdirect the return.
+        self._break_return_route: Optional[str] = None
 
         # Thread control
         self._running: bool = False
@@ -140,6 +164,10 @@ class Shuttle:
             raise ValueError("LOOPING action requires a route")
         if action == ShuttleAction.LOOPING and route not in Stops.active_routes:
             raise ValueError(f"Invalid or inactive route: {route}")
+        # ON_BREAK may optionally carry a route; if provided it must be active
+        # because _handle_on_break uses it to pick the first-stop return target.
+        if action == ShuttleAction.ON_BREAK and route is not None and route not in Stops.active_routes:
+            raise ValueError(f"Invalid or inactive route for break: {route}")
 
         action_id = str(uuid.uuid4())
         queued = QueuedAction(
@@ -252,16 +280,80 @@ class Shuttle:
             self._action_index += 1
 
     def _handle_on_break(self):
-        """Handle ON_BREAK state - wait for duration then return to idle."""
-        # Find current action's duration
-        if self._action_index > 0:
-            current = self._action_queue[self._action_index - 1]
-            duration = current.duration or 0
+        """ON_BREAK state: drive off-route, sit stationary, drive back on-route.
 
-            if time.time() - self._action_start_time >= duration:
+        Phase transitions:
+          drive_out  -> waiting    (when drive-out path completes)
+          waiting    -> drive_back (when duration elapses)
+          drive_back -> idle       (when drive-back path completes; action marked completed)
+        """
+        if self._action_index <= 0:
+            # No queued break on record; can't happen in practice — bail to idle.
+            self._current_action = None
+            return
+        current = self._action_queue[self._action_index - 1]
+        duration = current.duration or 0
+
+        if self._break_phase == "drive_out":
+            # Follow the straight-line path to BREAK_SPOT.
+            if not self._follow_path():
+                # Arrived. Switch to waiting; snap location to BREAK_SPOT.
+                self._location = BREAK_SPOT
+                self._break_phase = "waiting"
+                self._break_wait_start = time.time()
+                logger.info(
+                    f"Shuttle {self.id}: arrived at break spot, "
+                    f"waiting {duration:.0f}s"
+                )
+            return
+
+        if self._break_phase == "waiting":
+            # Stationary. GPS pings continue via the outer _last_updated tick.
+            wait_started = self._break_wait_start or time.time()
+            if time.time() - wait_started >= duration:
+                # Duration elapsed. Build drive-back path to first stop of the
+                # return route (falls back to Union if route is unknown).
+                target = (42.730711, -73.676737)  # Union / su_coords fallback
+                if self._break_return_route:
+                    try:
+                        route_data = Stops.routes_data[self._break_return_route]
+                        first_stop_key = route_data['STOPS'][0]
+                        coords = route_data[first_stop_key]['COORDINATES']
+                        target = (coords[0], coords[1])
+                    except (KeyError, IndexError, TypeError):
+                        logger.warning(
+                            f"Shuttle {self.id}: could not resolve first-stop "
+                            f"for route {self._break_return_route}, "
+                            f"falling back to Union"
+                        )
+                self._path = [[[BREAK_SPOT[0], BREAK_SPOT[1]], [target[0], target[1]]]]
+                self._reset_path_state()
+                self._break_phase = "drive_back"
+                logger.info(
+                    f"Shuttle {self.id}: break finished, driving back to "
+                    f"{self._break_return_route or 'Union'}"
+                )
+            return
+
+        if self._break_phase == "drive_back":
+            if not self._follow_path():
+                # Arrived at first stop. Complete the action and return to idle.
                 current.status = "completed"
-                logger.info(f"Shuttle {self.id}: break finished")
+                self._break_phase = None
+                self._break_wait_start = None
+                self._break_return_route = None
+                logger.info(f"Shuttle {self.id}: returned from break, idle")
                 self._current_action = None
+            return
+
+        # Defensive: if _break_phase got into an unexpected state, finish cleanly.
+        logger.warning(
+            f"Shuttle {self.id}: unexpected break phase "
+            f"{self._break_phase!r}; marking break complete"
+        )
+        current.status = "completed"
+        self._break_phase = None
+        self._current_action = None
 
     def _handle_movement(self):
         """Handle movement actions (ENTERING, LOOPING, EXITING)."""
@@ -339,6 +431,17 @@ class Shuttle:
             self._current_action = ShuttleAction.LOOPING
 
         elif action == ShuttleAction.ON_BREAK:
+            # D-01: drive from current location OUT to BREAK_SPOT.
+            # Use a single straight segment — _follow_path interpolates smoothly
+            # and this matches the backend's expected off-route shape (shuttle
+            # leaves polyline at a sharp angle, arrives at a non-stop coord).
+            self._break_return_route = queued.route or self._current_route
+            self._break_phase = "drive_out"
+            self._break_wait_start = None
+            start_pt = [self._location[0], self._location[1]]
+            end_pt = [BREAK_SPOT[0], BREAK_SPOT[1]]
+            self._path = [[start_pt, end_pt]]
+            self._reset_path_state()
             self._current_action = ShuttleAction.ON_BREAK
 
         elif action == ShuttleAction.EXITING:
