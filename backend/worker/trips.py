@@ -1103,98 +1103,14 @@ def compute_trips_from_vehicle_data(
         trip["stop_etas"] = stop_etas
         trips.append(trip)
 
-        # If this vehicle just started a new loop (prior_departure recent),
-        # also emit the just-completed loop as a separate "completed" trip.
-        # This prevents the confusing moment when a shuttle reaches Union
-        # and the UI instantly replaces the old trip's ETAs with a new loop.
-        # The completed trip shows all stops as passed, giving the user a
-        # clear visual "that loop is done".
-        if prior_departure is not None:
-            gap = (actual_departure - prior_departure).total_seconds()
-            age_since_new_loop = (now_utc - actual_departure).total_seconds()
-            # Only show the completed trip briefly (first 2 minutes of the
-            # new loop) and only if the loops are separated by at least
-            # 3 minutes (avoids false positives from GPS noise).
-            if gap > 180 and age_since_new_loop < 120:
-                # Match the prior_departure to a scheduled slot for the
-                # display time, so the completed trip aligns with the
-                # static schedule (e.g. shows "10:15 PM" instead of the
-                # raw "10:15:23"). This mirrors the active-trip matching
-                # done above.
-                prior_matched: Optional[datetime] = None
-                prior_min_diff = float('inf')
-                for sched in sched_deps:
-                    diff = abs((sched - prior_departure).total_seconds())
-                    if diff < prior_min_diff and diff <= MATCH_WINDOW_SEC:
-                        prior_min_diff = diff
-                        prior_matched = sched
-                prior_display = prior_matched if prior_matched else prior_departure
-                # `:done` disambiguates the just-completed loop from the
-                # new active loop when BOTH map to the same scheduled slot
-                # (the "new loop just started, show old briefly" UX from
-                # lines 1107-1110). Without this, the active + completed
-                # entries collapse to one row on the frontend, losing the
-                # DONE-badge visual cue. `:vid` is NOT re-added — the
-                # cross-vehicle slot-dedup below handles two shuttles
-                # completing the same slot.
-                completed_trip = {
-                    "trip_id": f"{route}:{prior_display.isoformat()}:done",
-                    "route": route,
-                    "departure_time": prior_display.isoformat(),
-                    "actual_departure": prior_departure.isoformat(),
-                    "scheduled": prior_matched is not None,
-                    "vehicle_id": vid,
-                    "status": "completed",
-                }
-                # Loop-scope to the just-finished loop via prior_departure.
-                # Route through build_trip_etas so the completed trip goes
-                # through the same assembly (monotonic clamp, anchor
-                # interpolation) as the active trip — single source of truth.
-                # Pass an empty vehicle_stops list because a completed trip
-                # has no future ETAs.
-                completed_stop_etas = build_trip_etas(
-                    trip=completed_trip,
-                    vehicle_stops=[],
-                    last_arrivals=vehicle_las,
-                    stops_in_route=route_stops,
-                    now_utc=now_utc,
-                    loop_cutoff=prior_departure,
-                )
-                # Mark every stop as passed — the loop is done. Any stop
-                # missing a real detection (because add_stops missed it)
-                # still gets passed=True by the backfill logic inside
-                # build_trip_etas, which interpolates an la from
-                # neighbors. Only stops that have NO neighbors with la
-                # (e.g. the shuttle never fully completed the loop)
-                # remain passed=False — in that case we force passed=True
-                # here since the completed-trip emission only fires when
-                # we know the loop finished.
-                for stop_key in route_stops:
-                    entry = completed_stop_etas.get(stop_key)
-                    if entry is None:
-                        # No real detection and no neighbor to interpolate
-                        # from — mark as passed (loop is done) but flag
-                        # passed_interpolated=True since there's no real
-                        # arrival timestamp to show.
-                        completed_stop_etas[stop_key] = {
-                            "eta": None,
-                            "last_arrival": None,
-                            "passed": True,
-                            "passed_interpolated": True,
-                        }
-                    else:
-                        entry["eta"] = None  # completed trip has no future
-                        # If the stop was force-marked passed here but had
-                        # no real detection (passed was False coming out of
-                        # build_trip_etas), the value is inferred. Preserve
-                        # passed_interpolated state from build_trip_etas
-                        # when it's already set; otherwise default to True
-                        # if we're about to flip `passed` from False to True.
-                        if not entry.get("passed"):
-                            entry["passed_interpolated"] = True
-                        entry["passed"] = True
-                completed_trip["stop_etas"] = completed_stop_etas
-                trips.append(completed_trip)
+        # NOTE: the previous "emit just-completed loop as extra DONE trip"
+        # block (that fired for ~2 min after a shuttle started a new loop
+        # matching the same slot) was removed because it surfaced as
+        # duplicate rows in the schedule UI — two entries at the same
+        # displayed time (one DONE, one LIVE). A natural completed trip
+        # still emits via the status transition earlier in this loop when
+        # a shuttle genuinely finishes all its future stops; that handles
+        # the "loop is done" display without a same-slot duplicate.
 
     # Bind idle-at-Union shuttles to their next scheduled slot. For each
     # route that had an idle vid recorded in Pass 1, find the earliest
