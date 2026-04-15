@@ -932,7 +932,14 @@ export default function Schedule({
                   passedInterpolated: interpolated,
                 };
               }
-              if (info.eta) {
+              // Passed wins over ETA: once the backend has asserted a
+              // stop is passed (via a real detection-backed la), don't
+              // flip back to a "live ETA" display if the predictor briefly
+              // re-projects it as upcoming on the next cycle. This was
+              // the HFH flicker class — passed=True one cycle, future
+              // eta the next, producing a visible "passed → LIVE → passed"
+              // blip at the moment a shuttle transitions past a stop.
+              if (!info.passed && info.eta) {
                 const etaDate = new Date(info.eta);
                 // Grace window: keep showing the ETA for up to 120s after it
                 // expires so stops don't flip to "Passed" just because the
