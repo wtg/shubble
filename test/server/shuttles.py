@@ -312,24 +312,25 @@ def _schedule_worker(
             # we don't extend past the window.
             slot_len = total_window / fleet_size
             break_start = window_start + timedelta(seconds=slot_len * shuttle_slot)
-            if break_start > dev_now(CAMPUS_TZ):
+            # Small grace period so a slot whose nominal start is a fraction
+            # of a second in the past (e.g. slot 0 when server boots right
+            # at window_start) still fires. The wait inside _break_pusher
+            # uses max(0, wait) so a past break_start just fires immediately.
+            now_for_check = dev_now(CAMPUS_TZ)
+            if break_start >= now_for_check - timedelta(seconds=60):
                 break_duration = min(BREAK_DURATION_SEC, int(slot_len))
                 # Schedule a BREAK action to fire at break_start. We sleep
-                # in a helper thread until break_start then push so the
-                # BREAK lands in the queue at the right time (otherwise
-                # it would execute immediately after any already-queued
-                # LOOPING, not at the intended rotation slot).
+                # in a helper thread until break_start then interrupt the
+                # shuttle's current LOOPING so the BREAK takes effect
+                # immediately. Plain push_action would queue behind a
+                # never-completing LOOPING in non-strict mode and never fire.
                 def _break_pusher(sh=shuttle, rt=route,
                                   dur=break_duration, when=break_start):
                     wait = (when - dev_now(CAMPUS_TZ)).total_seconds()
                     if wait > 0:
                         time.sleep(wait)
                     if sh._running:
-                        sh.push_action(
-                            ShuttleAction.ON_BREAK,
-                            route=rt,
-                            duration=dur,
-                        )
+                        sh.interrupt_for_break(route=rt, duration=dur)
                         logger.info(
                             f"Shuttle {sh.id}: rotation break queued on "
                             f"{rt} at {when.strftime('%I:%M %p')} "
@@ -364,7 +365,7 @@ def _schedule_worker(
 
 
 async def setup_schedule_shuttles(strict: bool = False) -> int:
-    """Create 2 shuttles per route with alternating departure times from the static schedule.
+    """Create fleet-sized shuttles per route from the static schedule.
 
     Args:
         strict: when True, shuttles wait idle at Union between scheduled
@@ -372,6 +373,16 @@ async def setup_schedule_shuttles(strict: bool = False) -> int:
             (legacy), shuttles start looping continuously regardless
             of schedule times — still useful for fast UX iteration.
     """
+    # Fleet sizing per day (D-03):
+    #   Saturday: 1 shuttle/route, no ON_BREAK queued (schedule has the gap).
+    #   Sunday:   2 shuttles/route during lunch window (11:30 AM - 2:30 PM),
+    #             1 outside; 1 shuttle breaks at a time, round-robin.
+    #   Weekday:  3 shuttles/route during lunch window, 1 outside; 1 shuttle
+    #             breaks at a time, round-robin (two always cover).
+    # Break behaviour (D-01): shuttle drives off-route to BREAK_SPOT
+    # (42.7265, -73.672), sits stationary for BREAK_DURATION_SEC
+    # (~45 min; env override DEV_BREAK_DURATION_SEC), then drives back
+    # to the first on-route stop.
     global shuttle_counter
 
     schedule = _load_today_schedule()

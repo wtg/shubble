@@ -194,6 +194,54 @@ class Shuttle:
             # Keep only actions up to current index
             self._action_queue = self._action_queue[:self._action_index + 1] if self._action_index < len(self._action_queue) else []
 
+    def interrupt_for_break(
+        self,
+        route: Optional[str] = None,
+        duration: Optional[float] = None,
+    ) -> str:
+        """Preempt the currently running action and start an ON_BREAK now.
+
+        Used by the schedule-driven rotation: when a shuttle's turn to break
+        arrives mid-LOOPING, we can't wait for LOOPING to complete (it repeats
+        forever in non-strict mode). This forcibly stops the current action,
+        queues a new ON_BREAK as the very next action, and returns to the
+        action loop so _handle_idle promotes it immediately.
+
+        The interrupted action is marked 'interrupted' (not 'completed') so
+        any downstream inspection can tell the difference.
+        """
+        if route is not None and route not in Stops.active_routes:
+            raise ValueError(f"Invalid or inactive route for break: {route}")
+
+        action_id = str(uuid.uuid4())
+        queued = QueuedAction(
+            id=action_id,
+            action=ShuttleAction.ON_BREAK,
+            route=route,
+            duration=duration,
+        )
+
+        with self.lock:
+            # Mark current action interrupted so it won't linger in status=in_progress.
+            if 0 < self._action_index <= len(self._action_queue):
+                current = self._action_queue[self._action_index - 1]
+                if current.status == "in_progress":
+                    current.status = "interrupted"
+            # Drop the dwell timer so _handle_movement doesn't resume LOOPING.
+            self._loop_dwell_until = None
+            # Insert BREAK at the front of the not-yet-run tail so it is the
+            # next action _handle_idle promotes.
+            self._action_queue.insert(self._action_index, queued)
+            # Force idle so next tick picks up the BREAK.
+            self._current_action = None
+            logger.info(
+                f"Shuttle {self.id}: interrupted for ON_BREAK"
+                + (f" on {route}" if route else "")
+                + (f" (duration={duration:.0f}s)" if duration else "")
+            )
+
+        return action_id
+
     def start(self):
         """Start the shuttle's run loop in a background thread."""
         with self.lock:
