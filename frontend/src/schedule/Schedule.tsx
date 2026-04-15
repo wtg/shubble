@@ -76,8 +76,23 @@ export default function Schedule({
 
   const safeSelectedRoute = selectedRoute || routeNames[0];
 
+  // Hoisted from below so the defensive filter can consult route.STOPS.
+  const route = routeData[safeSelectedRoute as keyof typeof routeData];
+
   // Trips for the selected route only (row model built below, after `times`).
-  const routeTrips: Trip[] = trips.filter(t => t.route === safeSelectedRoute);
+  // Defensive: a trip whose `route` field disagrees with its `stop_etas` keys
+  // would render as, e.g., "NORTH stops on WEST page". The invariant holds on
+  // the backend (trips.py builds stop_etas FROM route.STOPS), but if a stale
+  // trip is cached in React state from an earlier moment -- or an SSE payload
+  // is dropped mid-cycle -- drop it here so the user never sees cross-route
+  // rows. Bug report: 2026-04-14 "5:20 PM #001 Student Union" on WEST expanded
+  // to NORTH stops; vehicle 001 is NORTH-only, but a stale trip survived in
+  // state after a route swap.
+  const validStopKeys = new Set<string>(route?.STOPS ?? []);
+  const routeTrips: Trip[] = trips.filter(t =>
+    t.route === safeSelectedRoute &&
+    Object.keys(t.stop_etas).every(s => validStopKeys.has(s))
+  );
 
   // Auto-detect closest stop via geolocation
   const { closestStop } = useClosestStop(safeSelectedRoute);
@@ -269,7 +284,6 @@ export default function Schedule({
     () => schedule[safeSelectedRoute as Route] || [],
     [schedule, safeSelectedRoute]
   );
-  const route = routeData[safeSelectedRoute as keyof typeof routeData];
   const currentLoopIndex = findCurrentLoopIndex(times);
   const isToday = selectedDay === now.getDay();
 
