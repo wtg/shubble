@@ -654,6 +654,54 @@
   }
 }
 
+/* Departure deviation labels (260415-3ec).
+   Scheduled-matched trips: small "(5:11 PM, +1 min late)" inline label.
+   Off-schedule trips:      arrow pill "↑ 15 min early to 5:30 PM slot".
+   `.timeline-time` is already `display:flex; flex-wrap:wrap` so these
+   wrap onto a second line on narrow viewports — no layout tweaks needed. */
+.timeline-deviation {
+  font-size: 12px;
+  font-weight: 500;
+  margin-left: 4px;
+  white-space: nowrap;
+  color: #7f8c8d;
+  vertical-align: middle;
+}
+
+.deviation-matched-late {
+  color: #d97706;  /* orange -- late (per D-13: late = orange) */
+}
+
+.deviation-matched-early {
+  color: #2563eb;  /* blue -- early (per D-13: early = blue) */
+}
+
+.deviation-unscheduled-early,
+.deviation-unscheduled-late {
+  color: #d97706;
+  font-weight: 600;
+  background: rgba(217, 119, 6, 0.08);
+  border: 1px solid rgba(217, 119, 6, 0.2);
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 11px;
+}
+
+/* Unscheduled-early shares the orange pill styling with unscheduled-late.
+   If a future design wants blue-for-early parity with matched-early,
+   split these rules. */
+
+.deviation-unscheduled-far {
+  color: #95a5a6;
+  font-style: italic;
+  background: rgba(149, 165, 166, 0.08);
+  border: 1px solid rgba(149, 165, 166, 0.2);
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .schedule-container {
