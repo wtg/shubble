@@ -225,6 +225,40 @@ def build_trip_etas(
                 continue
         last_arrivals = filtered_las
 
+    # DWELL-LEAK GUARD: the latest-close-approach pass (260414-m1p)
+    # keeps the most recent in-radius ping per (vid, stop). When a
+    # shuttle dwells at the route's LAST stop (STUDENT_UNION_RETURN
+    # on NORTH/WEST) and the dwell extends even a few seconds past
+    # the new loop's actual_departure, the SUR la slips past the
+    # loop_cutoff filter above -- and then anchors a full-route
+    # backfill below that paints every earlier stop as
+    # passed_interpolated=True. A real loop traversal takes 15+
+    # minutes; any "completion" within the first MIN_LOOP_TIME_SEC
+    # of actual_departure can only be a dwell leak. Drop it.
+    #
+    # Live repro (quick task 260415-0vt): NORTH vid=001 dep=04:33
+    # actual=04:33, SUR la=04:34:16, COLONIE la=04:34:16
+    # passed=True -- but SU->COLONIE is 874m which at 20mph is ~97s,
+    # not 1m16s. The 04:34:16 SUR la was the tail of the prior
+    # loop's dwell continuing into the new loop. Strict `<` on the
+    # gap means an la at EXACTLY 300s after loop_cutoff is kept.
+    MIN_LOOP_TIME_SEC = 300  # 5 minutes -- well under any real loop length
+    if loop_cutoff is not None and last_arrivals and stops_in_route:
+        last_stop_name = stops_in_route[-1]
+        la_iso = last_arrivals.get(last_stop_name)
+        if la_iso:
+            try:
+                la_dt = datetime.fromisoformat(la_iso)
+                if la_dt.tzinfo is None:
+                    la_dt = la_dt.replace(tzinfo=timezone.utc)
+                if (la_dt - loop_cutoff).total_seconds() < MIN_LOOP_TIME_SEC:
+                    last_arrivals = {
+                        k: v for k, v in last_arrivals.items()
+                        if k != last_stop_name
+                    }
+            except (ValueError, TypeError):
+                pass
+
     stop_etas: Dict[str, Dict[str, Any]] = {}
 
     # Build a lookup for future ETAs from vehicle_stops
