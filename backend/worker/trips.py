@@ -915,7 +915,38 @@ def compute_trips_from_vehicle_data(
                              + np.cos(phi0) * np.cos(phis) * np.sin(dlam / 2) ** 2)
                         dists = 2 * R * np.arcsin(np.sqrt(a))
                         max_dist = float(np.nanmax(dists)) if len(dists) else 0.0
-                        if max_dist < NO_MOVEMENT_DIST_M:
+
+                        # Short-window motion override: if the shuttle has
+                        # moved noticeably in the last RECENT_MOTION_SEC,
+                        # don't classify as parked — the 10-min-window
+                        # heuristic penalizes shuttles that JUST departed
+                        # a long dwell, because most of the window is old
+                        # dwell points and the shuttle hasn't traveled
+                        # >NO_MOVEMENT_DIST_M yet. Detects pairwise motion
+                        # within the short window so "Union → 50m away"
+                        # registers as moving.
+                        RECENT_MOTION_SEC = 60
+                        RECENT_MOTION_MIN_M = 20
+                        recent_cutoff = latest_ts - timedelta(seconds=RECENT_MOTION_SEC)
+                        recent_points = vehicle_df[vehicle_df_ts >= recent_cutoff]
+                        recently_moving = False
+                        if len(recent_points) >= 2:
+                            r_lats = recent_points['latitude'].astype(float).values
+                            r_lons = recent_points['longitude'].astype(float).values
+                            r_phis = np.radians(r_lats)
+                            r_lams = np.radians(r_lons)
+                            # Pairwise distance from the most-recent point
+                            # to each earlier recent point — cheap O(N)
+                            # with N small (~12 points in 60s at 5s polls).
+                            r_dphi = r_phis - phi0
+                            r_dlam = r_lams - lam0
+                            r_a = (np.sin(r_dphi / 2) ** 2
+                                   + np.cos(phi0) * np.cos(r_phis) * np.sin(r_dlam / 2) ** 2)
+                            r_dists = 2 * R * np.arcsin(np.sqrt(r_a))
+                            recent_max = float(np.nanmax(r_dists)) if len(r_dists) else 0.0
+                            recently_moving = recent_max >= RECENT_MOTION_MIN_M
+
+                        if max_dist < NO_MOVEMENT_DIST_M and not recently_moving:
                             logger.debug(
                                 f"Skipping trip for vehicle {vid} on {route}: "
                                 f"max displacement only {max_dist:.0f}m in last "
