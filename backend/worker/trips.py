@@ -1129,13 +1129,16 @@ def compute_trips_from_vehicle_data(
                         prior_min_diff = diff
                         prior_matched = sched
                 prior_display = prior_matched if prior_matched else prior_departure
-                # Same canonical `{route}:{iso_departure_time}` shape as the
-                # active trip above. The completed trip occupies the PRIOR
-                # loop's slot (keyed by `prior_display`), so its trip_id is
-                # distinct from the new active loop's trip_id by virtue of
-                # a different departure_time — no `:done` suffix needed.
+                # `:done` disambiguates the just-completed loop from the
+                # new active loop when BOTH map to the same scheduled slot
+                # (the "new loop just started, show old briefly" UX from
+                # lines 1107-1110). Without this, the active + completed
+                # entries collapse to one row on the frontend, losing the
+                # DONE-badge visual cue. `:vid` is NOT re-added — the
+                # cross-vehicle slot-dedup below handles two shuttles
+                # completing the same slot.
                 completed_trip = {
-                    "trip_id": f"{route}:{prior_display.isoformat()}",
+                    "trip_id": f"{route}:{prior_display.isoformat()}:done",
                     "route": route,
                     "departure_time": prior_display.isoformat(),
                     "actual_departure": prior_departure.isoformat(),

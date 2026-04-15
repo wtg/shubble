@@ -34,27 +34,16 @@ from backend.worker.trips import compute_trips_from_vehicle_data
 from shared.stops import Stops
 
 
-# Regex that a canonical trip_id must match:
-#   - Starts with a route name (letters/underscores/digits)
-#   - Then exactly one colon separating the route from the ISO timestamp
-#   - Then the ISO timestamp (which contains its own colons / `+` for tz)
-# We avoid counting colons because ISO timestamps naturally carry 2-3
-# of them (e.g., "14:30:00+00:00"). Instead, we explicitly reject the
-# two banned suffixes:
-#   - `:done`  (completed-trip tag)
-#   - `:<digits>` tail that looks like a vid (Samsara IDs are all-digit)
-# Anything else is allowed — including timezone suffixes.
-_BANNED_DONE_RE = re.compile(r":done(?:$|[^a-zA-Z])")
+# `:vid` suffix (all-digit Samsara-style ID) is banned — it caused the
+# cross-vehicle slot-collision regression in quick-260415-emp. `:done` is
+# ALLOWED on completed trips, where it disambiguates the just-completed
+# loop from the new active loop when both map to the same scheduled slot.
 _BANNED_VID_RE = re.compile(r":\d{12,}(?::done)?$")
 
 
 def _has_banned_suffix(trip_id: str) -> bool:
-    """True if trip_id contains the `:done` or `:<all-digit-vid>` tail."""
-    if _BANNED_DONE_RE.search(trip_id):
-        return True
-    if _BANNED_VID_RE.search(trip_id):
-        return True
-    return False
+    """True if trip_id contains the `:<all-digit-vid>` tail."""
+    return bool(_BANNED_VID_RE.search(trip_id))
 
 
 def _iso(dt: datetime) -> str:
@@ -144,20 +133,20 @@ def _idle_vehicle_df(
 
 
 def test_helper_regex_recognizes_banned_suffixes():
-    """Lock in that the banned-suffix detector actually fires on the
-    pre-fix shapes. Without this meta-test a false-negative in the
-    regex (e.g. too-narrow anchoring) would silently pass the real
-    invariant tests below."""
-    # :done suffix — the completed-trip shape from pre-fix
+    """Lock in that the banned-suffix detector fires on pre-fix `:vid`
+    shapes. `:done` is allowed on completed trips."""
+    # :<vid>:done (pre-fix completed shape with per-vehicle suffix)
     assert _has_banned_suffix("NORTH:2026-04-15T14:30:00+00:00:000000000000001:done")
-    assert _has_banned_suffix("NORTH:2026-04-15T14:30:00:done")
-    # :<vid> suffix where vid is an all-digit Samsara ID
+    # :<vid> (pre-fix active shape)
     assert _has_banned_suffix("NORTH:2026-04-15T14:30:00+00:00:000000000000001")
     assert _has_banned_suffix("WEST:2026-04-15T14:25:00+00:00:000000000000004")
-    # Canonical shapes must NOT match
+    # Canonical shapes must NOT match — active and scheduled use the
+    # plain slot form; completed uses the slot form + :done.
     assert not _has_banned_suffix("NORTH:2026-04-15T14:30:00+00:00")
     assert not _has_banned_suffix("WEST:2026-04-15T14:25:00+00:00")
     assert not _has_banned_suffix("NORTH:2026-04-15T14:30:00")
+    assert not _has_banned_suffix("NORTH:2026-04-15T14:30:00:done")
+    assert not _has_banned_suffix("NORTH:2026-04-15T14:30:00+00:00:done")
 
 
 def test_trip_id_has_no_vid_or_done_suffix(monkeypatch):
@@ -257,18 +246,22 @@ def test_trip_id_has_no_vid_or_done_suffix(monkeypatch):
         f"Found trip_ids with :vid or :done suffix (pre-fix shape): {bad}"
     )
 
-    # Shape check: every trip_id starts with "ROUTE:" where ROUTE matches
-    # one of the known route names present in the output.
+    # Shape check: every trip_id is either `{route}:{dep}` (active or
+    # scheduled) or `{route}:{dep}:done` (completed). No `:vid` segment.
     for t in trips:
         tid = t["trip_id"]
         prefix = f"{t['route']}:"
         assert tid.startswith(prefix), (
             f"trip_id {tid!r} does not start with '{prefix}'"
         )
-        # Remainder after "ROUTE:" must equal the canonical departure_time.
-        assert tid[len(prefix):] == t["departure_time"], (
-            f"trip_id tail {tid[len(prefix):]!r} != departure_time "
-            f"{t['departure_time']!r}"
+        tail = tid[len(prefix):]
+        if t["status"] == "completed":
+            expected = f"{t['departure_time']}:done"
+        else:
+            expected = t["departure_time"]
+        assert tail == expected, (
+            f"trip_id tail {tail!r} != expected {expected!r} "
+            f"(status={t['status']})"
         )
 
 
@@ -347,20 +340,25 @@ def test_no_duplicate_route_departure_pairs(monkeypatch):
         campus_tz=timezone.utc,
     )
 
-    # Single-row-per-slot invariant: no (route, departure_time) repeats.
-    counts = Counter((t["route"], t["departure_time"]) for t in trips)
-    duplicates = {k: v for k, v in counts.items() if v > 1}
-    assert not duplicates, (
-        f"/api/trips has duplicate (route, departure_time) pairs — "
-        f"the frontend will render 2+ rows per slot: {duplicates}"
-    )
-
-    # Regression guard: trip_id uniqueness is an even stronger check
-    # (implied by slot uniqueness given the canonical shape). Verify it
-    # directly so a future refactor that re-introduces a slot-agnostic
-    # trip_id gets caught here too.
+    # Frontend dedup invariant: trip_id is unique across the response.
+    # (An active + completed trip CAN share the same slot when a new loop
+    # just started — they're distinguished by the `:done` suffix on the
+    # completed one, so trip_ids remain distinct.)
     tid_counts = Counter(t["trip_id"] for t in trips)
     duplicate_tids = {k: v for k, v in tid_counts.items() if v > 1}
     assert not duplicate_tids, (
-        f"/api/trips has duplicate trip_id values: {duplicate_tids}"
+        f"/api/trips has duplicate trip_id values (frontend will render "
+        f"fewer rows than records — collision): {duplicate_tids}"
     )
+
+    # Slot-level invariant: within the SAME status (excluding 'completed'
+    # which may pair with an active sibling), (route, departure_time) is
+    # unique. Two active trips for one slot, or two scheduled trips for
+    # one slot, both indicate a backend bug.
+    for status in ("active", "scheduled", "unassigned"):
+        per_status = [t for t in trips if t["status"] == status]
+        sc = Counter((t["route"], t["departure_time"]) for t in per_status)
+        dups = {k: v for k, v in sc.items() if v > 1}
+        assert not dups, (
+            f"/api/trips has duplicate (route, dep) for status={status}: {dups}"
+        )
