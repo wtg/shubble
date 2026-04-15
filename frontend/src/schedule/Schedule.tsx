@@ -1002,9 +1002,15 @@ export default function Schedule({
                       {isCompletedTrip && <span className="trip-completed-badge">DONE</span>}
                       {(() => {
                         if (isCompletedTrip) return null;
-                        // Prefer trip-based first-stop ETA if loop has a trip
-                        // WITH a vehicle (live prediction source).
-                        if (loopTrip && firstStop) {
+                        // LIVE badge is only truthful when a shuttle is actively
+                        // running the trip. Scheduled trips — including those
+                        // bound to an idle shuttle waiting at Union (vehicle_id
+                        // populated, status='scheduled') — still display static
+                        // schedule times, not live predictions. Gate on status.
+                        const isLiveTrip = loopTrip?.status === 'active';
+                        // Prefer trip-based first-stop ETA if loop has an
+                        // ACTIVE trip with a vehicle (live prediction source).
+                        if (isLiveTrip && loopTrip && firstStop) {
                           const ti = getTripStopInfo(firstStop);
                           if (ti?.etaTime) {
                             return (
@@ -1014,28 +1020,17 @@ export default function Schedule({
                               </>
                             );
                           }
-                          // loopTrip exists but getTripStopInfo returned no
-                          // etaTime. Two possible reasons:
-                          //   1. Unassigned scheduled trip (vehicle_id=null) —
-                          //      there's NO live prediction source for this
-                          //      row, so a "LIVE" badge is a lie regardless of
-                          //      what activeETAs says. Show nothing.
-                          //   2. loopTrip has a vehicle but STUDENT_UNION.eta
-                          //      is null because the shuttle already departed
-                          //      (passed=True with a real last_arrival). In
-                          //      that case the last_arrival is rendered
-                          //      elsewhere; nothing to show here either.
-                          // In both cases, skip the fallback to prevent
-                          // activeETAs from surfacing another trip's static
-                          // departure time with a misleading "LIVE" badge.
                           return null;
                         }
-                        // Pure scheduled row with NO loopTrip at all (no trip
-                        // matched this row). Legacy fallback: if the global
-                        // activeETAs has a live prediction for this route's
-                        // first stop AND this is the current loop, show it.
-                        // This only fires on routes where the backend hasn't
-                        // produced a trip for this row, which is rare.
+                        // Scheduled trip (with or without idle-bound vehicle):
+                        // no LIVE badge, no live-ETA override. The row keeps
+                        // its static departure time (rendered above).
+                        if (loopTrip) return null;
+                        // No loopTrip at all — extremely rare. Legacy fallback:
+                        // if the global activeETAs has a live prediction for
+                        // this route's first stop AND this is the current loop,
+                        // show it. Only fires on routes where the backend
+                        // hasn't produced a trip for this row.
                         const fRouteKey = `${firstStop}:${safeSelectedRoute}`;
                         const fEta = activeETAs[fRouteKey] || activeETAs[firstStop];
                         const fDetails = liveETADetails[fRouteKey] || liveETADetails[firstStop];
@@ -1081,8 +1076,15 @@ export default function Schedule({
                   // Pre-compute stop live info. Prefer trip-based ETAs if this
                   // loop has an assigned trip; otherwise fall back to global ETAs.
                   const secondaryStops = route.STOPS.slice(1);
+                  // Only an ACTIVE trip (shuttle actively running) produces
+                  // live ETAs / last_arrivals. Scheduled trips — even when
+                  // idle-bound to a waiting vehicle — show static schedule
+                  // times with a SCHED badge, not LIVE, since nothing has
+                  // actually moved yet. Completed trips are already handled
+                  // via isCompletedTrip above.
+                  const isLiveTrip = loopTrip?.status === 'active';
                   const stopInfo = secondaryStops.map(stop => {
-                    if (loopTrip) {
+                    if (isLiveTrip && loopTrip) {
                       const ti = getTripStopInfo(stop);
                       if (ti) {
                         const hasETA = !!ti.etaTime;
