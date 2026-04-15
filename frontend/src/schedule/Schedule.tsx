@@ -273,9 +273,11 @@ export default function Schedule({
     localStorage.setItem(`shubble-stop:${safeSelectedRoute}`, stopId);
   }, [safeSelectedRoute]);
 
-  // Re-render countdown every 10 seconds
+  // Re-render countdown every 30 seconds. Most countdown labels round to
+  // the nearest minute, so 10s updates were wasted; 30s stays within
+  // minute resolution and cuts full-component re-renders by 3x.
   useEffect(() => {
-    const interval = setInterval(() => setTick(t => t + 1), 10_000);
+    const interval = setInterval(() => setTick(t => t + 1), 30_000);
     return () => clearInterval(interval);
   }, []);
 
