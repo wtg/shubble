@@ -1072,8 +1072,13 @@ def compute_trips_from_vehicle_data(
         if status == "active" and len(vehicle_future_stops) == 0:
             status = "completed"
 
+        # Canonical trip_id shape is `{route}:{iso_departure_time}` with no
+        # `:vid` or `:done` suffix. The frontend dedups rows by trip_id; any
+        # per-vehicle or per-lifecycle-state suffix creates duplicate rows
+        # for the same (route, departure_time) slot. Lifecycle state is
+        # already carried in the `status` field; vehicle in `vehicle_id`.
         trip = {
-            "trip_id": f"{route}:{trip_time.isoformat()}:{vid}",
+            "trip_id": f"{route}:{trip_time.isoformat()}",
             "route": route,
             "departure_time": trip_time.isoformat(),
             "actual_departure": actual_departure.isoformat(),
@@ -1124,8 +1129,13 @@ def compute_trips_from_vehicle_data(
                         prior_min_diff = diff
                         prior_matched = sched
                 prior_display = prior_matched if prior_matched else prior_departure
+                # Same canonical `{route}:{iso_departure_time}` shape as the
+                # active trip above. The completed trip occupies the PRIOR
+                # loop's slot (keyed by `prior_display`), so its trip_id is
+                # distinct from the new active loop's trip_id by virtue of
+                # a different departure_time — no `:done` suffix needed.
                 completed_trip = {
-                    "trip_id": f"{route}:{prior_display.isoformat()}:{vid}:done",
+                    "trip_id": f"{route}:{prior_display.isoformat()}",
                     "route": route,
                     "departure_time": prior_display.isoformat(),
                     "actual_departure": prior_departure.isoformat(),
@@ -1225,16 +1235,12 @@ def compute_trips_from_vehicle_data(
             # When present, the scheduled row carries the waiting shuttle's
             # vehicle_id so the UI can render a "waiting" pill.
             vid_for_slot = idle_slot_assignments.get((route, dep.isoformat()))
-            # Trip_id stays stable for pure unassigned rows (falls back to
-            # the route:dep form that the frontend's dedup keys rely on in
-            # Schedule.tsx). When an idle vid claims the slot, append it
-            # to trip_id so the key is still unique if the same slot
-            # briefly appears with and without a vid across worker ticks.
-            trip_id = (
-                f"{route}:{dep.isoformat()}:{vid_for_slot}"
-                if vid_for_slot
-                else f"{route}:{dep.isoformat()}"
-            )
+            # Canonical trip_id shape: `{route}:{iso_departure_time}` — no
+            # `:vid` suffix even when idle-binding populates `vehicle_id`.
+            # The vid rides on the `vehicle_id` field (used by the waiting
+            # pill); trip_id is only the slot identity, so the frontend
+            # dedup collapses the same slot to exactly one row per tick.
+            trip_id = f"{route}:{dep.isoformat()}"
             # Only add future scheduled trips within a reasonable window
             if dep < now_utc - timedelta(minutes=5):
                 continue
