@@ -225,6 +225,61 @@ def build_trip_etas(
                 continue
         last_arrivals = filtered_las
 
+    # DEFENSE-IN-DEPTH GUARD: `actual_departure_dt` is the invariant
+    # floor below which no entry's `last_arrival` may sit on output.
+    # The loop_cutoff filter above is the first line of defense, but
+    # live evidence (quick task 260415-drf, Colonie live-repro) shows
+    # that paths below — the monotonic-clamp anchor write and the
+    # interpolated-gap backfill — can reintroduce values that
+    # originated from a prior loop if loop_cutoff was None (legacy
+    # callers) or if the caller passed a stale cutoff upstream. This
+    # guard parses the trip's own actual_departure (or falls back to
+    # loop_cutoff) and is consulted at every entry["last_arrival"]
+    # write site below. Post-hoc invariant: no built entry has a
+    # last_arrival strictly older than the trip's own departure.
+    #
+    # When actual_departure_dt is None (pure scheduled trip with no
+    # vehicle data, or a caller that passed neither trip.actual_departure
+    # nor loop_cutoff), the guard is a no-op and legacy behavior is
+    # preserved.
+    actual_departure_dt: Optional[datetime] = None
+    _ad_iso = trip.get("actual_departure") if isinstance(trip, dict) else None
+    if _ad_iso:
+        try:
+            actual_departure_dt = datetime.fromisoformat(_ad_iso)
+            if actual_departure_dt.tzinfo is None:
+                actual_departure_dt = actual_departure_dt.replace(tzinfo=timezone.utc)
+        except (ValueError, TypeError):
+            actual_departure_dt = None
+    if actual_departure_dt is None and loop_cutoff is not None:
+        actual_departure_dt = loop_cutoff
+
+    def _la_is_before_cutoff(la_iso: Optional[str]) -> bool:
+        """Return True iff la_iso is a valid ISO strictly earlier than
+        actual_departure_dt. False otherwise (None, unparseable, or at/
+        after cutoff). No-op when actual_departure_dt is None."""
+        if la_iso is None or actual_departure_dt is None:
+            return False
+        try:
+            dt = datetime.fromisoformat(la_iso)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt < actual_departure_dt
+        except (ValueError, TypeError):
+            return False
+
+    # Pre-filter last_arrivals by actual_departure_dt up front so
+    # every downstream pass (duplicate-coord scrub, frontier scrub,
+    # anchor clamp, interpolation) sees only la entries valid for
+    # this trip. This subsumes the loop_cutoff filter for the common
+    # case (loop_cutoff == actual_departure) but also catches the
+    # bypass case (loop_cutoff=None, test_stale_la_dropped_by_defensive_guard).
+    if actual_departure_dt is not None and last_arrivals:
+        last_arrivals = {
+            k: v for k, v in last_arrivals.items()
+            if not _la_is_before_cutoff(v)
+        }
+
     # DWELL-LEAK GUARD: the latest-close-approach pass (260414-m1p)
     # keeps the most recent in-radius ping per (vid, stop). When a
     # shuttle dwells at the route's LAST stop (STUDENT_UNION_RETURN
@@ -600,6 +655,16 @@ def build_trip_etas(
                 # "passed => eta is None" holds even when the backfill
                 # re-enters an entry whose initial pass set both.
                 clamped = next((la for idx, la in anchors if idx == i), real_la)
+                # DEFENSIVE GUARD: if the clamp value was dragged down
+                # to an anchor that predates the trip's actual_departure
+                # (should not happen after the upstream filter, but this
+                # is belt-and-suspenders), skip the write and let the
+                # stop fall through as "not yet reached in this loop".
+                if _la_is_before_cutoff(clamped):
+                    entry["last_arrival"] = None
+                    entry["passed"] = False
+                    entry["passed_interpolated"] = False
+                    continue
                 entry["last_arrival"] = clamped
                 entry["passed"] = True
                 entry["passed_interpolated"] = False
@@ -614,9 +679,21 @@ def build_trip_etas(
                 # "Passed" without a fabricated "Last: HH:MM" timestamp.
                 # Students shouldn't see a synthesized time presented as
                 # a real arrival.
+                interp = _interpolated_la(i)
+                # DEFENSIVE GUARD: the backfill must never fabricate a
+                # "passed" timestamp that predates the trip's own
+                # departure. If an interpolation would produce such a
+                # value (e.g. because an upstream anchor was stale),
+                # leave the stop unreached rather than fabricating an
+                # impossible-earlier-than-departure Last: display.
+                if _la_is_before_cutoff(interp):
+                    entry["last_arrival"] = None
+                    entry["passed"] = False
+                    entry["passed_interpolated"] = False
+                    continue
                 entry["passed"] = True
                 entry["passed_interpolated"] = True
-                entry["last_arrival"] = _interpolated_la(i)
+                entry["last_arrival"] = interp
                 entry["eta"] = None
 
     return stop_etas

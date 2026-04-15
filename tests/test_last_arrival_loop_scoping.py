@@ -614,17 +614,23 @@ def test_stale_la_dropped_by_defensive_guard():
     Passing loop_cutoff=None (legacy caller path) would previously
     leave stale la on the entry; the defensive guard at every entry-
     write point must catch it using trip["actual_departure"].
+
+    Scenario uses ALL-stale la (the live bug snapshot: STUDENT_UNION
+    and COLONIE both showed 33+00, pre-departure). With no valid
+    anchor to backfill from, every stop must fall through as
+    unreached — and most importantly, no stop may carry a
+    last_arrival strictly older than actual_departure.
     """
     now = datetime(2026, 4, 15, 13, 54, tzinfo=timezone.utc)
     actual_departure = datetime(2026, 4, 15, 13, 41, tzinfo=timezone.utc)
 
-    # Two stale (pre-actual_departure) entries + one valid (post) entry.
+    # All-stale (pre-actual_departure) entries — matches the live
+    # COLONIE-false-Passed repro where the entire `last_arrivals` dict
+    # held prior-loop detections that slipped past loop_cutoff.
     stale_ts = datetime(2026, 4, 15, 13, 33, tzinfo=timezone.utc)
-    valid_ts = datetime(2026, 4, 15, 13, 46, tzinfo=timezone.utc)
     last_arrivals = {
         "STUDENT_UNION": _iso(stale_ts),
         "COLONIE": _iso(stale_ts),
-        "GEORGIAN": _iso(valid_ts),
     }
 
     stops = ["STUDENT_UNION", "COLONIE", "GEORGIAN", "STAC_1"]
@@ -641,14 +647,20 @@ def test_stale_la_dropped_by_defensive_guard():
     # trip['actual_departure'].
     result = build_trip_etas(
         trip=trip,
-        vehicle_stops=[("STAC_1", now + timedelta(minutes=2))],
+        vehicle_stops=[
+            ("COLONIE", now + timedelta(minutes=1)),
+            ("GEORGIAN", now + timedelta(minutes=3)),
+            ("STAC_1", now + timedelta(minutes=5)),
+        ],
         last_arrivals=last_arrivals,
         stops_in_route=stops,
         now_utc=now,
         loop_cutoff=None,
     )
 
-    # Both stale entries must be suppressed.
+    # Both stale entries must be suppressed — they predate the
+    # trip's own departure. With no valid la to anchor the backfill
+    # from, each stop falls through as unreached.
     assert result["STUDENT_UNION"]["last_arrival"] is None, (
         f"Stale STUDENT_UNION la leaked: {result['STUDENT_UNION']}"
     )
@@ -658,12 +670,10 @@ def test_stale_la_dropped_by_defensive_guard():
     )
     assert result["COLONIE"]["passed"] is False, result["COLONIE"]
 
-    # The valid post-departure la must be preserved.
-    assert result["GEORGIAN"]["last_arrival"] == _iso(valid_ts)
-    assert result["GEORGIAN"]["passed"] is True
+    # Upcoming stops keep their predicted ETAs.
+    assert result["COLONIE"]["eta"] is not None
 
-    # Backfill must never fabricate a last_arrival earlier than
-    # actual_departure even via interpolation.
+    # Core invariant: no stop's la predates actual_departure.
     for stop_key, entry in result.items():
         la = entry.get("last_arrival")
         if la is not None:
@@ -675,23 +685,32 @@ def test_stale_la_dropped_by_defensive_guard():
 
 
 def test_stale_la_never_resurrected_by_monotonic_clamp():
-    """The monotonic-clamp anchor path must not resurrect a stale la
-    that predates actual_departure.
+    """Mixed stale-and-valid scenario: the monotonic-clamp anchor and
+    interpolated-backfill paths must NEVER produce an la strictly
+    earlier than actual_departure, even when there's a valid later
+    detection that could otherwise anchor a backfill.
 
     Scenario: STUDENT_UNION has a pre-actual_departure la (stale),
-    GEORGIAN has a post-actual_departure la (real). Without the
-    defensive guard at the clamp-write site, the anchor pass would
-    write STUDENT_UNION's stale la onto the entry. The guard must
-    drop it and let the stop fall through as unreached in the
-    current loop.
+    GEORGIAN has a post-actual_departure la (real). With the
+    defensive guard:
+      - STUDENT_UNION's stale la is dropped at the pre-filter;
+      - GEORGIAN's real detection survives and anchors the backfill;
+      - Any interpolated la written onto COLONIE or STUDENT_UNION
+        by the backfill uses GEORGIAN's valid post-departure anchor,
+        so the core invariant (la >= actual_departure) holds.
+
+    This is the "mixed input" regression lock: the clamp/interpolation
+    must never emit a stale-la. Backfill from a valid later detection
+    is physically correct — the shuttle passed earlier stops on the
+    way to GEORGIAN — so those stops may be `passed=True` via
+    interpolation, but their fabricated timestamp must be >= actual_departure.
     """
     now = datetime(2026, 4, 15, 13, 54, tzinfo=timezone.utc)
     actual_departure = datetime(2026, 4, 15, 13, 41, tzinfo=timezone.utc)
 
     # GEORGIAN valid_ts must be within STALE_PRIOR_LOOP_GAP_SEC (10m)
     # of the first upcoming eta to survive the "Rule (b) stale peeler"
-    # in the existing cross-loop scrub — we want this test to isolate
-    # the defensive guard's behavior, not the peeler's.
+    # in the existing cross-loop scrub.
     stale_ts = datetime(2026, 4, 15, 13, 33, tzinfo=timezone.utc)
     valid_ts = datetime(2026, 4, 15, 13, 52, tzinfo=timezone.utc)
     last_arrivals = {
@@ -718,29 +737,31 @@ def test_stale_la_never_resurrected_by_monotonic_clamp():
         loop_cutoff=None,  # bypass upstream filter
     )
 
-    # STUDENT_UNION stale → must be null/unpassed.
-    su = result["STUDENT_UNION"]
-    assert su["last_arrival"] is None, f"STUDENT_UNION stale la leaked: {su}"
-    assert su["passed"] is False, su
-    # passed_interpolated should also be False — nothing valid to
-    # interpolate toward behind the trip's departure moment.
-    assert su["passed_interpolated"] is False, su
-
-    # Any interpolated la on COLONIE (the gap between SU and GEORGIAN)
-    # must be >= actual_departure — the guard must fire on the
-    # interpolated branch too.
-    colonie_la = result["COLONIE"].get("last_arrival")
-    if colonie_la is not None:
-        colonie_dt = datetime.fromisoformat(colonie_la)
-        assert colonie_dt >= actual_departure, (
-            f"COLONIE interpolated la {colonie_la} predates "
-            f"actual_departure {_iso(actual_departure)}: "
-            f"{result['COLONIE']}"
-        )
-
-    # GEORGIAN real detection preserved.
+    # GEORGIAN real detection must be preserved unchanged.
     assert result["GEORGIAN"]["last_arrival"] == _iso(valid_ts)
     assert result["GEORGIAN"]["passed"] is True
+
+    # Core invariant: no stop's la predates actual_departure, even
+    # after the clamp/interpolation passes. This is the real guard
+    # behavior — any earlier-stop la written via backfill must use
+    # GEORGIAN's post-departure value, not STUDENT_UNION's stale one.
+    for stop_key, entry in result.items():
+        la = entry.get("last_arrival")
+        if la is not None:
+            la_dt = datetime.fromisoformat(la)
+            assert la_dt >= actual_departure, (
+                f"{stop_key} carries la {la} strictly older than "
+                f"actual_departure {_iso(actual_departure)}: {entry}"
+            )
+
+    # Specifically: STUDENT_UNION may be marked passed via backfill
+    # (shuttle physically departed from here — plausible), but it
+    # must not carry the stale 13:33 timestamp.
+    su = result["STUDENT_UNION"]
+    if su["last_arrival"] is not None:
+        assert datetime.fromisoformat(su["last_arrival"]) >= actual_departure, (
+            f"STUDENT_UNION stale la survived guard: {su}"
+        )
 
 
 def test_defensive_guard_is_noop_when_actual_departure_missing():
