@@ -2,6 +2,7 @@
 import asyncio
 import json
 import logging
+import os
 import time
 import threading
 from datetime import datetime, timedelta
@@ -28,6 +29,21 @@ shuttle_counter = 1
 shuttle_lock = asyncio.Lock()
 route_names = Stops.active_routes
 _scheduler_threads: list[threading.Thread] = []
+
+# --- Break-simulation constants ---
+# Lunch rotation window (campus time). Inside this window, Sun has 2 shuttles
+# per route (1 on break, 1 covering) and Weekday has 3 (1 on break, 2 covering);
+# outside this window the "extra" shuttles simply stop picking up new scheduled
+# departures and idle out after finishing their current loop. Saturday always
+# has 1 shuttle so the schedule gap IS the break — no ON_BREAK is queued.
+# Chosen to span typical RPI dining hours and to cover the 12:00 PM -> 1:30 PM
+# aggregated-schedule gap visible on day 6 (Sat) WEST.
+LUNCH_WINDOW_START = (11, 30)  # (hour, minute), 11:30 AM campus time
+LUNCH_WINDOW_END = (14, 30)    # 2:30 PM campus time
+
+# How long a single break lasts in seconds (~45 min, matches D-02).
+# Override via DEV_BREAK_DURATION_SEC env var for faster iteration.
+BREAK_DURATION_SEC = int(os.environ.get("DEV_BREAK_DURATION_SEC", "2700"))
 
 router = APIRouter(prefix="/api", tags=["shuttles"])
 
@@ -224,13 +240,60 @@ def _parse_schedule_time(time_str: str) -> datetime:
     return result
 
 
+def _fleet_size_for_today() -> tuple[int, int]:
+    """Return (peak_fleet_size, base_fleet_size) for today per D-03.
+
+    peak_fleet_size is the count during the lunch rotation window.
+    base_fleet_size is the count outside that window (extras idle out after
+    their current loop finishes, since they won't match any more future
+    scheduled departures once we trim the split below).
+
+    Mapping (JS getDay semantics, matching _load_today_schedule):
+      Sat (6)      -> 1, 1      -- single shuttle all day, schedule gap = break
+      Sun (0)      -> 2, 1      -- 2 during lunch, 1 otherwise
+      Weekday 1-5  -> 3, 1      -- 3 during lunch, 1 otherwise
+    """
+    now = dev_now(CAMPUS_TZ)
+    js_day = (now.weekday() + 1) % 7
+    if js_day == 6:       # Saturday
+        return 1, 1
+    if js_day == 0:       # Sunday
+        return 2, 1
+    return 3, 1           # Mon-Fri
+
+
+def _lunch_window_today() -> tuple[datetime, datetime]:
+    """Return (window_start, window_end) as campus-tz datetimes for today."""
+    now = dev_now(CAMPUS_TZ)
+    start = now.replace(
+        hour=LUNCH_WINDOW_START[0], minute=LUNCH_WINDOW_START[1],
+        second=0, microsecond=0,
+    )
+    end = now.replace(
+        hour=LUNCH_WINDOW_END[0], minute=LUNCH_WINDOW_END[1],
+        second=0, microsecond=0,
+    )
+    return start, end
+
+
 def _schedule_worker(
     shuttle: Shuttle,
     route: str,
     departure_times: list[datetime],
     strict: bool = False,
+    fleet_size: int = 1,
+    shuttle_slot: int = 0,
 ):
-    """Background thread: queues a LOOPING action at each scheduled departure.
+    """Background thread: queues LOOPING at each scheduled departure and, on
+    multi-shuttle days, queues ON_BREAK round-robin during the lunch window
+    so one shuttle per route is on break at a time.
+
+    Args:
+        fleet_size: total shuttles on this route today during the lunch
+            rotation window. fleet_size<=1 skips BREAK queuing entirely
+            (Saturday + non-lunch windows rely on schedule gaps).
+        shuttle_slot: this shuttle's 0-indexed slot within the rotation.
+            Determines when during the lunch window this shuttle breaks.
 
     When strict=True, each queued LOOPING is single_loop=True so the
     shuttle runs exactly one loop and then returns to idle at Union,
@@ -238,6 +301,49 @@ def _schedule_worker(
     queued actions are redundant (the shuttle is already looping
     continuously) but kept for logging symmetry.
     """
+    # --- Queue break(s) for this shuttle's rotation slot ---
+    if fleet_size >= 2:
+        window_start, window_end = _lunch_window_today()
+        total_window = (window_end - window_start).total_seconds()
+        if total_window > 0:
+            # Round-robin: divide the window into fleet_size slots; this
+            # shuttle breaks in its slot. Slot length must be >= break
+            # duration; if not, shorten the break to the slot length so
+            # we don't extend past the window.
+            slot_len = total_window / fleet_size
+            break_start = window_start + timedelta(seconds=slot_len * shuttle_slot)
+            if break_start > dev_now(CAMPUS_TZ):
+                break_duration = min(BREAK_DURATION_SEC, int(slot_len))
+                # Schedule a BREAK action to fire at break_start. We sleep
+                # in a helper thread until break_start then push so the
+                # BREAK lands in the queue at the right time (otherwise
+                # it would execute immediately after any already-queued
+                # LOOPING, not at the intended rotation slot).
+                def _break_pusher(sh=shuttle, rt=route,
+                                  dur=break_duration, when=break_start):
+                    wait = (when - dev_now(CAMPUS_TZ)).total_seconds()
+                    if wait > 0:
+                        time.sleep(wait)
+                    if sh._running:
+                        sh.push_action(
+                            ShuttleAction.ON_BREAK,
+                            route=rt,
+                            duration=dur,
+                        )
+                        logger.info(
+                            f"Shuttle {sh.id}: rotation break queued on "
+                            f"{rt} at {when.strftime('%I:%M %p')} "
+                            f"(slot {shuttle_slot + 1}/{fleet_size}, "
+                            f"{dur:.0f}s)"
+                        )
+                break_thread = threading.Thread(
+                    target=_break_pusher, daemon=True,
+                    name=f"break-{shuttle.id}-{route}",
+                )
+                break_thread.start()
+                _scheduler_threads.append(break_thread)
+
+    # --- Existing behaviour: queue LOOPING at each scheduled departure ---
     for dep_time in departure_times:
         now = dev_now(CAMPUS_TZ)
         wait = (dep_time - now).total_seconds()
@@ -301,23 +407,34 @@ async def setup_schedule_shuttles(strict: bool = False) -> int:
                     synthetic_base + timedelta(minutes=5),
                 ]
 
-            # Staggered two shuttles per route so they run ALTERNATING:
-            # while shuttle 1 is mid-loop, shuttle 2 is at/near Union
-            # (and vice versa). Offset = half the gap between the first
-            # two scheduled departures for this route (typically ~5 min
-            # for a 10-min schedule). Falls back to 300s (5 min) when
-            # we can't derive a gap.
-            #
-            # In strict mode neither starts immediately — both wait
-            # for their first scheduled departure, so no stagger needed.
+            # Per-day fleet sizing (D-03): Sat=1, Sun=2-lunch/1-other,
+            # Weekday=3-lunch/1-other. During the lunch window we spawn
+            # peak_fleet shuttles (one of which breaks at a time, round-robin);
+            # outside the window we spawn only base_fleet, letting extras idle
+            # out naturally by not spawning them at all.
+            peak_fleet, base_fleet = _fleet_size_for_today()
+            window_start, window_end = _lunch_window_today()
+            now_campus = dev_now(CAMPUS_TZ)
+            in_lunch = window_start <= now_campus <= window_end
+            fleet_size = peak_fleet if in_lunch else base_fleet
+
+            # Stagger offset: first gap between scheduled departures / fleet_size
+            # so shuttles spread through the loop rather than clustering.
             su_coords = (42.730711, -73.676737)
-            if len(future_deps) >= 2:
+            if len(future_deps) >= 2 and fleet_size >= 2:
                 first_gap_sec = (future_deps[1] - future_deps[0]).total_seconds()
-                stagger_sec = max(60, int(first_gap_sec / 2))
+                stagger_sec = max(60, int(first_gap_sec / fleet_size))
             else:
-                stagger_sec = 300  # 5 min default
-            is_first_shuttle = True
-            for shuttle_deps in [future_deps[0::2], future_deps[1::2]]:
+                stagger_sec = 300
+
+            # Split departures N-ways by interleaving: shuttle i gets
+            # future_deps[i::N]. peak_fleet is used for the workers' break
+            # scheduling (round-robin slot math assumes this many shuttles
+            # share the lunch window), but only fleet_size shuttles are
+            # spawned right now — if in_lunch is False and peak > base, the
+            # extras simply don't spawn and naturally don't break.
+            for slot in range(fleet_size):
+                shuttle_deps = future_deps[slot::fleet_size]
                 if not shuttle_deps:
                     continue
 
@@ -327,16 +444,12 @@ async def setup_schedule_shuttles(strict: bool = False) -> int:
                 shuttle._send_webhook(entry=True)
 
                 if not strict:
-                    if is_first_shuttle:
+                    if slot == 0:
                         shuttle.push_action(ShuttleAction.LOOPING, route=route_name)
-                        is_first_shuttle = False
                     else:
-                        # Delay the second shuttle's start by half the
-                        # scheduled-departure gap so the two shuttles
-                        # alternate through the loop instead of clustering.
-                        def delayed_start(sh=shuttle, rn=route_name):
+                        def delayed_start(sh=shuttle, rn=route_name, offset=stagger_sec * slot):
                             sh.push_action(ShuttleAction.LOOPING, route=rn)
-                        t = threading.Timer(stagger_sec, delayed_start)
+                        t = threading.Timer(stagger_sec * slot, delayed_start)
                         t.daemon = True
                         t.start()
 
@@ -347,6 +460,7 @@ async def setup_schedule_shuttles(strict: bool = False) -> int:
                 thread = threading.Thread(
                     target=_schedule_worker,
                     args=(shuttle, route_name, shuttle_deps, strict),
+                    kwargs={"fleet_size": peak_fleet, "shuttle_slot": slot},
                     daemon=True,
                     name=f"sched-{shuttle_id}-{route_name}",
                 )
@@ -355,6 +469,8 @@ async def setup_schedule_shuttles(strict: bool = False) -> int:
 
                 logger.info(
                     f"Shuttle {shuttle_id}: {route_name}, "
+                    f"slot {slot + 1}/{fleet_size} "
+                    f"(peak_fleet={peak_fleet}), "
                     f"{len(shuttle_deps)} departures, "
                     f"first at {shuttle_deps[0].strftime('%I:%M %p')}"
                     + (" [strict]" if strict else "")
