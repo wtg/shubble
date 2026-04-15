@@ -141,6 +141,12 @@ export function deriveStopEtasFromTrips(trips: Trip[]): {
   return { stopETAs, stopETADetails };
 }
 
+// Safety-net poll interval. Runs regardless of SSE health so a silently
+// stalled EventSource (backend keepalives still flowing but no data payloads
+// -- e.g., Redis pub/sub blip, worker restart between ticks) can't freeze
+// browser state indefinitely. Bounds staleness to ~10s in the worst case.
+const SAFETY_POLL_MS = 10000;
+
 /**
  * Fetches per-trip ETAs from the backend.
  *
@@ -164,6 +170,7 @@ export function useTrips(enabled = true, pollInterval = 5000) {
     let cancelled = false;
     let pollTimer: ReturnType<typeof setInterval> | null = null;
     let es: EventSource | null = null;
+    let safetyTimer: ReturnType<typeof setInterval> | null = null;
 
     const applyTrips = (data: unknown) => {
       if (Array.isArray(data) && !cancelled) setTrips(data as Trip[]);
@@ -197,9 +204,25 @@ export function useTrips(enabled = true, pollInterval = 5000) {
       }
     };
 
+    const startSafetyPolling = () => {
+      if (safetyTimer !== null || cancelled) return;
+      safetyTimer = setInterval(() => { void fetchTrips(); }, SAFETY_POLL_MS);
+    };
+    const stopSafetyPolling = () => {
+      if (safetyTimer !== null) {
+        clearInterval(safetyTimer);
+        safetyTimer = null;
+      }
+    };
+
     // Kick off an initial fetch so the UI isn't blank while the SSE
     // connection is still opening. Subsequent updates come via SSE.
     void fetchTrips();
+
+    // Always-on safety net: even when SSE reports healthy (onopen fired,
+    // no error), a stalled Redis pub/sub path can leave us without fresh
+    // data indefinitely. This poll caps staleness at SAFETY_POLL_MS.
+    startSafetyPolling();
 
     // Try SSE push first. If EventSource isn't available (very old
     // browser), fall straight back to polling.
@@ -234,6 +257,7 @@ export function useTrips(enabled = true, pollInterval = 5000) {
       cancelled = true;
       controller.abort();
       stopPolling();
+      stopSafetyPolling();
       if (es) {
         es.close();
         es = null;
