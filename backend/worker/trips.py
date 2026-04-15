@@ -843,7 +843,15 @@ def compute_trips_from_vehicle_data(
             latest_stop = last_point.get('stop_name')
             latest_speed = last_point.get('speed_kmh')
             idle_seconds = (now_utc - actual_departure).total_seconds()
-            at_first_stop = pd.notna(latest_stop) and str(latest_stop) == first_stop
+            # STUDENT_UNION and STUDENT_UNION_RETURN share one physical
+            # coordinate (boundary_stops catches the duplicate); a ping
+            # tagged as either should count as "at Union" for idle/
+            # dwelling classification. Without this, a shuttle returning
+            # to Union is tagged STUDENT_UNION_RETURN and never triggers
+            # any of the at-Union branches, so the loop doesn't mark as
+            # done and LIVE ETAs for the NEXT loop start immediately.
+            union_stops = {first_stop, *boundary_stops}
+            at_first_stop = pd.notna(latest_stop) and str(latest_stop) in union_stops
             not_moving = pd.isna(latest_speed) or float(latest_speed) <= 1.0
             if at_first_stop and not_moving and idle_seconds > IDLE_THRESHOLD_SEC:
                 logger.debug(
@@ -992,7 +1000,15 @@ def compute_trips_from_vehicle_data(
         is_dwelling = False
         if not vehicle_df.empty:
             latest_stop = last_point.get('stop_name')
-            at_first_stop = pd.notna(latest_stop) and str(latest_stop) == first_stop
+            # Accept STUDENT_UNION_RETURN (and any other co-located
+            # boundary stop) as "at first_stop" — they're the same
+            # physical location. A shuttle that just finished its loop
+            # is tagged STUDENT_UNION_RETURN; without this, is_dwelling
+            # stays False, no scheduled promotion happens, and the UI
+            # rolls straight into LIVE ETAs for the next loop instead
+            # of marking the finished loop as DONE.
+            union_stops = {first_stop, *boundary_stops}
+            at_first_stop = pd.notna(latest_stop) and str(latest_stop) in union_stops
             age_of_departure = (now_utc - actual_departure).total_seconds()
             # "Recent" cluster = the shuttle just rolled into Union.
             # Upper bound generous enough to cover typical inter-loop
