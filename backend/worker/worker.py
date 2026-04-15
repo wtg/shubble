@@ -1,16 +1,16 @@
 """Async background worker for fetching vehicle data from Samsara API."""
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.dialects import postgresql
 
 from backend.config import settings
 from backend.cache import init_cache, close_cache, soft_clear_namespace, get_redis
 from backend.database import create_async_db_engine, create_session_factory
-from backend.models import VehicleLocation, Driver, DriverVehicleAssignment
+from backend.models import VehicleLocation, Driver, DriverVehicleAssignment, PredictedLocation
 from backend.utils import get_vehicles_in_geofence
 from backend.function_timer import timed
 from backend.time_utils import dev_now
@@ -364,6 +364,26 @@ async def update_driver_assignments(session_factory, vehicle_ids):
         logger.exception(f"Unexpected error in update_driver_assignments: {e}")
 
 
+async def _cleanup_old_predicted_locations(session_factory, days: int = 2) -> int:
+    """Delete PredictedLocation rows older than `days` days.
+
+    Called once at worker startup. Keeps the table bounded — the model
+    writes ~50K rows/day (~18M/yr), and 2 days is enough history for any
+    debugging/replay work. Production analytics use separate aggregation.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    try:
+        async with session_factory() as session:
+            result = await session.execute(
+                delete(PredictedLocation).where(PredictedLocation.timestamp < cutoff)
+            )
+            await session.commit()
+            return result.rowcount or 0
+    except Exception as e:
+        logger.error(f"PredictedLocation cleanup failed: {e}")
+        return 0
+
+
 async def run_worker():
     """Main worker loop that runs continuously."""
     logger.info("Async worker started...")
@@ -380,6 +400,15 @@ async def run_worker():
     except Exception as e:
         logger.error(f"Failed to initialize Redis cache: {e}")
         # Continue without cache
+
+    # One-time cleanup: drop PredictedLocation rows older than 2 days. Runs
+    # once per worker startup — the table otherwise grows unbounded.
+    try:
+        deleted = await _cleanup_old_predicted_locations(session_factory, days=2)
+        if deleted:
+            logger.info(f"Deleted {deleted} old PredictedLocation rows (> 2 days)")
+    except Exception as e:
+        logger.error(f"PredictedLocation cleanup errored on startup: {e}")
 
     # P4: preload LSTM models so the first prediction cycle doesn't eat a
     # cold-load latency spike per (route, polyline_idx). Blocking is fine —
