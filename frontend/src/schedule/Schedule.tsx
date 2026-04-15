@@ -1166,10 +1166,19 @@ export default function Schedule({
                     {stopInfo.map((si, stopIndex) => {
                       const stop = si.stop;
                       const stopData = route[stop] as ShuttleStopData;
-                      const etaTime = si.etaTime;
-                      const hasLiveETA = si.hasETA;
-                      // Show last_arrival for any loop with trip data, or current loop with legacy data
-                      const showLast = !!loopTrip || isCurrentLoop;
+                      // LIVE-track derived values. Scheduled rows (shuttle
+                      // hasn't actually started running yet) force through
+                      // to the SCHED branch below — nothing about a future
+                      // trip is live, even if the backend populated eta
+                      // values for the row's stop_etas from the static
+                      // schedule or the idle-bound vehicle's projection.
+                      const etaTime = isLiveTrip ? si.etaTime : undefined;
+                      const hasLiveETA = isLiveTrip && si.hasETA;
+                      // Show last_arrival only when the trip is actively
+                      // running (or, as a legacy fallback, when there's no
+                      // trip at all and this row is the "current loop"
+                      // guess).
+                      const showLast = isLiveTrip || (!loopTrip && isCurrentLoop);
                       const lastArrival = showLast ? si.lastArrival : undefined;
                       const inferredPassed = showLast && !hasLiveETA && !lastArrival
                         && hasLiveBefore[stopIndex] && (hasLiveAfter[stopIndex] || (allPriorLive[stopIndex] && stopIndex > 0));
