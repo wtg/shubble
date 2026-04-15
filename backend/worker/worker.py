@@ -255,6 +255,43 @@ async def update_driver_assignments(session_factory, vehicle_ids):
             now = dev_now(timezone.utc)
 
             async with session_factory() as session:
+                # First pass: collect driver_ids and vehicle_ids from this page
+                # of the API response so we can bulk-fetch the existing rows in
+                # two queries instead of 2×N (see plan improvement #5).
+                page_driver_ids: set = set()
+                page_vehicle_ids: set = set()
+                for assignment in data.get("data", []):
+                    driver_data = assignment.get("driver") or {}
+                    vehicle_data = assignment.get("vehicle") or {}
+                    d_id = driver_data.get("id")
+                    v_id = vehicle_data.get("id")
+                    if d_id and v_id:
+                        page_driver_ids.add(d_id)
+                        page_vehicle_ids.add(v_id)
+
+                drivers_by_id: dict = {}
+                if page_driver_ids:
+                    driver_rows = await session.execute(
+                        select(Driver).where(Driver.id.in_(page_driver_ids))
+                    )
+                    drivers_by_id = {d.id: d for d in driver_rows.scalars()}
+
+                open_assignments_by_vehicle: dict = {}
+                if page_vehicle_ids:
+                    open_rows = await session.execute(
+                        select(DriverVehicleAssignment).where(
+                            DriverVehicleAssignment.vehicle_id.in_(page_vehicle_ids),
+                            DriverVehicleAssignment.assignment_end.is_(None),
+                        )
+                    )
+                    open_assignments_by_vehicle = {
+                        a.vehicle_id: a for a in open_rows.scalars()
+                    }
+
+                # Second pass: iterate assignments using the pre-loaded dicts
+                # — no queries inside the loop. Semantics identical to the
+                # per-assignment version: same logging strings, same
+                # create-driver / close-old-assignment / new-assignment flow.
                 for assignment in data.get("data", []):
                     driver_data = assignment.get("driver")
                     vehicle_data = assignment.get("vehicle")
@@ -278,25 +315,18 @@ async def update_driver_assignments(session_factory, vehicle_ids):
                     else:
                         assigned_at = now
 
-                    # Create or update driver
-                    driver_query = select(Driver).where(Driver.id == driver_id)
-                    result = await session.execute(driver_query)
-                    driver = result.scalar_one_or_none()
-
+                    # Create or update driver (from pre-loaded dict)
+                    driver = drivers_by_id.get(driver_id)
                     if not driver:
                         driver = Driver(id=driver_id, name=driver_name)
                         session.add(driver)
+                        drivers_by_id[driver_id] = driver
                         logger.info(f"Created new driver: {driver_name} ({driver_id})")
                     elif driver.name != driver_name:
                         driver.name = driver_name
 
-                    # Check if there's an existing open assignment for this vehicle
-                    existing_query = select(DriverVehicleAssignment).where(
-                        DriverVehicleAssignment.vehicle_id == vehicle_id,
-                        DriverVehicleAssignment.assignment_end.is_(None),
-                    )
-                    result = await session.execute(existing_query)
-                    existing = result.scalar_one_or_none()
+                    # Check for existing open assignment (from pre-loaded dict)
+                    existing = open_assignments_by_vehicle.get(vehicle_id)
 
                     if existing:
                         # If same driver, no change needed
@@ -308,13 +338,17 @@ async def update_driver_assignments(session_factory, vehicle_ids):
                             f"Closed assignment for driver {existing.driver_id} on vehicle {vehicle_id}"
                         )
 
-                    # Create new assignment
+                    # Create new assignment. Update the local dict so later
+                    # iterations that reference this vehicle in the SAME page
+                    # see the new open assignment and behave identically to
+                    # the original per-assignment code.
                     new_assignment = DriverVehicleAssignment(
                         driver_id=driver_id,
                         vehicle_id=vehicle_id,
                         assignment_start=assigned_at,
                     )
                     session.add(new_assignment)
+                    open_assignments_by_vehicle[vehicle_id] = new_assignment
                     assignments_updated += 1
 
                 if assignments_updated > 0:
