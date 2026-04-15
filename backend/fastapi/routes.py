@@ -30,6 +30,8 @@ from backend.fastapi.utils import (
     get_latest_vehicle_locations,
     get_current_driver_assignments,
     get_latest_velocities,
+    _load_today_gap_windows,
+    _in_schedule_gap,
 )
 from shared.stops import Stops
 
@@ -63,6 +65,14 @@ async def _build_locations_payload(session_factory) -> tuple[dict[str, Any], Opt
     current_assignments = await get_current_driver_assignments(
         vehicle_ids, session_factory
     )
+
+    # Schedule-gap detection (Phase 1 break detection, quick task
+    # 260415-oeb). Computed once per payload build and reused for every
+    # vehicle. Cached per-day inside _load_today_gap_windows so this is
+    # effectively free after the first call.
+    gap_windows = _load_today_gap_windows(settings.CAMPUS_TZ)
+    now_utc = dev_now(timezone.utc)
+    in_gap_now = _in_schedule_gap(now_utc, gap_windows)
 
     # PERF: ISO-8601 timestamps sort lexicographically in the same order
     # as chronological order (when UTC / same timezone), so we can find
@@ -99,6 +109,7 @@ async def _build_locations_payload(session_factory) -> tuple[dict[str, Any], Opt
             "gateway_model": vehicle["gateway_model"],
             "gateway_serial": vehicle["gateway_serial"],
             "driver": driver_info,
+            "on_break": in_gap_now,  # Phase 1 break detection (D-01, D-02)
         }
 
     return response_data, oldest_iso

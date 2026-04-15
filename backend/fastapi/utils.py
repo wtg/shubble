@@ -1,5 +1,7 @@
 """Utility functions for FastAPI."""
-from datetime import datetime, timezone
+import json
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from sqlalchemy import func, and_, select
 from sqlalchemy.orm import selectinload
 from typing import Dict, Tuple, Optional, List, TypedDict
@@ -17,6 +19,91 @@ from shared.stops import Stops
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+# --- Schedule-gap detection (Phase 1 break detection, quick task 260415-oeb) ---
+# Path mirrors backend/worker/trips.py:SCHEDULE_PATH so both stay in sync.
+_AGGREGATED_SCHEDULE_PATH = Path(__file__).parent.parent.parent / "shared" / "aggregated_schedule.json"
+
+# Per D-02: 35-minute threshold. Conservative — above the normal
+# 10-min weekday cadence so only intentional lunch/dinner breaks fire.
+SCHEDULE_GAP_THRESHOLD_SEC = 35 * 60
+
+# Cached per (campus_date, campus_tz). Gap computation is trivial but
+# re-reading aggregated_schedule.json on every /api/locations call (once
+# per worker tick + SSE fan-out) is still pure waste. Day-rollover-safe
+# because the key includes the date.
+_GAP_WINDOWS_CACHE: Dict[tuple, List[Tuple[datetime, datetime]]] = {}
+
+
+def _compute_gap_windows(sched_deps: List[datetime]) -> List[Tuple[datetime, datetime]]:
+    """Return (gap_start, gap_end) pairs between consecutive scheduled
+    departures whose gap exceeds SCHEDULE_GAP_THRESHOLD_SEC."""
+    windows: List[Tuple[datetime, datetime]] = []
+    for prev, nxt in zip(sched_deps, sched_deps[1:]):
+        if (nxt - prev).total_seconds() >= SCHEDULE_GAP_THRESHOLD_SEC:
+            windows.append((prev, nxt))
+    return windows
+
+
+def _load_today_gap_windows(campus_tz) -> List[Tuple[datetime, datetime]]:
+    """Return the union (across all routes) of today's >=35min scheduled-
+    departure gap windows, in UTC. Cached per campus-day.
+
+    We union across routes because the flag says 'this shuttle is in a
+    break window' — not 'this shuttle's specific route is in a gap'. If
+    ANY route scheduled to run today has a long gap that brackets 'now',
+    a shuttle currently in the geofence is presumed on break (Phase 1
+    scope per CONTEXT.md: Saturday lunch/dinner, Sat/Sun/Weekday dinner
+    gaps — all cases where ALL routes share a gap).
+    """
+    now = dev_now(campus_tz)
+    cache_key = (now.year, now.month, now.day, str(campus_tz))
+    cached = _GAP_WINDOWS_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    try:
+        with open(_AGGREGATED_SCHEDULE_PATH) as f:
+            schedule = json.load(f)
+    except Exception as e:
+        logger.error(f"Failed to load aggregated_schedule for gap detection: {e}")
+        _GAP_WINDOWS_CACHE.clear()
+        _GAP_WINDOWS_CACHE[cache_key] = []
+        return []
+
+    # aggregated_schedule indexed by JS getDay() (0=Sun). Mirror trips.py.
+    js_day = (now.weekday() + 1) % 7
+    today = schedule[js_day] if js_day < len(schedule) else {}
+
+    all_windows: List[Tuple[datetime, datetime]] = []
+    for route_name, times in today.items():
+        parsed: List[datetime] = []
+        for time_str in times:
+            try:
+                hm = datetime.strptime(time_str, "%I:%M %p")
+                dt = now.replace(hour=hm.hour, minute=hm.minute, second=0, microsecond=0)
+                if time_str.strip() == "12:00 AM":
+                    dt += timedelta(days=1)
+                parsed.append(dt.astimezone(timezone.utc))
+            except ValueError:
+                logger.warning(f"Could not parse schedule time for gap detect: {time_str}")
+        parsed.sort()
+        all_windows.extend(_compute_gap_windows(parsed))
+
+    # Drop prior-day entries so the cache doesn't grow unbounded.
+    _GAP_WINDOWS_CACHE.clear()
+    _GAP_WINDOWS_CACHE[cache_key] = all_windows
+    return all_windows
+
+
+def _in_schedule_gap(now_utc: datetime, gap_windows: List[Tuple[datetime, datetime]]) -> bool:
+    """True if now_utc falls strictly inside any (gap_start, gap_end) window.
+
+    Strict inequality (start < now < end) so the exact scheduled-departure
+    boundary minute counts as in-service on both sides.
+    """
+    return any(start < now_utc < end for start, end in gap_windows)
 
 
 class VehicleInfoDict(TypedDict):
