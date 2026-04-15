@@ -21,6 +21,8 @@ import { devNow, devNowMs } from '../utils/devTime';
 
 const TIME_FORMAT: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' };
 
+const POINTER_CURSOR_STYLE = { cursor: 'pointer' as const };
+
 // --- Departure deviation labels (260415-3ec) -----------------------------
 // Small inline label next to each timeline row's departure time that tells
 // students whether the trip departed on/near its scheduled slot (with a
@@ -963,7 +965,7 @@ export default function Schedule({
                       toggleExpand(rowKey);
                     }
                   }}
-                  style={!isPastTime && !(isCurrentLoop && rowKey === autoExpandKey) ? { cursor: 'pointer' } : undefined}
+                  style={!isPastTime && !(isCurrentLoop && rowKey === autoExpandKey) ? POINTER_CURSOR_STYLE : undefined}
                 >
                   <div className="timeline-dot"></div>
                   <div className="timeline-content-item">
@@ -1056,7 +1058,7 @@ export default function Schedule({
                           handleStopSelect(firstStop);
                         }
                       }}
-                      style={{ cursor: 'pointer' }}
+                      style={POINTER_CURSOR_STYLE}
                     >
                       {firstStopData?.NAME || 'Unknown Stop'}
                     </div>
@@ -1151,7 +1153,7 @@ export default function Schedule({
                           key={stopIndex}
                           className={`secondary-timeline-item ${isPastTime && !isCurrentLoop ? 'past-time' : ''} ${hasLiveETA ? 'has-eta' : ''} ${isSelected ? 'selected-stop' : ''}`}
                           onClick={() => handleStopSelect(stop)}
-                          style={{ cursor: 'pointer' }}
+                          style={POINTER_CURSOR_STYLE}
                           role="button"
                           tabIndex={0}
                           aria-label={`Select ${stopData?.NAME || stop} for arrival countdown`}
