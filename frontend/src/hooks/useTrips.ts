@@ -144,8 +144,10 @@ export function deriveStopEtasFromTrips(trips: Trip[]): {
 // Safety-net poll interval. Runs regardless of SSE health so a silently
 // stalled EventSource (backend keepalives still flowing but no data payloads
 // -- e.g., Redis pub/sub blip, worker restart between ticks) can't freeze
-// browser state indefinitely. Bounds staleness to ~10s in the worst case.
-const SAFETY_POLL_MS = 10000;
+// browser state indefinitely. Bounds staleness to ~30s in the worst case.
+// 30s = the fast SSE keepalive interval × 2 — long enough to be cheap at
+// scale, short enough to bound visible staleness.
+const SAFETY_POLL_MS = 30000;
 
 /**
  * Fetches per-trip ETAs from the backend.
