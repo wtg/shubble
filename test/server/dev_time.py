@@ -21,7 +21,15 @@ TARGET_MINUTE = int(os.environ.get("DEV_TARGET_MINUTE", "0"))
 # Compute offset once at module load (same logic as devTime.ts)
 _now = datetime.now(CAMPUS_TZ)
 _target = _now.replace(hour=TARGET_HOUR, minute=TARGET_MINUTE, second=0, microsecond=0)
-OFFSET: timedelta = timedelta(0)  # Disabled: _target - _now
+# Enable the offset only when DEV_TIME_SHIFT=1 is set; otherwise the
+# test server uses wall-clock time. This keeps the default behavior
+# predictable (shuttles follow real-time schedule) but lets us jump
+# into a specific schedule window (e.g. lunch rotation) for testing.
+OFFSET: timedelta = (
+    _target - _now
+    if os.environ.get("DEV_TIME_SHIFT") == "1"
+    else timedelta(0)
+)
 
 
 def dev_now(tz: ZoneInfo | timezone = CAMPUS_TZ) -> datetime:
