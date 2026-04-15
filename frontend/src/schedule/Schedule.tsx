@@ -21,6 +21,129 @@ import { devNow, devNowMs } from '../utils/devTime';
 
 const TIME_FORMAT: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' };
 
+// --- Departure deviation labels (260415-3ec) -----------------------------
+// Small inline label next to each timeline row's departure time that tells
+// students whether the trip departed on/near its scheduled slot (with a
+// signed delta) or off-schedule (anchored to the nearest real slot so the
+// row doesn't look disconnected from the published plan).
+//
+// Returned strings:
+//   scheduled-matched, on-time (|delta| <= 1 min):    null (no label)
+//   scheduled-matched, late:    "(H:MM, +N min late)"
+//   scheduled-matched, early:   "(H:MM, N min early)"
+//   off-schedule, <=30 min from nearest slot (early): "↑ N min early to H:MM slot"
+//   off-schedule, <=30 min from nearest slot (late):  "↓ N min late from H:MM slot"
+//   off-schedule, >30 min from any slot:              "Unscheduled"
+export type DepartureLabelKind =
+  | 'matched-late'
+  | 'matched-early'
+  | 'unscheduled-early'
+  | 'unscheduled-late'
+  | 'unscheduled-far';
+
+export type DepartureLabel = {
+  text: string;
+  kind: DepartureLabelKind;
+};
+
+// Module-level helper — pure function, no closures / hooks. Accepts every
+// dependency as an argument so it can live above the component with no
+// re-creation cost per render.
+//
+// `_selectedDay` is accepted for parity with the task brief's signature;
+// `timeToDate` is already parameterized on the current day (its cache key
+// is `selectedDay` — see Schedule.tsx timeToDateCache), so it's unused here.
+// The underscore prefix satisfies eslint's argsIgnorePattern.
+export function getDepartureLabel(
+  trip: Trip,
+  routeTimes: string[],
+  _selectedDay: number,
+  timeToDate: (t: string) => Date,
+): DepartureLabel | null {
+  const fmt = (d: Date) => d.toLocaleTimeString(undefined, TIME_FORMAT);
+
+  // --- Case 1: scheduled-matched trip ---
+  if (trip.scheduled) {
+    // actual_departure can be null (e.g. a scheduled row with no vehicle
+    // yet). Nothing to compare — no label.
+    if (!trip.actual_departure) return null;
+
+    const scheduledMs = new Date(trip.departure_time).getTime();
+    const actualMs = new Date(trip.actual_departure).getTime();
+    const deltaMin = Math.round((actualMs - scheduledMs) / 60_000);
+
+    // Dead zone: |delta| <= 1 min → no label (on-time)
+    if (Math.abs(deltaMin) <= 1) return null;
+
+    const actualStr = fmt(new Date(actualMs));
+    if (deltaMin > 0) {
+      return {
+        text: `(${actualStr}, +${deltaMin} min late)`,
+        kind: 'matched-late',
+      };
+    }
+    return {
+      text: `(${actualStr}, ${Math.abs(deltaMin)} min early)`,
+      kind: 'matched-early',
+    };
+  }
+
+  // --- Case 2: off-schedule (injected) trip ---
+  // For injected trips, trip.departure_time === trip.actual_departure per
+  // backend contract (trips.py). Fall back to departure_time if actual is
+  // null for any reason so the helper stays functional.
+  const actualMs = trip.actual_departure
+    ? new Date(trip.actual_departure).getTime()
+    : new Date(trip.departure_time).getTime();
+
+  if (routeTimes.length === 0) {
+    return { text: 'Unscheduled', kind: 'unscheduled-far' };
+  }
+
+  // Find the nearest scheduled slot by absolute ms-distance.
+  let nearestSlotStr = routeTimes[0];
+  let nearestDeltaMs = Math.abs(actualMs - timeToDate(routeTimes[0]).getTime());
+  let nearestSignedDeltaMs = actualMs - timeToDate(routeTimes[0]).getTime();
+  for (let i = 1; i < routeTimes.length; i++) {
+    const slotMs = timeToDate(routeTimes[i]).getTime();
+    const absD = Math.abs(actualMs - slotMs);
+    if (absD < nearestDeltaMs) {
+      nearestDeltaMs = absD;
+      nearestSignedDeltaMs = actualMs - slotMs;
+      nearestSlotStr = routeTimes[i];
+    }
+  }
+
+  const nearestMin = Math.round(nearestDeltaMs / 60_000);
+
+  // >30 min from every slot → plain "Unscheduled" (no anchor)
+  if (nearestMin > 30) {
+    return { text: 'Unscheduled', kind: 'unscheduled-far' };
+  }
+
+  // Degenerate: actual falls exactly on a slot. Shouldn't happen in
+  // practice (the row would have matched instead of being injected) but
+  // guard anyway so we never emit a "0 min" pill.
+  if (nearestSignedDeltaMs === 0) {
+    return { text: 'Unscheduled', kind: 'unscheduled-far' };
+  }
+
+  // Normalize the slot label via timeToDate→fmt so its spacing matches
+  // `actualStr` formatting (e.g. "5:30 PM" vs "5:30PM").
+  const slotStr = fmt(timeToDate(nearestSlotStr));
+
+  if (nearestSignedDeltaMs < 0) {
+    return {
+      text: `↑ ${nearestMin} min early to ${slotStr} slot`,
+      kind: 'unscheduled-early',
+    };
+  }
+  return {
+    text: `↓ ${nearestMin} min late from ${slotStr} slot`,
+    kind: 'unscheduled-late',
+  };
+}
+
 type ScheduleProps = {
   selectedRoute: string | null;
   setSelectedRoute: (route: string | null) => void;
@@ -846,6 +969,19 @@ export default function Schedule({
                   <div className="timeline-content-item">
                     <div className="timeline-time">
                       <span className="timeline-time-text">{time}</span>
+                      {(() => {
+                        // Departure deviation label (260415-3ec).
+                        // Hugs the row anchor time so late/early/off-schedule
+                        // trips are clearly communicated without disturbing
+                        // row sort order or the expand/current-loop logic.
+                        const lbl = loopTrip ? getDepartureLabel(loopTrip, times, selectedDay, timeToDate) : null;
+                        if (!lbl) return null;
+                        return (
+                          <span className={`timeline-deviation deviation-${lbl.kind}`}>
+                            {lbl.text}
+                          </span>
+                        );
+                      })()}
                       {loopTrip?.vehicle_id && (
                         <span className="vehicle-badge" aria-label={`Shuttle ${loopTrip.vehicle_id.slice(-3)}`}>#{loopTrip.vehicle_id.slice(-3)}</span>
                       )}
