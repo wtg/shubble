@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-05)
 Phase: 3 of 4 (countdown & freshness)
 Plan: Not started
 Status: Executing phase 02
-Last activity: 2026-04-15 - Completed quick task 260414-wx7: Frontend defensive filter + polling safety net to prevent stale cross-route trips in browser state
+Last activity: 2026-04-15 - Completed quick task 260415-0vt: Drop boundary-stop la within 5 min of actual_departure to prevent dwell-leak false-Passed backfill on new loops
 
 Progress: [===.......] 30%
 
@@ -83,6 +83,7 @@ None yet.
 | 260414-mxq | Stop-centric close-approach detection in _compute_vehicle_etas_and_arrivals so untagged pings within 60m of a stop still count as last_arrivals | 2026-04-14 | 0e8efd4 | [260414-mxq-stop-centric-close-approach-detection-in](./quick/260414-mxq-stop-centric-close-approach-detection-in/) |
 | 260414-nq4 | Restrict spurious-upcoming la scrub to duplicate-coord stops only so HFH real detection doesn't flicker | 2026-04-14 | 66aa7df | [260414-nq4-restrict-spurious-upcoming-la-scrub-to-d](./quick/260414-nq4-restrict-spurious-upcoming-la-scrub-to-d/) |
 | 260414-wx7 | Frontend defensive filter + polling safety net to prevent stale cross-route trips in browser state | 2026-04-15 | 287d662 | [260414-wx7-frontend-defensive-filter-polling-safety](./quick/260414-wx7-frontend-defensive-filter-polling-safety/) |
+| 260415-0vt | Drop boundary-stop la within 5 min of actual_departure to prevent dwell-leak false-Passed backfill on new loops | 2026-04-15 | 3e653a9 | [260415-0vt-drop-boundary-stop-la-within-5-min-of-ac](./quick/260415-0vt-drop-boundary-stop-la-within-5-min-of-ac/) |
 
 ## Session Continuity
 
