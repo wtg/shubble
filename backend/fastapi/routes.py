@@ -33,6 +33,7 @@ from backend.fastapi.utils import (
     _load_today_gap_windows,
     _in_schedule_gap,
 )
+from backend.fastapi.break_archetype import predict_on_break
 from shared.stops import Stops
 
 logger = logging.getLogger(__name__)
@@ -74,6 +75,18 @@ async def _build_locations_payload(session_factory) -> tuple[dict[str, Any], Opt
     now_utc = dev_now(timezone.utc)
     in_gap_now = _in_schedule_gap(now_utc, gap_windows)
 
+    # Archetype-based break prediction (Phase 3, quick task 260415-owx).
+    # Per-vehicle flag ORed with the schedule-gap flag below. Isolated
+    # try/except: if the archetype path fails, schedule-gap detection
+    # still drives `on_break` so Phase 1 behavior is preserved.
+    try:
+        archetype_breaks = await predict_on_break(
+            vehicle_ids, session_factory, settings.CAMPUS_TZ
+        )
+    except Exception as e:
+        logger.warning(f"predict_on_break failed; falling back to schedule-gap only: {e}")
+        archetype_breaks = {}
+
     # PERF: ISO-8601 timestamps sort lexicographically in the same order
     # as chronological order (when UTC / same timezone), so we can find
     # the oldest via string min() and only do one fromisoformat call.
@@ -82,9 +95,10 @@ async def _build_locations_payload(session_factory) -> tuple[dict[str, Any], Opt
 
     for loc in results:
         vehicle = loc["vehicle"]
+        vid = loc["vehicle_id"]
 
         driver_info = None
-        assignment = current_assignments.get(loc["vehicle_id"])
+        assignment = current_assignments.get(vid)
         if assignment and assignment.get("driver"):
             driver_data = assignment["driver"]
             driver_info = {
@@ -92,7 +106,11 @@ async def _build_locations_payload(session_factory) -> tuple[dict[str, Any], Opt
                 "name": driver_data["name"],
             }
 
-        response_data[loc["vehicle_id"]] = {
+        # Phase 1 (schedule-gap, fleet-wide) OR Phase 3 (archetype-matched,
+        # per-vehicle). Either fires the muted-marker UX.
+        on_break = in_gap_now or bool(archetype_breaks.get(vid, False))
+
+        response_data[vid] = {
             "name": loc["name"],
             "latitude": loc["latitude"],
             "longitude": loc["longitude"],
@@ -109,7 +127,7 @@ async def _build_locations_payload(session_factory) -> tuple[dict[str, Any], Opt
             "gateway_model": vehicle["gateway_model"],
             "gateway_serial": vehicle["gateway_serial"],
             "driver": driver_info,
-            "on_break": in_gap_now,  # Phase 1 break detection (D-01, D-02)
+            "on_break": on_break,  # Phase 1 (fleet-gap) OR Phase 3 (per-vehicle archetype)
         }
 
     return response_data, oldest_iso

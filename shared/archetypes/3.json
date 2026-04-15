@@ -1,0 +1,68 @@
+{
+  "dow": 3,
+  "dow_name": "Thu",
+  "signature_window_start_hhmm": "07:00",
+  "signature_window_end_hhmm": "11:00",
+  "signature_len": 6,
+  "break_window_start_hhmm": "10:00",
+  "break_window_end_hhmm": "14:00",
+  "break_gap_min": 40,
+  "archetypes": [
+    {
+      "archetype_id": "c0",
+      "break_start_min": 699.75,
+      "median_break_start_min": 703.0,
+      "signature": [
+        2.5,
+        7.25,
+        13.0,
+        21.25,
+        27.75,
+        36.5
+      ],
+      "member_count": 4,
+      "member_vehicles": [
+        "281474979465689",
+        "281474979530259",
+        "281474979575559",
+        "281474983768444"
+      ]
+    },
+    {
+      "archetype_id": "c1",
+      "break_start_min": 735.5,
+      "median_break_start_min": 735.5,
+      "signature": [
+        2.5,
+        8.0,
+        15.0,
+        21.5,
+        25.0,
+        32.5
+      ],
+      "member_count": 2,
+      "member_vehicles": [
+        "281474977379809"
+      ]
+    },
+    {
+      "archetype_id": "c3",
+      "break_start_min": 805.25,
+      "median_break_start_min": 801.0,
+      "signature": [
+        154.5,
+        164.25,
+        171.0,
+        154.66666666666666,
+        161.66666666666666,
+        169.0
+      ],
+      "member_count": 4,
+      "member_vehicles": [
+        "281474977379809",
+        "281474979465689",
+        "281474987547650"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,87 @@
+{
+  "dow": 4,
+  "dow_name": "Fri",
+  "signature_window_start_hhmm": "07:00",
+  "signature_window_end_hhmm": "11:00",
+  "signature_len": 6,
+  "break_window_start_hhmm": "10:00",
+  "break_window_end_hhmm": "14:00",
+  "break_gap_min": 40,
+  "archetypes": [
+    {
+      "archetype_id": "c0",
+      "break_start_min": 670.6666666666666,
+      "median_break_start_min": 655.0,
+      "signature": [
+        5.0,
+        13.0,
+        16.666666666666668,
+        28.666666666666668,
+        34.666666666666664,
+        46.666666666666664
+      ],
+      "member_count": 3,
+      "member_vehicles": [
+        "281474979465689",
+        "281474979530259",
+        "281474979575559"
+      ]
+    },
+    {
+      "archetype_id": "c1",
+      "break_start_min": 739.25,
+      "median_break_start_min": 739.0,
+      "signature": [
+        4.0,
+        9.25,
+        20.5,
+        25.25,
+        31.75,
+        38.75
+      ],
+      "member_count": 4,
+      "member_vehicles": [
+        "281474977371235",
+        "281474977379809",
+        "281474983768444"
+      ]
+    },
+    {
+      "archetype_id": "c2",
+      "break_start_min": 767.0,
+      "median_break_start_min": 767.0,
+      "signature": [
+        0.0,
+        10.0,
+        16.0,
+        20.0,
+        29.5,
+        35.0
+      ],
+      "member_count": 2,
+      "member_vehicles": [
+        "281474977371235",
+        "281474979465689"
+      ]
+    },
+    {
+      "archetype_id": "c3",
+      "break_start_min": 793.3333333333334,
+      "median_break_start_min": 789.0,
+      "signature": [
+        127.66666666666667,
+        133.66666666666666,
+        138.66666666666666,
+        142.33333333333334,
+        153.66666666666666,
+        157.66666666666666
+      ],
+      "member_count": 3,
+      "member_vehicles": [
+        "281474979465689",
+        "281474979530259",
+        "281474987547650"
+      ]
+    }
+  ]
+}

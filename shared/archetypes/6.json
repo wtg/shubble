@@ -1,0 +1,32 @@
+{
+  "dow": 6,
+  "dow_name": "Sun",
+  "signature_window_start_hhmm": "07:00",
+  "signature_window_end_hhmm": "11:00",
+  "signature_len": 6,
+  "break_window_start_hhmm": "10:00",
+  "break_window_end_hhmm": "14:00",
+  "break_gap_min": 40,
+  "archetypes": [
+    {
+      "archetype_id": "c1",
+      "break_start_min": 730.25,
+      "median_break_start_min": 730.5,
+      "signature": [
+        101.5,
+        110.25,
+        114.25,
+        121.25,
+        126.5,
+        133.25
+      ],
+      "member_count": 4,
+      "member_vehicles": [
+        "281474978241891",
+        "281474979465689",
+        "281474979530259",
+        "281474993829898"
+      ]
+    }
+  ]
+}
