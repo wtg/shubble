@@ -1277,6 +1277,29 @@ def compute_trips_from_vehicle_data(
                 "stop_etas": stop_etas,
             })
 
+    # Slot-dedup: if two completed trips land on the same (route, departure)
+    # slot (two shuttles both finished loops matching the same scheduled
+    # slot), keep only the one with the most recent actual_departure. The
+    # canonical trip_id is slot-identity, so the frontend dedup collapses
+    # these anyway — we dedup here to keep the response deterministic.
+    completed_by_slot: Dict[tuple, Dict] = {}
+    other_trips: List[Dict] = []
+    for t in trips:
+        if t.get("status") == "completed":
+            key = (t["route"], t["departure_time"])
+            existing = completed_by_slot.get(key)
+            if existing is None:
+                completed_by_slot[key] = t
+            else:
+                # Keep the later actual_departure
+                existing_ad = existing.get("actual_departure") or ""
+                new_ad = t.get("actual_departure") or ""
+                if new_ad > existing_ad:
+                    completed_by_slot[key] = t
+        else:
+            other_trips.append(t)
+    trips = other_trips + list(completed_by_slot.values())
+
     # Sort: active/past trips first, then by departure time
     trips.sort(key=lambda t: (t["vehicle_id"] is None, t["departure_time"]))
     return trips
