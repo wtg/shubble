@@ -1103,14 +1103,73 @@ def compute_trips_from_vehicle_data(
         trip["stop_etas"] = stop_etas
         trips.append(trip)
 
-        # NOTE: the previous "emit just-completed loop as extra DONE trip"
-        # block (that fired for ~2 min after a shuttle started a new loop
-        # matching the same slot) was removed because it surfaced as
-        # duplicate rows in the schedule UI — two entries at the same
-        # displayed time (one DONE, one LIVE). A natural completed trip
-        # still emits via the status transition earlier in this loop when
-        # a shuttle genuinely finishes all its future stops; that handles
-        # the "loop is done" display without a same-slot duplicate.
+        # When a shuttle just started a NEW loop that matches a DIFFERENT
+        # scheduled slot from the one its prior loop matched, emit the
+        # prior loop as a separate completed trip so the prior slot's
+        # row gets a DONE badge instead of disappearing (the new loop
+        # takes over a different slot's row with LIVE ETAs).
+        #
+        # Guard: skip when prior slot == current slot. That's the
+        # same-slot-refire regression we fixed earlier (shuttle loops
+        # faster than schedule gap, both loops match the same slot).
+        # In that case, showing both DONE + ACTIVE on one row reads as
+        # "duplicate trip" to users.
+        if prior_departure is not None and status == "active":
+            gap = (actual_departure - prior_departure).total_seconds()
+            age_since_new_loop = (now_utc - actual_departure).total_seconds()
+            # Only show the completed trip briefly (first ~5 min of the
+            # new loop) and only when the loops are separated by at
+            # least 3 min (GPS-noise guard).
+            if gap > 180 and age_since_new_loop < 300:
+                prior_matched: Optional[datetime] = None
+                prior_min_diff = float('inf')
+                for sched in sched_deps:
+                    diff = abs((sched - prior_departure).total_seconds())
+                    if diff < prior_min_diff and diff <= MATCH_WINDOW_SEC:
+                        prior_min_diff = diff
+                        prior_matched = sched
+                prior_display = prior_matched if prior_matched else prior_departure
+
+                # Slot-collision guard: skip the emission when the prior
+                # loop matches the SAME slot as the current loop. Keeps
+                # the active-row clean; user sees just the new LIVE row.
+                if prior_display == trip_time:
+                    continue
+
+                completed_trip = {
+                    "trip_id": f"{route}:{prior_display.isoformat()}",
+                    "route": route,
+                    "departure_time": prior_display.isoformat(),
+                    "actual_departure": prior_departure.isoformat(),
+                    "scheduled": prior_matched is not None,
+                    "vehicle_id": vid,
+                    "status": "completed",
+                }
+                completed_stop_etas = build_trip_etas(
+                    trip=completed_trip,
+                    vehicle_stops=[],
+                    last_arrivals=vehicle_las,
+                    stops_in_route=route_stops,
+                    now_utc=now_utc,
+                    loop_cutoff=prior_departure,
+                )
+                # Mark every stop passed — the loop is done.
+                for stop_key in route_stops:
+                    entry = completed_stop_etas.get(stop_key)
+                    if entry is None:
+                        completed_stop_etas[stop_key] = {
+                            "eta": None,
+                            "last_arrival": None,
+                            "passed": True,
+                            "passed_interpolated": True,
+                        }
+                    else:
+                        entry["eta"] = None
+                        if not entry.get("passed"):
+                            entry["passed_interpolated"] = True
+                        entry["passed"] = True
+                completed_trip["stop_etas"] = completed_stop_etas
+                trips.append(completed_trip)
 
     # Bind idle-at-Union shuttles to their next scheduled slot. For each
     # route that had an idle vid recorded in Pass 1, find the earliest
