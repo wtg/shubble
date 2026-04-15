@@ -1221,14 +1221,15 @@ async def _compute_vehicle_etas_and_arrivals(
             ping_ts = pd.to_datetime(coord_df['timestamp'], utc=True).to_numpy()
 
             R_sc = 6371000.0
-            phi1_sc = np.radians(ping_lats)
-            cos_phi1_sc = np.cos(phi1_sc)
 
             # Build the unique set of (stop_name, lat, lon) across all
             # routes, skipping duplicate-coord stops. First occurrence
             # wins (matches the existing tag-based block's
             # `if stop_name not in stop_coord_lookup`).
             seen_stops: set = set()
+            stop_names_sc: list = []
+            stop_lats_sc: list = []
+            stop_lons_sc: list = []
             for route_info in Stops.routes_data.values():
                 if not isinstance(route_info, dict):
                     continue
@@ -1243,28 +1244,45 @@ async def _compute_vehicle_etas_and_arrivals(
                     if not coord_sc:
                         continue
                     seen_stops.add(stop_name_sc)
-                    s_lat = float(coord_sc[0])
-                    s_lon = float(coord_sc[1])
+                    stop_names_sc.append(stop_name_sc)
+                    stop_lats_sc.append(float(coord_sc[0]))
+                    stop_lons_sc.append(float(coord_sc[1]))
 
-                    phi2_sc = np.radians(s_lat)
-                    dphi_sc = np.radians(s_lat - ping_lats)
-                    dlam_sc = np.radians(s_lon - ping_lons)
-                    a_sc = (
-                        np.sin(dphi_sc / 2.0) ** 2
-                        + cos_phi1_sc * np.cos(phi2_sc) * np.sin(dlam_sc / 2.0) ** 2
-                    )
-                    dists_sc = 2.0 * R_sc * np.arcsin(np.sqrt(np.clip(a_sc, 0.0, 1.0)))
-                    close_sc = dists_sc <= CLOSE_APPROACH_M
-                    if not close_sc.any():
+            if stop_names_sc and len(ping_lats) > 0:
+                # Broadcast haversine into a single (S, P) distance matrix
+                # instead of looping stops in Python. Same semantics as
+                # the per-stop block that was here — plan improvement #10.
+                stop_lats_arr = np.asarray(stop_lats_sc, dtype=float)
+                stop_lons_arr = np.asarray(stop_lons_sc, dtype=float)
+
+                phi1 = np.radians(ping_lats)                    # (P,)
+                phi2 = np.radians(stop_lats_arr)                # (S,)
+                dphi = phi2[:, None] - phi1[None, :]            # (S, P)
+                dlam = (
+                    np.radians(stop_lons_arr)[:, None]
+                    - np.radians(ping_lons)[None, :]
+                )                                               # (S, P)
+                a = (
+                    np.sin(dphi / 2.0) ** 2
+                    + np.cos(phi1)[None, :] * np.cos(phi2)[:, None]
+                    * np.sin(dlam / 2.0) ** 2
+                )
+                dists = 2.0 * R_sc * np.arcsin(np.sqrt(np.clip(a, 0.0, 1.0)))
+                close = dists <= CLOSE_APPROACH_M               # (S, P)
+
+                any_close_by_stop = close.any(axis=1)
+                for s_idx, stop_name_sc in enumerate(stop_names_sc):
+                    if not any_close_by_stop[s_idx]:
                         continue
+                    row_mask = close[s_idx]
 
                     # Per-vehicle: keep the LATEST within-60 m timestamp
                     # for this stop. Small N (typically <50 close pings
                     # per stop per day), so a Python loop with
                     # dict.setdefault is cheaper than building a temp
                     # DataFrame.
-                    vids_close = ping_vids[close_sc]
-                    ts_close = ping_ts[close_sc]
+                    vids_close = ping_vids[row_mask]
+                    ts_close = ping_ts[row_mask]
                     per_vid_max: Dict[str, pd.Timestamp] = {}
                     for vid_v, ts_v in zip(vids_close, ts_close):
                         prev = per_vid_max.get(vid_v)
