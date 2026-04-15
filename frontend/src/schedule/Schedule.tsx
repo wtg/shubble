@@ -855,21 +855,7 @@ export default function Schedule({
 
       <div className="timeline-container">
         <div className="timeline-content">
-          {(() => {
-            // Auto-expand a SINGLE current row to show secondary stops.
-            // Priority:
-            //   1. The row with the soonest ETA at the selected stop
-            //   2. Otherwise the first current row
-            // Other current rows collapse by default so users can compare
-            // shuttles at-a-glance without scrolling through huge lists.
-            const currentItems = visibleItems.filter(r => currentRowKeys.has(r.key));
-            let autoExpandKey: string | null = null;
-            if (currentItems.length > 0) {
-              // Prefer a row marked as soonest
-              const soonest = currentItems.find(r => soonestRowKeys.has(r.key));
-              autoExpandKey = (soonest ?? currentItems[0]).key;
-            }
-            return visibleItems.map((row) => {
+          {visibleItems.map((row) => {
           const { key: rowKey, time, timeDate, trip, originalIndex } = row;
           const isCurrentLoop = currentRowKeys.has(rowKey);
           // A row is "past-time" only if its scheduled time is in the past
@@ -877,9 +863,12 @@ export default function Schedule({
           // earlier than now are NOT past — they're currently running.
           const isPastTime = isToday && timeDate < now && !isCurrentLoop;
           const isExpanded = expandedLoops.has(rowKey);
-          // Only the auto-expanded current row shows stops by default.
-          // Other current rows collapse unless the user manually expands.
-          const showSecondary = (isCurrentLoop && rowKey === autoExpandKey) || isExpanded;
+          // All ACTIVE trips expanded by default so users can see each
+          // running shuttle's per-stop ETAs at a glance. Completed
+          // (DONE) and scheduled (future) rows stay collapsed unless
+          // the user manually expands them.
+          const isLiveActive = trip?.status === 'active';
+          const showSecondary = isLiveActive || isExpanded;
 
             // Get first stop info
             const firstStop = route?.STOPS?.[0];
@@ -982,24 +971,24 @@ export default function Schedule({
                 <div
                   className={`timeline-item first-stop ${isCurrentLoop ? 'current-loop' : ''} ${isPastTime && !isCurrentLoop ? 'past-time' : ''} ${soonestRowKeys.has(rowKey) ? 'soonest-arrival' : ''} ${firstStopIsSelected ? 'first-stop-selected' : ''}`}
                   role="button"
-                  tabIndex={isPastTime || (isCurrentLoop && rowKey === autoExpandKey) ? -1 : 0}
-                  aria-expanded={isExpanded}
+                  tabIndex={isPastTime || isLiveActive ? -1 : 0}
+                  aria-expanded={showSecondary}
                   onClick={() => {
-                    // Toggle expand unless this is a past row or the
-                    // auto-expanded current row (which stays open).
+                    // Toggle expand unless this is a past row or an
+                    // active trip (active rows are always expanded).
                     if (isPastTime) return;
-                    if (isCurrentLoop && rowKey === autoExpandKey) return;
+                    if (isLiveActive) return;
                     toggleExpand(rowKey);
                   }}
                   onKeyDown={(e) => {
                     if (isPastTime) return;
-                    if (isCurrentLoop && rowKey === autoExpandKey) return;
+                    if (isLiveActive) return;
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
                       toggleExpand(rowKey);
                     }
                   }}
-                  style={!isPastTime && !(isCurrentLoop && rowKey === autoExpandKey) ? POINTER_CURSOR_STYLE : undefined}
+                  style={!isPastTime && !isLiveActive ? POINTER_CURSOR_STYLE : undefined}
                 >
                   <div className="timeline-dot"></div>
                   <div className="timeline-content-item">
@@ -1074,7 +1063,7 @@ export default function Schedule({
                           </>
                         ) : null;
                       })()}
-                      {!isPastTime && (!isCurrentLoop || rowKey !== autoExpandKey) && (
+                      {!isPastTime && !isLiveActive && (
                         <span className="expand-indicator">{isExpanded ? '\u25B4' : '\u25BE'}</span>
                       )}
                     </div>
@@ -1290,8 +1279,7 @@ export default function Schedule({
                 })()}
               </div>
             );
-          });
-          })()}
+          })}
         </div>
 
         {/* Show full schedule link */}
