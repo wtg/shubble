@@ -64,6 +64,14 @@ export function getDepartureLabel(
 ): DepartureLabel | null {
   const fmt = (d: Date) => d.toLocaleTimeString(undefined, TIME_FORMAT);
 
+  // Deviation labels ("2 min early", "5 min late") only make sense for
+  // trips that actually departed. A dwelling shuttle waiting at Union
+  // has `actual_departure` set to its arrival timestamp, but hasn't
+  // LEFT — labeling it "2 min early" reads as "the shuttle departed
+  // 2 min early", which is wrong. Suppress for scheduled (waiting) and
+  // unassigned rows.
+  if (trip.status === 'scheduled' || trip.status === 'unassigned') return null;
+
   // --- Case 1: scheduled-matched trip ---
   if (trip.scheduled) {
     // actual_departure can be null (e.g. a scheduled row with no vehicle
