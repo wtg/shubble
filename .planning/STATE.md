@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-05)
 Phase: 3 of 4 (countdown & freshness)
 Plan: Not started
 Status: Executing phase 02
-Last activity: 2026-04-15 - Completed quick task 260415-emp: Fix-forward — strip :vid from trip_id; gate LIVE on active-only; DONE trips sort to top
+Last activity: 2026-04-15 - Completed quick task 260415-nm1: Simulate shuttle break behavior in test server (Sat/Sun/weekday patterns) [branch: test-server-break-simulation]
 
 Progress: [===.......] 30%
 
@@ -87,6 +87,7 @@ None yet.
 | 260415-3ec | Departure deviation labels: scheduled-matched shows actual+delta below scheduled time; off-schedule shows actual time + nearest-slot pill | 2026-04-15 | 9312cde | [260415-3ec-departure-deviation-labels-scheduled-mat](./quick/260415-3ec-departure-deviation-labels-scheduled-mat/) |
 | 260415-drf | Idle-at-Union shuttles bind to next scheduled slot + fix Colonie false-Passed (drop last_arrival < actual_departure) | 2026-04-15 | 8ab4142 | [260415-drf-idle-shuttle-scheduled-departure-context](./quick/260415-drf-idle-shuttle-scheduled-departure-context/) |
 | 260415-emp | Fix-forward: strip :vid from trip_id, gate LIVE badge on active-only, sort DONE trips to top of timeline | 2026-04-15 | 8fb3ed3 | [260415-emp-fix-forward-strip-trip-id-suffixes-gate-](./quick/260415-emp-fix-forward-strip-trip-id-suffixes-gate-/) |
+| 260415-nm1 | Simulate shuttle break behavior in test server (Sat/Sun/weekday patterns, off-route break spot, automatic rotation) [branch: test-server-break-simulation] | 2026-04-15 | ed48a1e | [260415-nm1-simulate-shuttle-break-behavior-in-test-](./quick/260415-nm1-simulate-shuttle-break-behavior-in-test-/) |
 
 ## Session Continuity
 
