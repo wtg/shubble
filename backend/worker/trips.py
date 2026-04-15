@@ -738,6 +738,19 @@ def compute_trips_from_vehicle_data(
     # Remaining vehicles (no match within window) become injected trips.
     assigned_scheduled_times: set = set()  # (route, iso) tuples of claimed schedule slots
 
+    # IDLE-SHUTTLE → NEXT-SCHEDULED-SLOT binding (quick task 260415-drf):
+    # When a shuttle is idle at the route's first stop for longer than
+    # IDLE_THRESHOLD_SEC (Filter 1 below), the idle-filter short-circuits
+    # trip emission — useful because we don't want to fabricate ETAs for
+    # a parked vehicle. BUT students looking at the schedule page can't
+    # see that a physical shuttle IS in fact parked at Union waiting for
+    # its upcoming slot. This dict lets Filter 1 record (route -> vid)
+    # BEFORE continue-ing, so the scheduled-trip emission loop below
+    # can bind the idle vid to its route's next unclaimed future slot.
+    # First idle vid per route wins (setdefault); additional idle vids
+    # on the same route stay invisible (no double-assignment).
+    idle_at_union_by_route: Dict[str, str] = {}
+
     # PERF: precompute a per-vehicle sorted-group lookup once so the
     # per-vehicle loop below doesn't re-scan the full dataframe N times.
     vehicle_groups: Dict[str, pd.DataFrame] = {}
@@ -837,6 +850,13 @@ def compute_trips_from_vehicle_data(
                     f"Skipping trip for vehicle {vid} on {route}: "
                     f"idle at {first_stop} for {idle_seconds:.0f}s"
                 )
+                # Remember the idle vid so its route's next scheduled
+                # slot gets this vid assigned downstream — students
+                # should see "#NNN waiting" on the upcoming row. First
+                # idle vid per route wins (setdefault); subsequent idle
+                # vids stay invisible, preserving the existing
+                # idle-filter semantics.
+                idle_at_union_by_route.setdefault(route, str(vid))
                 continue
 
             # Filter 2: sustained off-route presence (driver on break
@@ -901,6 +921,19 @@ def compute_trips_from_vehicle_data(
                                 f"max displacement only {max_dist:.0f}m in last "
                                 f"{NO_MOVEMENT_LOOKBACK_SEC}s"
                             )
+                            # IDLE-AT-UNION CAPTURE (quick task 260415-drf):
+                            # Filter 1 targets the "long-idle" case but in
+                            # practice a continuously-dwelling shuttle has
+                            # actual_departure ~= now (cluster_end of the
+                            # dwell is its latest ping), so Filter 1's
+                            # idle_seconds is ~0 and it never fires. Filter
+                            # 3 is the one that actually short-circuits a
+                            # real-world parked shuttle. We capture the vid
+                            # here too, gated on `at_first_stop` so only
+                            # Union-parked (not mid-route-parked) shuttles
+                            # are promoted to the next scheduled slot.
+                            if at_first_stop:
+                                idle_at_union_by_route.setdefault(route, str(vid))
                             continue
                     except Exception:
                         pass  # On any error, fall through and emit the trip
@@ -1150,6 +1183,32 @@ def compute_trips_from_vehicle_data(
                 completed_trip["stop_etas"] = completed_stop_etas
                 trips.append(completed_trip)
 
+    # Bind idle-at-Union shuttles to their next scheduled slot. For each
+    # route that had an idle vid recorded in Pass 1, find the earliest
+    # UNCLAIMED future scheduled departure for that route and remember
+    # (route, iso_dep) -> vid. The scheduled-trip emission loop below
+    # consumes this mapping when constructing the trip dict, so students
+    # see "#NNN waiting" on the upcoming row.
+    #
+    # IMPORTANT: we DO NOT add to assigned_scheduled_times here — the
+    # slot must still be emitted by the loop below (with vid populated).
+    # `assigned_scheduled_times` is for slots claimed by ACTIVE vehicles
+    # and causes the emission loop to skip them entirely. Idle-bound
+    # slots still emit; they just carry a vid instead of null.
+    idle_slot_assignments: Dict[tuple, str] = {}  # (route, iso_dep) -> vid
+    for _route, _idle_vid in idle_at_union_by_route.items():
+        _sched_deps = schedule.get(_route, [])
+        for _dep in sorted(_sched_deps):
+            if _dep <= now_utc:
+                continue
+            _slot_key = (_route, _dep.isoformat())
+            if _slot_key in assigned_scheduled_times:
+                # Slot already claimed by a real active/dwelling shuttle;
+                # idle vid steps aside and does not claim anything.
+                continue
+            idle_slot_assignments[_slot_key] = _idle_vid
+            break  # only the FIRST future slot per route claims this vid
+
     # Add scheduled trips that don't have a vehicle assigned yet
     # (so frontend can show upcoming departures with static offsets)
     for route, sched_deps in schedule.items():
@@ -1162,7 +1221,20 @@ def compute_trips_from_vehicle_data(
         for dep in sched_deps:
             if (route, dep.isoformat()) in assigned_scheduled_times:
                 continue
-            trip_id = f"{route}:{dep.isoformat()}"
+            # Look up any idle-vid binding for this slot (Task 260415-drf).
+            # When present, the scheduled row carries the waiting shuttle's
+            # vehicle_id so the UI can render a "waiting" pill.
+            vid_for_slot = idle_slot_assignments.get((route, dep.isoformat()))
+            # Trip_id stays stable for pure unassigned rows (falls back to
+            # the route:dep form that the frontend's dedup keys rely on in
+            # Schedule.tsx). When an idle vid claims the slot, append it
+            # to trip_id so the key is still unique if the same slot
+            # briefly appears with and without a vid across worker ticks.
+            trip_id = (
+                f"{route}:{dep.isoformat()}:{vid_for_slot}"
+                if vid_for_slot
+                else f"{route}:{dep.isoformat()}"
+            )
             # Only add future scheduled trips within a reasonable window
             if dep < now_utc - timedelta(minutes=5):
                 continue
@@ -1190,7 +1262,11 @@ def compute_trips_from_vehicle_data(
                 "departure_time": dep.isoformat(),
                 "actual_departure": None,
                 "scheduled": True,
-                "vehicle_id": None,
+                # When an idle shuttle is parked at Union and this is
+                # the next future scheduled slot for its route, bind
+                # it here so the UI can show "#NNN waiting" next to
+                # the row's vehicle badge. None for unassigned rows.
+                "vehicle_id": vid_for_slot,
                 "status": "scheduled" if dep > now_utc else "unassigned",
                 "stop_etas": stop_etas,
             })
