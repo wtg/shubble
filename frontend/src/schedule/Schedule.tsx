@@ -765,9 +765,23 @@ export default function Schedule({
   }
   if (anchorIdx === -1) anchorIdx = 0;
 
-  const visibleItems: TimelineRow[] = shouldTruncate
+  const baseVisibleItems: TimelineRow[] = shouldTruncate
     ? timelineRows.slice(Math.max(0, anchorIdx - 1), anchorIdx + 6)
     : timelineRows;
+
+  // Partition DONE (completed trips) to the top so users aren't confused
+  // by them interspersed with upcoming slots. Stable within each group:
+  // DONE rows keep their original chronological order, then active +
+  // scheduled rows follow in their original order.
+  const visibleItems: TimelineRow[] = (() => {
+    const done: TimelineRow[] = [];
+    const rest: TimelineRow[] = [];
+    for (const row of baseVisibleItems) {
+      if (row.trip?.status === 'completed') done.push(row);
+      else rest.push(row);
+    }
+    return done.length > 0 ? [...done, ...rest] : baseVisibleItems;
+  })();
 
   return (
     <div className="schedule-container">
