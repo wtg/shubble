@@ -1034,6 +1034,9 @@ def lstm_velocity_pipeline(
     logger.info("="*70)
 
     # Step 1: Get stops data (segmented, stops added, polyline distances)
+    if kwargs['min_segment_length'] is None:
+        kwargs['min_segment_length'] = 3
+
     stops_df = stops_pipeline(**kwargs)
 
     # Step 2: Add ETAs (filter rows after stop, calculate ETAs)
@@ -1505,6 +1508,7 @@ if __name__ == "__main__":
     lstm_velocity_parser.add_argument("--preprocess", action="store_true", help="Re-run preprocessing (triggers all downstream stages)")
     lstm_velocity_parser.add_argument("--load", action="store_true", help="Re-load data from database")
     lstm_velocity_parser.add_argument("--limit-polylines", type=int, default=None)
+    lstm_velocity_parser.add_argument("--min-segment-length", type=int, default=None)
     lstm_velocity_parser.add_argument("--window-size", type=int, default=5, help="Window size for cleaning NaN routes")
 
     # ARIMA Pipeline
