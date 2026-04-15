@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-05)
 Phase: 3 of 4 (countdown & freshness)
 Plan: Not started
 Status: Executing phase 02
-Last activity: 2026-04-15 - Completed quick task 260415-3ec: Departure deviation labels (scheduled-matched shows actual+delta; off-schedule shows actual time + nearest-slot pill)
+Last activity: 2026-04-15 - Autonomous perf-fix run: 8/10 improvements landed, 2 skipped (see .planning/autonomous/PROGRESS.md)
 
 Progress: [===.......] 30%
 
