@@ -45,6 +45,25 @@ export type StopETADetails = Record<string, {
 
 const TIME_FORMAT: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' };
 
+// Module-level cache: epoch-ms -> "h:MM AM" formatted string. Locale
+// formatting is ~0.5-1ms on mobile, and deriveStopEtasFromTrips runs it
+// ~50 trips × 5 stops per SSE push. Bounded eviction (half-clear on full)
+// keeps memory predictable.
+const _formattedTimeCache = new Map<number, string>();
+const _MAX_TIME_CACHE = 500;
+
+function formatTimeCached(ms: number): string {
+  const hit = _formattedTimeCache.get(ms);
+  if (hit !== undefined) return hit;
+  if (_formattedTimeCache.size >= _MAX_TIME_CACHE) {
+    const keys = Array.from(_formattedTimeCache.keys()).slice(0, _MAX_TIME_CACHE / 2);
+    for (const k of keys) _formattedTimeCache.delete(k);
+  }
+  const formatted = new Date(ms).toLocaleTimeString(undefined, TIME_FORMAT);
+  _formattedTimeCache.set(ms, formatted);
+  return formatted;
+}
+
 /**
  * Derive per-stop "next shuttle" and "last arrived" views from the trips
  * array. Replaces the deleted `/api/etas` endpoint's role in feeding map
@@ -85,7 +104,7 @@ export function deriveStopEtasFromTrips(trips: Trip[]): {
       if (contributesEta && info.eta) {
         const etaMs = new Date(info.eta).getTime();
         if (etaMs > now) {
-          const formatted = new Date(etaMs).toLocaleTimeString(undefined, TIME_FORMAT);
+          const formatted = formatTimeCached(etaMs);
           // Route-agnostic: earliest across all trips.
           const prevGlobal = earliestEtaMs[stop];
           if (prevGlobal === undefined || etaMs < prevGlobal) {
@@ -116,7 +135,7 @@ export function deriveStopEtasFromTrips(trips: Trip[]): {
       }
       if (info.last_arrival) {
         const laMs = new Date(info.last_arrival).getTime();
-        const formatted = new Date(laMs).toLocaleTimeString(undefined, TIME_FORMAT);
+        const formatted = formatTimeCached(laMs);
         // Route-agnostic: latest across all trips.
         const prevGlobal = latestLaMs[stop];
         if (prevGlobal === undefined || laMs > prevGlobal) {
