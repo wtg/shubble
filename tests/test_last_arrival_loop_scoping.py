@@ -861,3 +861,223 @@ def test_detect_vehicle_departures_includes_boundary_stops():
     assert new[0] < new[1] < new[2]
     # First cluster end is the initial dwell's last timestamp
     assert new[0] == base + timedelta(seconds=45)
+
+
+# ---- Task 260415-drf Task 2: idle-shuttle → next-scheduled-slot binding ----
+
+
+def _idle_vehicle_df(vid: str, route_stops, first_stop_coords, *,
+                     dwell_start: datetime, dwell_end: datetime,
+                     step_sec: int = 30) -> pd.DataFrame:
+    """Synthesize a processed vehicle_df for a shuttle that has been
+    idle at first_stop for the entire dwell window.
+
+    All rows share the first_stop lat/lon so:
+      - no-movement filter: max displacement is ~0m (Filter 3 fires)
+        EXCEPT we bypass it by keeping only a short no-movement window
+        relative to the window points spanning > NO_MOVEMENT_LOOKBACK_SEC.
+        Actually Filter 1 (idle at first_stop for > IDLE_THRESHOLD_SEC)
+        is what we want to fire. Filter 3 also firing is FINE — either
+        filter triggers `continue` before the scheduled-emission pass,
+        which is what we need. The idle_at_union record happens inside
+        Filter 1's branch, so we must ensure Filter 1 fires first.
+    """
+    rows = []
+    ts = dwell_start
+    while ts <= dwell_end:
+        rows.append({
+            "vehicle_id": vid,
+            "timestamp": ts,
+            "stop_name": route_stops[0],  # STUDENT_UNION
+            "latitude": first_stop_coords[0],
+            "longitude": first_stop_coords[1],
+            "route": "NORTH",
+            "polyline_idx": 0,
+            "speed_kmh": 0.0,
+        })
+        ts = ts + timedelta(seconds=step_sec)
+    df = pd.DataFrame(rows)
+    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
+    return df
+
+
+def test_idle_shuttle_assigned_to_next_scheduled_trip(monkeypatch):
+    """An idle shuttle at Union must be bound to its route's NEXT
+    future scheduled departure, so students can see that a physical
+    shuttle is parked and waiting for a specific slot.
+
+    Contract:
+      - The idle vehicle has no active/scheduled trip of its own
+        (idle-filter still fires — regression guard).
+      - Exactly one scheduled trip for NORTH in the future has
+        vehicle_id == the idle vehicle's vid (the NEXT future slot).
+      - The slot after that still has vehicle_id: null.
+      - Past scheduled slots (now-5min) are unaffected (don't match
+        the "future" clause).
+    """
+    from backend.worker import trips as trips_module
+
+    vid = "000000000000099"
+    route_data = Stops.routes_data["NORTH"]
+    north_stops = route_data["STOPS"]
+    first_stop = north_stops[0]
+    first_stop_coords = tuple(route_data[first_stop]["COORDINATES"])
+
+    now = datetime(2026, 4, 15, 14, 30, tzinfo=timezone.utc)
+    # Dwell window: past IDLE_THRESHOLD_SEC (1200s = 20m). We use 1800s.
+    dwell_start = now - timedelta(seconds=1800)
+    dwell_end = now
+    df = _idle_vehicle_df(vid, north_stops, first_stop_coords,
+                          dwell_start=dwell_start, dwell_end=dwell_end)
+
+    # Schedule: one past slot and two future slots for NORTH.
+    scheduled = {
+        "NORTH": [
+            now - timedelta(minutes=5),
+            now + timedelta(minutes=10),
+            now + timedelta(minutes=25),
+        ],
+    }
+
+    def _fake_schedule(_tz):
+        return scheduled
+
+    monkeypatch.setattr(trips_module, "_load_today_schedule", _fake_schedule)
+
+    vehicle_stop_etas = {
+        vid: {
+            "route": "NORTH",
+            # Idle shuttle has no forward ETAs — it's parked. But
+            # compute_per_stop_etas (not under test here) may still
+            # return a stop list for the next loop. Empty is OK — the
+            # idle filter fires before ETAs are used.
+            "stops": [],
+        }
+    }
+    last_arrivals_by_vehicle = {vid: {}}
+
+    trips = compute_trips_from_vehicle_data(
+        vehicle_stop_etas=vehicle_stop_etas,
+        last_arrivals_by_vehicle=last_arrivals_by_vehicle,
+        full_df=df,
+        routes_data=Stops.routes_data,
+        vehicle_ids=[vid],
+        now_utc=now,
+        campus_tz=timezone.utc,
+    )
+
+    # Regression guard: the idle vehicle still has NO active trip.
+    active_trips_for_vid = [
+        t for t in trips
+        if t.get("vehicle_id") == vid and t.get("status") == "active"
+    ]
+    assert len(active_trips_for_vid) == 0, (
+        f"Idle filter broke — vid {vid} got an active trip: "
+        f"{active_trips_for_vid}"
+    )
+
+    # Exactly ONE scheduled trip for NORTH in the future has our vid.
+    north_future_scheduled = [
+        t for t in trips
+        if t.get("route") == "NORTH"
+        and t.get("status") == "scheduled"
+        and t.get("departure_time") > now.isoformat()
+    ]
+    assigned = [t for t in north_future_scheduled if t.get("vehicle_id") == vid]
+    unassigned = [t for t in north_future_scheduled if t.get("vehicle_id") is None]
+
+    assert len(assigned) == 1, (
+        f"Expected exactly 1 NORTH future scheduled trip bound to "
+        f"idle vid {vid}, got {len(assigned)}: {assigned}"
+    )
+    # The assigned trip must be the NEAREST future slot (now + 10min).
+    assigned_dep = assigned[0]["departure_time"]
+    expected_dep = (now + timedelta(minutes=10)).isoformat()
+    assert assigned_dep == expected_dep, (
+        f"Expected binding to next slot ({expected_dep}), got {assigned_dep}"
+    )
+    # The slot after next must still be unassigned.
+    assert any(
+        t["departure_time"] == (now + timedelta(minutes=25)).isoformat()
+        and t["vehicle_id"] is None
+        for t in unassigned
+    ), (
+        f"Expected second future slot (+25m) to remain unassigned, "
+        f"got unassigned={unassigned}"
+    )
+
+
+def test_multiple_idle_shuttles_same_route_claim_sequentially(monkeypatch):
+    """Only ONE idle shuttle per route may claim the NEXT future slot;
+    further idle shuttles on the same route remain invisible.
+
+    Contract: if two vehicles are idle on NORTH at Union, exactly ONE
+    of them gets assigned to the next future scheduled trip. The
+    other stays invisible (no trip row) — consistent with existing
+    idle-filter behavior, and aligns with the single-row-per-slot
+    invariant (no double-booking).
+    """
+    from backend.worker import trips as trips_module
+
+    vid_a = "000000000000010"
+    vid_b = "000000000000020"
+    route_data = Stops.routes_data["NORTH"]
+    north_stops = route_data["STOPS"]
+    first_stop = north_stops[0]
+    first_stop_coords = tuple(route_data[first_stop]["COORDINATES"])
+
+    now = datetime(2026, 4, 15, 14, 30, tzinfo=timezone.utc)
+    dwell_start = now - timedelta(seconds=1800)
+    dwell_end = now
+
+    df_a = _idle_vehicle_df(vid_a, north_stops, first_stop_coords,
+                            dwell_start=dwell_start, dwell_end=dwell_end)
+    df_b = _idle_vehicle_df(vid_b, north_stops, first_stop_coords,
+                            dwell_start=dwell_start, dwell_end=dwell_end)
+    df = pd.concat([df_a, df_b], ignore_index=True)
+
+    scheduled = {
+        "NORTH": [
+            now + timedelta(minutes=10),
+            now + timedelta(minutes=25),
+            now + timedelta(minutes=40),
+        ],
+    }
+
+    def _fake_schedule(_tz):
+        return scheduled
+
+    monkeypatch.setattr(trips_module, "_load_today_schedule", _fake_schedule)
+
+    vehicle_stop_etas = {
+        vid_a: {"route": "NORTH", "stops": []},
+        vid_b: {"route": "NORTH", "stops": []},
+    }
+    last_arrivals_by_vehicle = {vid_a: {}, vid_b: {}}
+
+    trips = compute_trips_from_vehicle_data(
+        vehicle_stop_etas=vehicle_stop_etas,
+        last_arrivals_by_vehicle=last_arrivals_by_vehicle,
+        full_df=df,
+        routes_data=Stops.routes_data,
+        vehicle_ids=[vid_a, vid_b],
+        now_utc=now,
+        campus_tz=timezone.utc,
+    )
+
+    north_scheduled_future = [
+        t for t in trips
+        if t.get("route") == "NORTH"
+        and t.get("status") == "scheduled"
+        and t.get("departure_time") > now.isoformat()
+    ]
+    bound = [t for t in north_scheduled_future if t.get("vehicle_id") is not None]
+    # Exactly one binding across all future NORTH scheduled trips.
+    assert len(bound) == 1, (
+        f"Expected exactly 1 bound future NORTH scheduled trip "
+        f"(no double-assignment), got {len(bound)}: {bound}"
+    )
+    # Whichever vid won must be one of the two (both candidates are equivalent).
+    assert bound[0]["vehicle_id"] in (vid_a, vid_b)
+    # And it must be bound to the next future slot, not a later one.
+    assert bound[0]["departure_time"] == (now + timedelta(minutes=10)).isoformat()
