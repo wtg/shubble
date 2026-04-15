@@ -955,6 +955,19 @@ export default function Schedule({
                   <div className="timeline-content-item">
                     <div className="timeline-time">
                       <span className="timeline-time-text">{time}</span>
+                      {(() => {
+                        // Departure deviation label (260415-3ec).
+                        // Hugs the row anchor time so late/early/off-schedule
+                        // trips are clearly communicated without disturbing
+                        // row sort order or the expand/current-loop logic.
+                        const lbl = loopTrip ? getDepartureLabel(loopTrip, times, selectedDay, timeToDate) : null;
+                        if (!lbl) return null;
+                        return (
+                          <span className={`timeline-deviation deviation-${lbl.kind}`}>
+                            {lbl.text}
+                          </span>
+                        );
+                      })()}
                       {loopTrip?.vehicle_id && (
                         <span className="vehicle-badge" aria-label={`Shuttle ${loopTrip.vehicle_id.slice(-3)}`}>#{loopTrip.vehicle_id.slice(-3)}</span>
                       )}
