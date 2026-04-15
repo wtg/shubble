@@ -854,7 +854,7 @@ def compute_trips_from_vehicle_data(
             at_first_stop = pd.notna(latest_stop) and str(latest_stop) in union_stops
             not_moving = pd.isna(latest_speed) or float(latest_speed) <= 1.0
             if at_first_stop and not_moving and idle_seconds > IDLE_THRESHOLD_SEC:
-                logger.debug(
+                logger.info(
                     f"Skipping trip for vehicle {vid} on {route}: "
                     f"idle at {first_stop} for {idle_seconds:.0f}s"
                 )
@@ -875,7 +875,7 @@ def compute_trips_from_vehicle_data(
                     (recent['route'].isna() & recent['polyline_idx'].isna()).sum()
                 )
                 if off_route_count >= OFF_ROUTE_THRESHOLD:
-                    logger.debug(
+                    logger.info(
                         f"Skipping trip for vehicle {vid} on {route}: "
                         f"{off_route_count}/{len(recent)} recent points off-route"
                     )
@@ -931,13 +931,22 @@ def compute_trips_from_vehicle_data(
                         # a long dwell, because most of the window is old
                         # dwell points and the shuttle hasn't traveled
                         # >NO_MOVEMENT_DIST_M yet. Detects pairwise motion
-                        # within the short window so "Union → 50m away"
-                        # registers as moving.
-                        RECENT_MOTION_SEC = 60
-                        RECENT_MOTION_MIN_M = 20
+                        # within the short window so "Union → 20m away
+                        # 30s ago" already registers as moving.
+                        #
+                        # Thresholds deliberately aggressive: at 20mph
+                        # (9 m/s) a shuttle covers 10m in ~1s, so a 10m
+                        # bar over 30s catches even the slowest plausible
+                        # departure within a single worker cycle. GPS
+                        # jitter for a truly parked shuttle rarely
+                        # exceeds 5m, so the 10m bar is safely above
+                        # the noise floor.
+                        RECENT_MOTION_SEC = 30
+                        RECENT_MOTION_MIN_M = 10
                         recent_cutoff = latest_ts - timedelta(seconds=RECENT_MOTION_SEC)
                         recent_points = vehicle_df[vehicle_df_ts >= recent_cutoff]
                         recently_moving = False
+                        recent_max = 0.0
                         if len(recent_points) >= 2:
                             r_lats = recent_points['latitude'].astype(float).values
                             r_lons = recent_points['longitude'].astype(float).values
@@ -945,7 +954,7 @@ def compute_trips_from_vehicle_data(
                             r_lams = np.radians(r_lons)
                             # Pairwise distance from the most-recent point
                             # to each earlier recent point — cheap O(N)
-                            # with N small (~12 points in 60s at 5s polls).
+                            # with N small (~6 points in 30s at 5s polls).
                             r_dphi = r_phis - phi0
                             r_dlam = r_lams - lam0
                             r_a = (np.sin(r_dphi / 2) ** 2
@@ -954,11 +963,37 @@ def compute_trips_from_vehicle_data(
                             recent_max = float(np.nanmax(r_dists)) if len(r_dists) else 0.0
                             recently_moving = recent_max >= RECENT_MOTION_MIN_M
 
+                        # Last-two-ping motion check: if the most recent
+                        # two pings are >= LAST_PAIR_MIN_M apart, the
+                        # shuttle is moving RIGHT NOW regardless of any
+                        # earlier window stats. Catches the cycle-0 case
+                        # where the departure ping just landed.
+                        LAST_PAIR_MIN_M = 5
+                        if not recently_moving and len(vehicle_df) >= 2:
+                            prev = vehicle_df.iloc[-2]
+                            try:
+                                prev_lat = float(prev['latitude'])
+                                prev_lon = float(prev['longitude'])
+                                p_phi = np.radians(prev_lat)
+                                p_lam = np.radians(prev_lon)
+                                p_dphi = p_phi - phi0
+                                p_dlam = p_lam - lam0
+                                p_a = (np.sin(p_dphi / 2) ** 2
+                                       + np.cos(phi0) * np.cos(p_phi)
+                                       * np.sin(p_dlam / 2) ** 2)
+                                last_pair_dist = float(2 * R * np.arcsin(np.sqrt(max(p_a, 0.0))))
+                                if last_pair_dist >= LAST_PAIR_MIN_M:
+                                    recently_moving = True
+                                    recent_max = max(recent_max, last_pair_dist)
+                            except Exception:
+                                pass
+
                         if max_dist < NO_MOVEMENT_DIST_M and not recently_moving:
-                            logger.debug(
+                            logger.info(
                                 f"Skipping trip for vehicle {vid} on {route}: "
                                 f"max displacement only {max_dist:.0f}m in last "
-                                f"{NO_MOVEMENT_LOOKBACK_SEC}s"
+                                f"{NO_MOVEMENT_LOOKBACK_SEC}s "
+                                f"(recent {RECENT_MOTION_SEC}s max={recent_max:.0f}m)"
                             )
                             # IDLE-AT-UNION CAPTURE (quick task 260415-drf):
                             # Filter 1 targets the "long-idle" case but in
