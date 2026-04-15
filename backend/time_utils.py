@@ -24,13 +24,27 @@ def dev_now(tz=None) -> datetime:
 
 def get_campus_start_of_day():
     """
-    Get the start of the current day in campus timezone (America/New_York),
+    Get the current campus day-start timestamp in campus timezone,
     converted to UTC.
 
     Returns:
-        datetime: Midnight in campus timezone, converted to UTC
+        datetime: The most recent DAY_START in campus timezone, converted to UTC.
     """
-    now = dev_now(settings.CAMPUS_TZ)
-    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    now = dev_now(settings.CAMPUS_TZ)                                                                                                   
+                                     
+    # Use configurable DAY_START (not midnight) from settings                                                                           
+    day_start_time = settings.DAY_START                                                                                                 
+    day_start_campus_tz = now.replace(                                                                                                  
+      hour=day_start_time.hour,
+      minute=day_start_time.minute,
+      second=day_start_time.second,
+      microsecond=0,
+    )
 
-    return midnight.astimezone(timezone.utc)
+
+    # if day_start_campus_tz is in the future, subtract one day to get the most recent day start
+    if now < day_start_campus_tz:
+        # This works based on local tests
+        day_start_campus_tz = day_start_campus_tz - timedelta(days=1)
+
+    return day_start_campus_tz.astimezone(timezone.utc)

@@ -48,8 +48,10 @@ def to_epoch_seconds(
             f"got {df[input_column].dtype}"
         )
 
-    # Convert datetime to Unix epoch seconds, then subtract 2025 offset
-    df[output_column] = (df[input_column].astype('int64') / 1e9) - EPOCH_2025_OFFSET
+    # Convert to seconds since 2025-01-01 UTC using timedelta arithmetic.
+    # Avoids astype('int64') / 1e9 which is wrong in pandas 3+ (datetimes are microseconds, not nanoseconds).
+    epoch_2025 = pd.Timestamp('2025-01-01', tz='UTC')
+    df[output_column] = (pd.to_datetime(df[input_column], utc=True) - epoch_2025).dt.total_seconds()
 
 
 def add_closest_points(
