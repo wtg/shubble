@@ -362,6 +362,27 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Waiting pill — shown on scheduled rows when an idle shuttle is
+   parked at Union and bound to this upcoming departure. Visually
+   distinguishes "schedule says 2:30 AND a specific shuttle is waiting
+   for it" from "schedule says 2:30, no shuttle assigned yet". Amber
+   is distinct from the source-live blue (#578FCA) and the
+   trip-completed-badge gray (#7f8c8d) — it's its own semantic state. */
+.waiting-pill {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #b08c00;
+  background: rgba(176, 140, 0, 0.1);
+  border: 1px solid rgba(176, 140, 0, 0.3);
+  padding: 1px 5px;
+  border-radius: 3px;
+  vertical-align: middle;
+  margin-left: 6px;
+}
+
 /* Soonest arrival highlight — marks the trip row that arrives soonest
    at the user's selected stop, so with multiple shuttles they know
    which row to look at. */

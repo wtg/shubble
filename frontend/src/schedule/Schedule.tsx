@@ -989,6 +989,15 @@ export default function Schedule({
                       {loopTrip?.vehicle_id && (
                         <span className="vehicle-badge" aria-label={`Shuttle ${loopTrip.vehicle_id.slice(-3)}`}>#{loopTrip.vehicle_id.slice(-3)}</span>
                       )}
+                      {/* Waiting pill — a shuttle is parked at Union and
+                          bound to this upcoming scheduled departure.
+                          Shows only when status=scheduled AND a vehicle
+                          is assigned (idle-binding path from backend
+                          quick task 260415-drf). Active/completed rows
+                          keep the existing vehicle-badge only. */}
+                      {loopTrip?.status === 'scheduled' && loopTrip?.vehicle_id && (
+                        <span className="waiting-pill" aria-label="Shuttle waiting for this departure">waiting</span>
+                      )}
                       {showRelative && <span className="relative-time">in {minutesUntil} min</span>}
                       {isCompletedTrip && <span className="trip-completed-badge">DONE</span>}
                       {(() => {
