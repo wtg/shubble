@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-05)
 Phase: 3 of 4 (countdown & freshness)
 Plan: Not started
 Status: Executing phase 02
-Last activity: 2026-04-15 - Autonomous perf-fix run: 8/10 improvements landed, 2 skipped (see .planning/autonomous/PROGRESS.md)
+Last activity: 2026-04-15 - Completed quick task 260415-drf: Idle-at-Union shuttles bind to next scheduled slot + fix Colonie false-Passed (drop last_arrival < actual_departure)
 
 Progress: [===.......] 30%
 
@@ -85,6 +85,7 @@ None yet.
 | 260414-wx7 | Frontend defensive filter + polling safety net to prevent stale cross-route trips in browser state | 2026-04-15 | 287d662 | [260414-wx7-frontend-defensive-filter-polling-safety](./quick/260414-wx7-frontend-defensive-filter-polling-safety/) |
 | 260415-0vt | Drop boundary-stop la within 5 min of actual_departure to prevent dwell-leak false-Passed backfill on new loops | 2026-04-15 | 3e653a9 | [260415-0vt-drop-boundary-stop-la-within-5-min-of-ac](./quick/260415-0vt-drop-boundary-stop-la-within-5-min-of-ac/) |
 | 260415-3ec | Departure deviation labels: scheduled-matched shows actual+delta below scheduled time; off-schedule shows actual time + nearest-slot pill | 2026-04-15 | 9312cde | [260415-3ec-departure-deviation-labels-scheduled-mat](./quick/260415-3ec-departure-deviation-labels-scheduled-mat/) |
+| 260415-drf | Idle-at-Union shuttles bind to next scheduled slot + fix Colonie false-Passed (drop last_arrival < actual_departure) | 2026-04-15 | 8ab4142 | [260415-drf-idle-shuttle-scheduled-departure-context](./quick/260415-drf-idle-shuttle-scheduled-departure-context/) |
 
 ## Session Continuity
 
