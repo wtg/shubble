@@ -301,12 +301,21 @@ async def setup_schedule_shuttles(strict: bool = False) -> int:
                     synthetic_base + timedelta(minutes=5),
                 ]
 
-            # Staggered two shuttles per route: in legacy mode the
-            # first starts immediately and the second ~2 minutes later.
+            # Staggered two shuttles per route so they run ALTERNATING:
+            # while shuttle 1 is mid-loop, shuttle 2 is at/near Union
+            # (and vice versa). Offset = half the gap between the first
+            # two scheduled departures for this route (typically ~5 min
+            # for a 10-min schedule). Falls back to 300s (5 min) when
+            # we can't derive a gap.
+            #
             # In strict mode neither starts immediately — both wait
-            # for their first scheduled departure.
+            # for their first scheduled departure, so no stagger needed.
             su_coords = (42.730711, -73.676737)
-            half_loop_sec = 120  # 2 minutes
+            if len(future_deps) >= 2:
+                first_gap_sec = (future_deps[1] - future_deps[0]).total_seconds()
+                stagger_sec = max(60, int(first_gap_sec / 2))
+            else:
+                stagger_sec = 300  # 5 min default
             is_first_shuttle = True
             for shuttle_deps in [future_deps[0::2], future_deps[1::2]]:
                 if not shuttle_deps:
@@ -322,10 +331,12 @@ async def setup_schedule_shuttles(strict: bool = False) -> int:
                         shuttle.push_action(ShuttleAction.LOOPING, route=route_name)
                         is_first_shuttle = False
                     else:
-                        # Delay the second shuttle's start by half a loop
+                        # Delay the second shuttle's start by half the
+                        # scheduled-departure gap so the two shuttles
+                        # alternate through the loop instead of clustering.
                         def delayed_start(sh=shuttle, rn=route_name):
                             sh.push_action(ShuttleAction.LOOPING, route=rn)
-                        t = threading.Timer(half_loop_sec, delayed_start)
+                        t = threading.Timer(stagger_sec, delayed_start)
                         t.daemon = True
                         t.start()
 
