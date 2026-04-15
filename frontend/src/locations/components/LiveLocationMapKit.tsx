@@ -4,15 +4,30 @@ import '../styles/MapKitMap.css';
 import ShuttleIcon from "./ShuttleIcon";
 import config from "../../utils/config";
 
-// PERF: SVG shuttle icons only depend on (color, size), and both rarely
-// change. Cache the rendered data-URL so we don't pay the
-// renderToStaticMarkup + btoa cost per vehicle per 5s poll tick.
+// PERF: SVG shuttle icons only depend on (color, size, muted), so cache
+// by all three. The muted variant bakes grayscale + 50% opacity (per
+// D-03, quick task 260415-oeb) directly into the SVG data-URL — MapKit
+// ImageAnnotation doesn't expose a reliable CSS filter hook on the
+// rendered <img> element, so the filter lives inside the SVG itself.
 const _shuttleIconCache = new Map<string, string>();
-function getShuttleIconUrl(color: string, size: number): string {
-  const key = `${color}|${size}`;
+function getShuttleIconUrl(color: string, size: number, muted: boolean): string {
+  const key = `${color}|${size}|${muted ? "m" : "n"}`;
   const cached = _shuttleIconCache.get(key);
   if (cached) return cached;
-  const svg = renderToStaticMarkup(<ShuttleIcon color={color} size={size} />);
+  const inner = renderToStaticMarkup(<ShuttleIcon color={color} size={size} />);
+  let svg: string;
+  if (muted) {
+    // feColorMatrix type="saturate" 0.2 ≈ grayscale(0.8); group opacity
+    // 0.5 matches the D-03 spec. Strip the inner <svg> wrapper so we can
+    // re-wrap it in a filtered <g> while keeping the outer viewBox/size.
+    const innerBody = inner.replace(/^<svg[^>]*>/, "").replace(/<\/svg>$/, "");
+    svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 50 50">` +
+          `<defs><filter id="m"><feColorMatrix type="saturate" values="0.2"/></filter></defs>` +
+          `<g filter="url(#m)" opacity="0.5">${innerBody}</g>` +
+          `</svg>`;
+  } else {
+    svg = inner;
+  }
   const url = `data:image/svg+xml;base64,${btoa(svg)}`;
   _shuttleIconCache.set(key, url);
   return url;
@@ -220,8 +235,10 @@ export default function LiveLocationMapKit({
         return info.COLOR ?? "#444444";
       })();
 
-      // Cached SVG data URL — renders once per unique (color, size).
-      const svgShuttle = getShuttleIconUrl(routeColor, shuttleIconSize);
+      // Cached SVG data URL — renders once per unique (color, size, muted).
+      // Muted = on_break === true (Phase 1 break detection, D-03).
+      const muted = vehicle.on_break === true;
+      const svgShuttle = getShuttleIconUrl(routeColor, shuttleIconSize, muted);
 
       // Use predicted speed if available, otherwise fall back to reported speed
       // If showTrueLocation is true, set speed to 0 to disable animation

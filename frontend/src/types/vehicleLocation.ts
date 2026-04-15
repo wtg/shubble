@@ -19,6 +19,7 @@ export type VehicleLocationData = {
         id: string;
         name: string;
     } | null;
+    on_break?: boolean; // Phase 1 break detection (D-01) — true when now falls inside a >=35min scheduled-departure gap
 }
 
 // Per-stop ETA from /api/etas (new format)
