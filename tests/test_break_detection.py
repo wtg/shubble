@@ -203,12 +203,12 @@ class TestPredictOnBreak:
 
     @pytest.mark.asyncio
     async def test_stay_point_off_route_fires(self, monkeypatch):
+        """Shuttle parked at off-route break spot for 6 min → fires."""
         fixed = _utc(16, 30)
         monkeypatch.setattr("backend.fastapi.break_detection.dev_now",
                             lambda tz=None: fixed)
         monkeypatch.setattr("backend.fastapi.break_detection.get_campus_start_of_day",
                             lambda: _utc(4, 0))
-        # One Union visit 20 min ago (in-service gate), then 7 pings at break spot.
         rows = [_ping("V1", fixed - timedelta(minutes=20))]
         for i in range(6, -1, -1):
             rows.append(_ping("V1", fixed - timedelta(minutes=i),
@@ -217,13 +217,30 @@ class TestPredictOnBreak:
         assert result["V1"] is True
 
     @pytest.mark.asyncio
-    async def test_stay_point_on_route_suppressed(self, monkeypatch):
+    async def test_stay_point_on_route_not_union_fires(self, monkeypatch):
+        """Shuttle parked at COLONIE (on-route, not Union) for 6 min → fires.
+        This is the key improvement: on-route idling is now caught at T+5."""
         fixed = _utc(16, 30)
         monkeypatch.setattr("backend.fastapi.break_detection.dev_now",
                             lambda tz=None: fixed)
         monkeypatch.setattr("backend.fastapi.break_detection.get_campus_start_of_day",
                             lambda: _utc(4, 0))
-        # 7 pings at Union (on-route) — off-route gate blocks.
+        COLONIE_LAT, COLONIE_LON = 42.737048, -73.670397
+        rows = [_ping("V1", fixed - timedelta(minutes=20))]  # Union visit (in-service)
+        for i in range(6, -1, -1):
+            rows.append(_ping("V1", fixed - timedelta(minutes=i),
+                              lat=COLONIE_LAT, lon=COLONIE_LON))
+        result = await predict_on_break(["V1"], _StubSessionFactory(rows), TZ)
+        assert result["V1"] is True
+
+    @pytest.mark.asyncio
+    async def test_stay_point_at_union_suppressed(self, monkeypatch):
+        """Shuttle dwelling at Union (normal between-loop wait) → no fire."""
+        fixed = _utc(16, 30)
+        monkeypatch.setattr("backend.fastapi.break_detection.dev_now",
+                            lambda tz=None: fixed)
+        monkeypatch.setattr("backend.fastapi.break_detection.get_campus_start_of_day",
+                            lambda: _utc(4, 0))
         rows = [_ping("V1", fixed - timedelta(minutes=i))
                 for i in range(6, -1, -1)]
         result = await predict_on_break(["V1"], _StubSessionFactory(rows), TZ)

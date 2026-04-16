@@ -2,14 +2,15 @@
 
 Three independent signals, OR'd together:
 
-  1. Stay-point + off-route: shuttle parked >100m from any polyline for
-     5+ min. Fires at ~T+5min. Near-zero FP.
+  1. Stay-point NOT at Union: shuttle stationary for 5+ min anywhere
+     except Student Union. Fires at ~T+5min. Normal stop dwell is ~30s;
+     only Union has multi-minute dwells between loops. This is the
+     primary signal — catches both on-route and off-route breaks.
 
   2. CUSUM on loop cadence: per-shuttle adaptive threshold based on
-     recent Union-return intervals. If a shuttle normally loops every
-     12 min, fires at ~18 min when the gap exceeds mu + slack + h.
-     Replaces the archetype matcher (which failed because break timing
-     is driven by dispatcher decisions, not morning rhythm).
+     recent Union-return intervals. Backup for cases where the shuttle
+     is slowly moving (not stationary) but not completing loops.
+     Fires at ~T+20-25min (floor=20min above fleet P95).
 
   3. Hard fallback: >=40 min since last Union visit during 8-20 local.
      Safety net — always catches by T+40.
@@ -243,8 +244,8 @@ async def predict_on_break(
     """Per-vehicle on_break flag.
 
     Three signals, OR'd:
-      1. Stay-point + off-route (T+5-10min for off-route parking)
-      2. CUSUM on loop cadence (T+18-25min adaptive, for on-route idling)
+      1. Stay-point NOT at Union (T+5min for any stationary break)
+      2. CUSUM on loop cadence (T+20-25min adaptive, backup)
       3. Hard fallback (T+40min safety net)
     """
     if not vehicle_ids:
@@ -268,14 +269,21 @@ async def predict_on_break(
         )
         in_active_window = FALLBACK_ACTIVE_START_MIN <= now_local_min <= FALLBACK_ACTIVE_END_MIN
 
-        # Signal 1: stay-point + off-route.
+        # Signal 1: stay-point NOT at Union.
+        # A shuttle stationary for 5+ min ANYWHERE except Union is on
+        # break — normal stop dwell is ~30s; only Union has multi-minute
+        # dwells between loops. Replaces the old off-route gate which
+        # missed on-route idling (e.g. parked at COLONIE for 20 min).
         # Gated on has-visited-Union-today (in-service check).
         stay_point_fires = False
         if since_union_min is not None:
             sp = _detect_active_stay_point(all_pings, now_utc)
             if sp is not None:
                 _, c_lat, c_lon, _dur = sp
-                if _min_dist_to_any_route_km(c_lat, c_lon) > STAY_POINT_OFF_ROUTE_KM:
+                not_at_union = _haversine_m_scalar(
+                    c_lat, c_lon, UNION_LAT, UNION_LON
+                ) > UNION_RADIUS_M
+                if not_at_union:
                     stay_point_fires = True
 
         # Signal 2: CUSUM on loop cadence.
