@@ -85,6 +85,16 @@ ARCHETYPE_CONFIRM_GAP_MIN = 15
 # per morning departure slot". Above that, fallback must carry the load.
 MAX_MATCH_RMSE = 30.0
 
+# Stay-point detection (Li-Zheng variant). A vehicle is "in a stay-point"
+# if all of its recent pings are within STAY_POINT_RADIUS_M of an anchor
+# AND the span is at least STAY_POINT_MIN_DWELL_SEC. Combined with the
+# off-route check below, this fires ~T+5min into a break regardless of
+# archetype match (vs T+15 archetype / T+40 fallback).
+STAY_POINT_RADIUS_M = 75.0
+STAY_POINT_MIN_DWELL_SEC = 5 * 60
+STAY_POINT_OFF_ROUTE_KM = 0.1  # 100m — well outside any polyline
+STAY_POINT_LOOKBACK_SEC = 15 * 60  # analyze last 15 min of pings
+
 
 _ARCHETYPES_CACHE: Dict[int, List[dict]] = {}
 
@@ -131,6 +141,73 @@ def _compress_dwells(times: List[datetime]) -> List[datetime]:
         if (t - out[-1]).total_seconds() > DWELL_GAP_SEC:
             out.append(t)
     return out
+
+
+def _min_dist_to_any_route_km(lat: float, lon: float) -> float:
+    """Return min haversine distance (km) from the point to any route
+    polyline. When Stops.get_closest_point returns None (ambiguous — the
+    point is close to multiple routes), treat as 0km (definitely on-route).
+    This is used as the off-route gate for stay-point detection.
+    """
+    # Import lazily so tests can patch at module scope without dragging
+    # the full Stops class initialization into import time.
+    from shared.stops import Stops
+
+    result = Stops.get_closest_point((lat, lon))
+    if result is None or result[0] is None:
+        return 0.0
+    return float(result[0])
+
+
+def _detect_active_stay_point(
+    pings: List[tuple],
+    now_utc: datetime,
+) -> Optional[tuple[datetime, float, float, float]]:
+    """Li-Zheng stay-point detector (backward walk from latest ping).
+
+    pings: list of (ts_utc, lat, lon), chronologically any order.
+    Returns (start_ts, centroid_lat, centroid_lon, duration_sec) if the
+    most recent pings form a dwell within STAY_POINT_RADIUS_M lasting at
+    least STAY_POINT_MIN_DWELL_SEC. Otherwise None.
+
+    Only pings within STAY_POINT_LOOKBACK_SEC of now_utc are considered
+    — a stay-point from earlier in the day is irrelevant to "is the
+    shuttle currently on break?".
+    """
+    if not pings:
+        return None
+
+    # Keep only recent pings, sort by ts ascending.
+    cutoff = now_utc.timestamp() - STAY_POINT_LOOKBACK_SEC
+    recent: List[tuple] = []
+    for ts, lat, lon in pings:
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        if ts.timestamp() >= cutoff:
+            recent.append((ts, lat, lon))
+    if len(recent) < 2:
+        return None
+    recent.sort(key=lambda p: p[0])
+
+    # Anchor = latest ping. Walk backward; stop at first ping outside radius.
+    anchor_ts, anchor_lat, anchor_lon = recent[-1]
+    start_idx = len(recent) - 1
+    for i in range(len(recent) - 1, -1, -1):
+        ts, lat, lon = recent[i]
+        if _haversine_m_scalar(lat, lon, anchor_lat, anchor_lon) > STAY_POINT_RADIUS_M:
+            break
+        start_idx = i
+
+    start_ts = recent[start_idx][0]
+    duration = (anchor_ts - start_ts).total_seconds()
+    if duration < STAY_POINT_MIN_DWELL_SEC:
+        return None
+
+    # Centroid = mean of coordinates in the dwell window.
+    span = recent[start_idx:]
+    c_lat = sum(p[1] for p in span) / len(span)
+    c_lon = sum(p[2] for p in span) / len(span)
+    return (start_ts, c_lat, c_lon, duration)
 
 
 def _extract_signature(visits_local: List[datetime]) -> List[float]:
@@ -290,8 +367,11 @@ async def predict_on_break(
 
     sigs: Dict[str, np.ndarray] = {}
     last_union_by_vid: Dict[str, Optional[datetime]] = {}
+    pings_by_vid: Dict[str, List[tuple]] = {}
     for vid in vehicle_ids:
-        compressed_local, last_utc = _union_visits_local(visits_by_vid.get(vid, []), campus_tz)
+        all_pings = visits_by_vid.get(vid, [])
+        pings_by_vid[vid] = all_pings
+        compressed_local, last_utc = _union_visits_local(all_pings, campus_tz)
         sigs[vid] = np.asarray(_extract_signature(compressed_local), dtype=float)
         last_union_by_vid[vid] = last_utc
 
@@ -333,6 +413,23 @@ async def predict_on_break(
             ):
                 fallback = True
 
-        result[vid] = predicted or fallback
+        # Stay-point + off-route signal. Fires at ~T+5min into a break
+        # regardless of archetype match, because the conjunction
+        # "stationary AND off-route" is unachievable for a working
+        # shuttle running its loop.
+        #
+        # Gated on "has visited Union today" so garage/depot idling
+        # before the shuttle enters service doesn't trigger a break
+        # flag. Once a shuttle has visited Union, it's considered
+        # in-service and any subsequent off-route dwell is break-like.
+        stay_point_fires = False
+        if since_union_min is not None:
+            sp = _detect_active_stay_point(pings_by_vid.get(vid, []), now_utc)
+            if sp is not None:
+                _, c_lat, c_lon, _duration = sp
+                if _min_dist_to_any_route_km(c_lat, c_lon) > STAY_POINT_OFF_ROUTE_KM:
+                    stay_point_fires = True
+
+        result[vid] = predicted or fallback or stay_point_fires
 
     return result

@@ -28,8 +28,12 @@ from backend.fastapi.break_archetype import (
     _signature_cost,
     _extract_signature,
     _compress_dwells as bak_compress_dwells,
+    _detect_active_stay_point,
+    _min_dist_to_any_route_km,
     MAX_MATCH_RMSE,
     SIGNATURE_LEN,
+    STAY_POINT_RADIUS_M,
+    STAY_POINT_MIN_DWELL_SEC,
     predict_on_break,
     reset_archetype_cache,
     _ARCHETYPES_CACHE,
@@ -291,3 +295,137 @@ class TestPredictOnBreak:
         sf = _StubSessionFactory(rows)
         result = await predict_on_break(["V1"], sf, TZ)
         assert result["V1"] is True
+
+
+# ---------- Stay-point detection + off-route gate ----------
+
+
+# Test-server's break spot, known to be >400m off both NORTH and WEST polylines.
+BREAK_SPOT_LAT = 42.7265
+BREAK_SPOT_LON = -73.672
+
+# A point on-route (the Union coordinate).
+UNION_LAT = 42.730711
+UNION_LON = -73.676737
+
+
+class TestStayPoint:
+    def test_insufficient_dwell_returns_none(self):
+        # 2 pings 1 min apart at the same coord — below STAY_POINT_MIN_DWELL_SEC.
+        now = datetime(2025, 9, 22, 16, 0, tzinfo=timezone.utc)
+        pings = [
+            (now - timedelta(minutes=1), BREAK_SPOT_LAT, BREAK_SPOT_LON),
+            (now, BREAK_SPOT_LAT, BREAK_SPOT_LON),
+        ]
+        assert _detect_active_stay_point(pings, now) is None
+
+    def test_stay_point_detected_after_5min_dwell(self):
+        now = datetime(2025, 9, 22, 16, 0, tzinfo=timezone.utc)
+        # 6 pings over 6 minutes, all within 20m of break spot.
+        pings = [
+            (now - timedelta(minutes=i), BREAK_SPOT_LAT, BREAK_SPOT_LON)
+            for i in range(6, -1, -1)
+        ]
+        sp = _detect_active_stay_point(pings, now)
+        assert sp is not None
+        start_ts, clat, clon, duration = sp
+        assert duration >= STAY_POINT_MIN_DWELL_SEC
+        assert abs(clat - BREAK_SPOT_LAT) < 1e-6
+        assert abs(clon - BREAK_SPOT_LON) < 1e-6
+
+    def test_moving_shuttle_not_detected_as_stay_point(self):
+        # Pings moving >100m apart → walk-back breaks early, duration < threshold.
+        now = datetime(2025, 9, 22, 16, 0, tzinfo=timezone.utc)
+        pings = []
+        for i in range(6, -1, -1):
+            # Each ping ~300m east of the previous (roughly 0.003 deg lon = ~250m at this lat).
+            pings.append((
+                now - timedelta(minutes=i),
+                42.73,
+                -73.68 + i * 0.003,
+            ))
+        assert _detect_active_stay_point(pings, now) is None
+
+    def test_old_pings_ignored(self):
+        # Stay at break spot 30 min ago, then nothing recent → not an ACTIVE stay point.
+        now = datetime(2025, 9, 22, 16, 0, tzinfo=timezone.utc)
+        pings = [
+            (now - timedelta(minutes=30 + i), BREAK_SPOT_LAT, BREAK_SPOT_LON)
+            for i in range(6)
+        ]
+        assert _detect_active_stay_point(pings, now) is None
+
+
+class TestOffRouteGate:
+    def test_on_route_point_zero_km(self):
+        # Union stop is on the WEST and NORTH polylines.
+        d = _min_dist_to_any_route_km(UNION_LAT, UNION_LON)
+        assert d < 0.05  # Within 50m of the polyline (ambiguity likely → 0)
+
+    def test_off_route_break_spot_exceeds_100m(self):
+        d = _min_dist_to_any_route_km(BREAK_SPOT_LAT, BREAK_SPOT_LON)
+        assert d > 0.1  # >100m off every route
+
+    def test_far_away_point_exceeds_1km(self):
+        # Something clearly off-campus.
+        d = _min_dist_to_any_route_km(42.80, -73.60)
+        assert d > 1.0
+
+
+class TestStayPointIntegration:
+    def setup_method(self):
+        reset_archetype_cache()
+
+    def teardown_method(self):
+        reset_archetype_cache()
+
+    @pytest.mark.asyncio
+    async def test_stay_point_off_route_fires_on_break(self, monkeypatch):
+        _ARCHETYPES_CACHE[0] = []  # no archetype match possible
+
+        # Mon 12:30 local; vehicle parked at break spot for last 6 min;
+        # last Union visit was 20 min ago (below fallback 40-min threshold).
+        fixed_utc = datetime(2025, 9, 22, 16, 30, tzinfo=timezone.utc)
+        monkeypatch.setattr(
+            "backend.fastapi.break_archetype.dev_now",
+            lambda tz=None: fixed_utc if tz else fixed_utc.replace(tzinfo=None),
+        )
+        monkeypatch.setattr(
+            "backend.fastapi.break_archetype.get_campus_start_of_day",
+            lambda: datetime(2025, 9, 22, 4, 0, tzinfo=timezone.utc),
+        )
+
+        # Historical: one Union visit 20 min ago.
+        rows = [("V1", fixed_utc - timedelta(minutes=20), UNION_LAT, UNION_LON)]
+        # Recent: 7 pings at the break spot, one per minute up to now.
+        for i in range(6, -1, -1):
+            rows.append(("V1", fixed_utc - timedelta(minutes=i), BREAK_SPOT_LAT, BREAK_SPOT_LON))
+
+        sf = _StubSessionFactory(rows)
+        result = await predict_on_break(["V1"], sf, TZ)
+        assert result["V1"] is True
+
+    @pytest.mark.asyncio
+    async def test_stay_point_on_route_does_not_fire(self, monkeypatch):
+        """Shuttle dwelling AT Union (e.g. waiting at the stop) should NOT
+        be flagged as on_break from stay-point alone — off-route gate fails."""
+        _ARCHETYPES_CACHE[0] = []
+
+        fixed_utc = datetime(2025, 9, 22, 16, 30, tzinfo=timezone.utc)
+        monkeypatch.setattr(
+            "backend.fastapi.break_archetype.dev_now",
+            lambda tz=None: fixed_utc if tz else fixed_utc.replace(tzinfo=None),
+        )
+        monkeypatch.setattr(
+            "backend.fastapi.break_archetype.get_campus_start_of_day",
+            lambda: datetime(2025, 9, 22, 4, 0, tzinfo=timezone.utc),
+        )
+
+        # Last Union visit = now (still at Union). 7 pings all at Union.
+        rows = [
+            ("V1", fixed_utc - timedelta(minutes=i), UNION_LAT, UNION_LON)
+            for i in range(6, -1, -1)
+        ]
+        sf = _StubSessionFactory(rows)
+        result = await predict_on_break(["V1"], sf, TZ)
+        assert result["V1"] is False
