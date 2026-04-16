@@ -53,10 +53,13 @@ CUSUM_EMA_ALPHA = 0.3
 CUSUM_SLACK_MIN = 1.0
 # Threshold (minutes): accumulated excess above (mu + slack) to fire.
 # With slack=1 and threshold=5, fires at mu + 6 min — e.g. 18 min for
-# a 12-min-loop shuttle. Back-test: 38-min gaps have 85% precision
-# within break window; CUSUM fires ~15-20 min earlier than 40-min
-# fallback for average-cadence shuttles.
+# a 12-min-loop shuttle.
 CUSUM_THRESHOLD_MIN = 5.0
+# Absolute floor (minutes): CUSUM never fires below this regardless of
+# personal mu. Prevents false positives from fast shuttles hitting a
+# single slow loop. Set above fleet-wide P95 of normal inter-visit
+# intervals (16.2 min in historical data) with margin.
+CUSUM_MIN_FIRE_MIN = 20.0
 # Default assumed loop time (minutes) before a shuttle has enough
 # observations. Matches the all-weekday median inter-visit interval.
 CUSUM_DEFAULT_MU_MIN = 12.0
@@ -199,7 +202,7 @@ def _cusum_fires(
         ]
         mu = _compute_personal_mu(intervals)
 
-    fire_threshold = mu + CUSUM_SLACK_MIN + CUSUM_THRESHOLD_MIN
+    fire_threshold = max(mu + CUSUM_SLACK_MIN + CUSUM_THRESHOLD_MIN, CUSUM_MIN_FIRE_MIN)
     return elapsed > fire_threshold, mu, elapsed
 
 

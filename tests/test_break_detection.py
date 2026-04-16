@@ -45,32 +45,33 @@ def _utc(hh: int, mm: int, ss: int = 0) -> datetime:
 
 
 class TestCUSUM:
-    def test_fires_when_gap_exceeds_mu_plus_slack_plus_threshold(self):
+    def test_fires_when_gap_exceeds_floor(self):
         # 4 Union visits at 10-min intervals → mu ≈ 10 min.
+        # Adaptive threshold = 10+1+5 = 16, but floor is 20.
+        # Elapsed = 21 min > 20 floor → fires.
         visits = [_utc(11, 0), _utc(11, 10), _utc(11, 20), _utc(11, 30)]
-        # Now = 11:47 → elapsed = 17 min. mu~10, threshold = 10+1+5 = 16. 17 > 16 → fires.
-        fires, mu, elapsed = _cusum_fires(visits, _utc(11, 47))
+        fires, mu, elapsed = _cusum_fires(visits, _utc(11, 51))
         assert fires is True
         assert 9 <= mu <= 11
 
-    def test_does_not_fire_within_normal_cadence(self):
+    def test_does_not_fire_within_floor(self):
+        # Same visits, elapsed = 19 min < 20 floor → doesn't fire.
         visits = [_utc(11, 0), _utc(11, 10), _utc(11, 20), _utc(11, 30)]
-        # Now = 11:40 → elapsed = 10 min. 10 < 16 → doesn't fire.
-        fires, mu, elapsed = _cusum_fires(visits, _utc(11, 40))
+        fires, mu, elapsed = _cusum_fires(visits, _utc(11, 49))
         assert fires is False
 
     def test_uses_default_mu_with_few_visits(self):
         # Only 2 visits (below CUSUM_MIN_VISITS=3). Uses default mu=12.
+        # Adaptive = 12+1+5 = 18, floor = 20. Elapsed = 21 > 20 → fires.
         visits = [_utc(11, 0), _utc(11, 10)]
-        # Now = 11:29 → elapsed = 19 min. Default threshold = 12+1+5 = 18. 19 > 18 → fires.
-        fires, mu, elapsed = _cusum_fires(visits, _utc(11, 29))
+        fires, mu, elapsed = _cusum_fires(visits, _utc(11, 31))
         assert fires is True
         assert mu == CUSUM_DEFAULT_MU_MIN
 
-    def test_default_mu_no_fire_within_threshold(self):
+    def test_default_mu_no_fire_within_floor(self):
+        # Elapsed = 19 < floor 20 → no fire.
         visits = [_utc(11, 0), _utc(11, 10)]
-        # Now = 11:27 → elapsed = 17 min. Default threshold = 18. 17 < 18 → no fire.
-        fires, _, _ = _cusum_fires(visits, _utc(11, 27))
+        fires, _, _ = _cusum_fires(visits, _utc(11, 29))
         assert fires is False
 
     def test_excludes_break_gaps_from_mu(self):
@@ -176,9 +177,10 @@ def _ping(vid, ts, lat=UNION_LAT, lon=UNION_LON):
 class TestPredictOnBreak:
     @pytest.mark.asyncio
     async def test_cusum_fires_on_extended_gap(self, monkeypatch):
-        # 4 Union visits at 10-min intervals, then 17-min gap → CUSUM fires.
-        # Times in UTC: 15:00-15:30 UTC = 11:00-11:30 ET (inside 8-20 active window).
-        fixed = _utc(15, 47)
+        # 4 Union visits at 10-min intervals, then 21-min gap.
+        # mu~10, adaptive=16, floor=20. 21 > 20 → fires.
+        # 15:00-15:30 UTC = 11:00-11:30 ET (inside 8-20 active window).
+        fixed = _utc(15, 51)
         monkeypatch.setattr("backend.fastapi.break_detection.dev_now",
                             lambda tz=None: fixed)
         monkeypatch.setattr("backend.fastapi.break_detection.get_campus_start_of_day",
