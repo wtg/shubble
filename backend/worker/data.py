@@ -16,6 +16,7 @@ from backend.database import get_db
 from backend.config import settings
 from backend.cache import cache, soft_clear_namespace
 from backend.function_timer import timed
+from backend.pubsub import publish_update
 from ml.cache import get_polyline_dir
 from shared.stops import Stops
 
@@ -409,6 +410,9 @@ async def save_predictions(etas: Dict[str, List[Tuple[str, datetime]]], next_sta
         await session.commit()
         await soft_clear_namespace("etas")
         await soft_clear_namespace("velocities")
+        # Notify SSE clients that new predictions are available
+        await publish_update("etas")
+        await publish_update("velocities")
 
 @timed
 async def generate_and_save_predictions(vehicle_ids: List[str]):
