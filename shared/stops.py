@@ -292,7 +292,16 @@ class Stops:
             if target_polyline is None:
                 # Check if closest route is significantly closer than others
                 if len(closest_routes) > 1 and closest_routes[1][0] - closest_routes[0][0] < threshold:
-                    # If not significantly closer (ambiguous), return None
+                    # Ambiguous — but check if all ambiguous entries are from the same route.
+                    # This happens at stop boundaries where poly[i] and poly[i+1] share an
+                    # endpoint: both have distance 0, but the route is unambiguous.
+                    best_dist = closest_routes[0][0]
+                    ambiguous_routes = {r[2] for r in closest_routes if r[0] - best_dist < threshold}
+                    if len(ambiguous_routes) == 1:
+                        # Same-route ambiguity: return route but None for polyline/segment
+                        dist, closest_pt, route_name, _, _ = closest_routes[0]
+                        return dist, closest_pt, route_name, None, None
+                    # Genuinely different routes are equally close — truly ambiguous
                     return None, None, None, None, None
             return closest_routes[0]
         return None, None, None, None, None
