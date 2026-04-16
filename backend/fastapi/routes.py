@@ -33,7 +33,7 @@ from backend.fastapi.utils import (
     _load_today_gap_windows,
     _in_schedule_gap,
 )
-from backend.fastapi.break_archetype import predict_on_break
+from backend.fastapi.break_detection import predict_on_break
 from shared.stops import Stops
 
 logger = logging.getLogger(__name__)
