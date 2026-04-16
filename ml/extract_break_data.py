@@ -78,15 +78,20 @@ def _compress_dwells(times: List[datetime]) -> List[datetime]:
 # --─ DB extraction --------------------------------------------------─
 
 
-async def _fetch_from_db(days: int) -> pd.DataFrame:
+async def _fetch_from_db(
+    since: datetime | None,
+    until: datetime | None,
+    weekdays_only: bool,
+) -> pd.DataFrame:
     """Pull vehicle_locations from the production database.
 
-    Filters:
-      - Last `days` days
-      - Weekdays only (Mon-Fri, computed server-side via EXTRACT(dow))
+    Filters (server-side via EXTRACT for efficiency):
+      - [optional] timestamp >= since
+      - [optional] timestamp < until
+      - [optional] Weekdays only (Mon-Fri) via EXTRACT(dow)
       - Service hours only (7 AM - 10 PM campus local)
 
-    Returns a DataFrame with columns: vehicle_id, latitude, longitude, timestamp (UTC).
+    Defaults: pull ALL historical rows. The caller decides semester bounds.
     """
     from backend.database import create_async_db_engine, create_session_factory
     from sqlalchemy import text
@@ -94,25 +99,36 @@ async def _fetch_from_db(days: int) -> pd.DataFrame:
     engine = create_async_db_engine()
     session_factory = create_session_factory(engine)
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    # Build query incrementally so we don't send NULL bounds to Postgres.
+    where_clauses = [
+        "EXTRACT(hour FROM timestamp AT TIME ZONE 'America/New_York') "
+        "BETWEEN :start_hour AND :end_hour"
+    ]
+    params: dict = {
+        "start_hour": SERVICE_START_HOUR,
+        "end_hour": SERVICE_END_HOUR,
+    }
+    if since is not None:
+        where_clauses.append("timestamp >= :since")
+        params["since"] = since
+    if until is not None:
+        where_clauses.append("timestamp < :until")
+        params["until"] = until
+    if weekdays_only:
+        where_clauses.append(
+            "EXTRACT(dow FROM timestamp AT TIME ZONE 'America/New_York') "
+            "BETWEEN 1 AND 5"
+        )
 
-    query = text("""
-        SELECT vehicle_id, latitude, longitude, timestamp
-        FROM vehicle_locations
-        WHERE timestamp >= :cutoff
-          AND EXTRACT(dow FROM timestamp AT TIME ZONE 'America/New_York')
-              BETWEEN 1 AND 5  -- Mon=1 .. Fri=5
-          AND EXTRACT(hour FROM timestamp AT TIME ZONE 'America/New_York')
-              BETWEEN :start_hour AND :end_hour
-        ORDER BY vehicle_id, timestamp
-    """)
+    query = text(
+        "SELECT vehicle_id, latitude, longitude, timestamp "
+        "FROM vehicle_locations "
+        f"WHERE {' AND '.join(where_clauses)} "
+        "ORDER BY vehicle_id, timestamp"
+    )
 
     async with session_factory() as session:
-        result = await session.execute(query, {
-            "cutoff": cutoff,
-            "start_hour": SERVICE_START_HOUR,
-            "end_hour": SERVICE_END_HOUR,
-        })
+        result = await session.execute(query, params)
         rows = result.all()
 
     await engine.dispose()
@@ -337,21 +353,86 @@ def analyze(df: pd.DataFrame) -> None:
     print()
 
 
+# Preset semester date ranges. Adjust per calendar year.
+SEMESTER_PRESETS = {
+    "fall2025":   ("2025-08-25", "2025-12-20"),
+    "spring2026": ("2026-01-12", "2026-05-15"),
+    "fall2026":   ("2026-08-24", "2026-12-19"),
+    "summer2026": ("2026-05-20", "2026-08-20"),
+}
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Extract break-detection calibration data")
+    parser = argparse.ArgumentParser(
+        description="Extract break-detection calibration data",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=f"""\
+Examples:
+  # Pull everything in DB:
+  python -m ml.extract_break_data --all
+  # Pull a specific semester:
+  python -m ml.extract_break_data --semester spring2026
+  # Pull a custom date range:
+  python -m ml.extract_break_data --since 2026-01-12 --until 2026-05-15
+  # Pull last N days (default 60):
+  python -m ml.extract_break_data --days 60
+  # Use the historical CSV instead:
+  python -m ml.extract_break_data --csv
+
+Known semester presets: {", ".join(SEMESTER_PRESETS.keys())}
+""",
+    )
     parser.add_argument("--csv", action="store_true",
-                        help="Use historical CSV instead of DB")
-    parser.add_argument("--days", type=int, default=LOOKBACK_DAYS,
-                        help=f"Days of history to pull (default: {LOOKBACK_DAYS})")
+                        help="Use ml/cache/shared/locations_raw.csv instead of DB")
+    parser.add_argument("--all", action="store_true",
+                        help="Pull ALL rows in the DB (no date bounds)")
+    parser.add_argument("--days", type=int,
+                        help="Pull last N days (overrides default)")
+    parser.add_argument("--semester", choices=sorted(SEMESTER_PRESETS),
+                        help="Pull a named semester's date range")
+    parser.add_argument("--since", type=str,
+                        help="Start date (YYYY-MM-DD)")
+    parser.add_argument("--until", type=str,
+                        help="End date exclusive (YYYY-MM-DD)")
+    parser.add_argument("--include-weekends", action="store_true",
+                        help="Include Saturday/Sunday (default: weekdays only)")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
     if args.csv:
         df = _load_from_csv()
-    else:
-        df = asyncio.run(_fetch_from_db(args.days))
+        analyze(df)
+        return
 
+    # Resolve date bounds — precedence: --since/--until > --semester > --days > --all > default.
+    since: datetime | None = None
+    until: datetime | None = None
+    if args.since:
+        since = datetime.fromisoformat(args.since).replace(tzinfo=timezone.utc)
+    if args.until:
+        until = datetime.fromisoformat(args.until).replace(tzinfo=timezone.utc)
+    if args.semester and not (args.since or args.until):
+        s, u = SEMESTER_PRESETS[args.semester]
+        since = datetime.fromisoformat(s).replace(tzinfo=timezone.utc)
+        until = datetime.fromisoformat(u).replace(tzinfo=timezone.utc)
+    if args.days and not (args.since or args.semester):
+        since = datetime.now(timezone.utc) - timedelta(days=args.days)
+    if not (args.all or args.days or args.since or args.semester):
+        # Default to LOOKBACK_DAYS if nothing specified.
+        since = datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)
+
+    logger.info(
+        f"Querying DB: since={since.date() if since else 'ALL'} "
+        f"until={until.date() if until else 'now'} "
+        f"weekdays_only={not args.include_weekends}"
+    )
+
+    df = asyncio.run(_fetch_from_db(
+        since=since,
+        until=until,
+        weekdays_only=not args.include_weekends,
+    ))
     analyze(df)
 
 
