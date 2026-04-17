@@ -10,7 +10,7 @@
 
 /* Header Section */
 .schedule-header {
-  margin-bottom: 30px;
+  margin-bottom: 12px;
 }
 
 .schedule-header h2 {
@@ -23,8 +23,8 @@
 
 .schedule-controls {
   display: flex;
-  flex-wrap: wrap;
-  gap: 20px;
+  flex-direction: column;
+  gap: 10px;
   align-items: flex-end;
 }
 
@@ -466,7 +466,10 @@
   font-size: 0.9em;
 }
 
-/* Next Shuttle Summary */
+/* Next Shuttle Summary — sticky so students don't lose their countdown
+   when scrolling through the timeline. Background is opaque (not the
+   semi-transparent one used in the regular state) so timeline rows don't
+   bleed through while the summary is pinned. */
 .next-shuttle-summary {
   font-size: 15px;
   color: #2c3e50;
@@ -475,7 +478,14 @@
   border: 1px solid #d4e1f0;
   border-left: 3px solid #578FCA;
   border-radius: 6px;
-  background: rgba(87, 143, 202, 0.06);
+  background: #f1f6fc;
+  position: sticky;
+  top: 60px; /* clear the sticky header (~60px tall) */
+  z-index: 999; /* below header (1000), above timeline content */
+  /* Subtle shadow only appears when the element is actually pinned
+     (scrolled past its natural position). Helps reinforce the floating
+     affordance without being heavy when the page is at the top. */
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
 }
 
 .summary-note {
@@ -503,11 +513,16 @@
   margin-left: 8px;
 }
 
-/* Expand Indicator */
+/* Expand Indicator — sized up from the tiny 12px unicode triangle so
+   it's actually visible at a glance on mobile, and darker for contrast
+   against the row background. Students previously missed the affordance. */
 .expand-indicator {
-  color: #bdc3c7;
-  font-size: 12px;
+  color: #7f8c8d;
+  font-size: 16px;
   margin-left: 8px;
+  line-height: 1;
+  display: inline-block;
+  transition: transform 0.15s ease;
 }
 
 /* Show Full Schedule Link */
@@ -730,15 +745,7 @@
   }
 
   .schedule-controls {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 15px;
-  }
-
-  .control-group {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
+    gap: 8px;
   }
 
   .schedule-dropdown {

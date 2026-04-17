@@ -13,6 +13,9 @@ import {
   type StopETADetails,
 } from '../hooks/useTrips';
 import { useClosestStop } from '../hooks/useClosestStop';
+import { useCurrentTime } from '../hooks/useCurrentTime';
+import { useDataFreshness } from '../hooks/useDataFreshness';
+import { FreshnessIndicator } from '../components/FreshnessIndicator';
 
 const aggregatedSchedule: AggregatedScheduleType = rawAggregatedSchedule as unknown as AggregatedScheduleType;
 const routeData = rawRouteData as unknown as ShuttleRouteData;
@@ -31,8 +34,8 @@ const POINTER_CURSOR_STYLE = { cursor: 'pointer' as const };
 //
 // Returned strings:
 //   scheduled-matched, on-time (|delta| <= 1 min):    null (no label)
-//   scheduled-matched, late:    "(H:MM, +N min late)"
-//   scheduled-matched, early:   "(H:MM, N min early)"
+//   scheduled-matched, late:    "+N min late"
+//   scheduled-matched, early:   "N min early"
 //   off-schedule, <=30 min from nearest slot (early): "↑ N min early to H:MM slot"
 //   off-schedule, <=30 min from nearest slot (late):  "↓ N min late from H:MM slot"
 //   off-schedule, >30 min from any slot:              "Unscheduled"
@@ -85,15 +88,17 @@ export function getDepartureLabel(
     // Dead zone: |delta| <= 1 min → no label (on-time)
     if (Math.abs(deltaMin) <= 1) return null;
 
-    const actualStr = fmt(new Date(actualMs));
+    // Label no longer embeds the actual H:MM — the row anchor already
+    // shows the scheduled time, and students can compute the actual
+    // time from the delta. Less text, same information.
     if (deltaMin > 0) {
       return {
-        text: `(${actualStr}, +${deltaMin} min late)`,
+        text: `+${deltaMin} min late`,
         kind: 'matched-late',
       };
     }
     return {
-      text: `(${actualStr}, ${Math.abs(deltaMin)} min early)`,
+      text: `${Math.abs(deltaMin)} min early`,
       kind: 'matched-early',
     };
   }
@@ -162,6 +167,9 @@ type ScheduleProps = {
   /** Optional externally-derived per-stop views. Recomputed internally if omitted. */
   stopETAs?: StopETAs;
   stopETADetails?: StopETADetails;
+  /** Optional last-update timestamp for the freshness indicator (TRUST-04).
+   *  Provide alongside `trips` so we don't need to re-derive from here. */
+  lastUpdateAt?: Date | null;
 };
 
 export default function Schedule({
@@ -170,6 +178,7 @@ export default function Schedule({
   trips: externalTrips,
   stopETAs: externalStopETAs,
   stopETADetails: externalDetails,
+  lastUpdateAt: externalLastUpdateAt,
 }: ScheduleProps) {
   if (typeof setSelectedRoute !== 'function') {
     throw new Error('setSelectedRoute must be a function');
@@ -186,14 +195,25 @@ export default function Schedule({
   const [selectedStop, setSelectedStop] = useState<string | null>(
     () => localStorage.getItem('shubble-stop')
   );
-  const [tick, setTick] = useState(0); // for countdown re-renders
+  // Minute-granular "now" from a RAF ticker (DISP-01). Re-renders only
+  // on minute-boundary crossings — the countdown display is rounded to
+  // whole minutes, so per-frame ticks don't cause per-frame re-renders.
+  // Also handles tab-backgrounding resilience (visibilitychange resync).
+  useCurrentTime('minute');
 
   // Trips are the single source of truth. If the parent already polled
   // and passed them in (the common case via LiveLocation.tsx), reuse
   // them; otherwise set up our own poll.
   const hasExternalTrips = externalTrips !== undefined;
-  const internalTrips = useTrips(!config.staticETAs && !hasExternalTrips);
-  const trips: Trip[] = hasExternalTrips ? externalTrips! : internalTrips;
+  const internalResult = useTrips(!config.staticETAs && !hasExternalTrips);
+  const trips: Trip[] = hasExternalTrips ? externalTrips! : internalResult.trips;
+  // Source the freshness timestamp from whichever `useTrips` actually
+  // ran — external caller's result when trips are piped in from parent,
+  // our own hook's result when Schedule polls itself.
+  const lastUpdateAt: Date | null = hasExternalTrips
+    ? (externalLastUpdateAt ?? null)
+    : internalResult.lastUpdateAt;
+  const freshnessState = useDataFreshness(lastUpdateAt);
 
   // Derive the per-stop ETAs/details for legacy fallback branches that still
   // reference `liveETAs` / `liveETADetails`. Prefer externally-derived data
@@ -281,16 +301,9 @@ export default function Schedule({
     localStorage.setItem(`shubble-stop:${safeSelectedRoute}`, stopId);
   }, [safeSelectedRoute]);
 
-  // Re-render countdown every 5 seconds, matching the worker cycle so
-  // sub-minute ETA shifts are visible to the user. The render cost is
-  // higher than a 30s tick, but users perceived the 30s variant as
-  // "not updating with each Samsara update". Countdown responsiveness
-  // trumps render-budget savings for an app where freshness is the
-  // core value.
-  useEffect(() => {
-    const interval = setInterval(() => setTick(t => t + 1), 5_000);
-    return () => clearInterval(interval);
-  }, []);
+  // Countdown re-renders are handled by useCurrentTime('minute') above
+  // (RAF-driven, minute-bucketed, tab-backgrounding aware). Replaces
+  // the old setInterval(5_000) which caused drift after tab switches.
 
   // Update schedule and routeNames when selectedDay changes
   useEffect(() => {
@@ -651,9 +664,6 @@ export default function Schedule({
   let nextETAMinutes: number | null = null;
   let nextETATime: string | null = null;
 
-  // Suppress unused variable warning — tick drives re-renders for countdown freshness
-  void tick;
-
   // Track which trip rows have the soonest ETA for the selected stop, so
   // we can visually highlight them. When two shuttles have nearly-identical
   // ETAs at the same stop, both should be marked as "next arrivals" —
@@ -675,46 +685,56 @@ export default function Schedule({
     return lastStopData?.OFFSET ?? 20;
   })();
 
+  // Student Union is the route origin: every loop starts and ends here,
+  // so projecting a running shuttle's "next loop arrival at Union" is
+  // misleading — what students actually want is the next scheduled
+  // DEPARTURE from Union. At downstream stops, the projection is useful
+  // because a shuttle that just passed is genuinely the next predictor
+  // (even if it takes a full loop to return).
+  const isOriginSelected = !!(selectedStop && route?.STOPS?.[0] === selectedStop);
+
   if (selectedStop && selectedDay === now.getDay()) {
     const nowMs = devNowMs();
 
-    // First pass: find the absolute earliest ETA at selectedStop.
-    // If a trip's ETA for this stop is stale or the shuttle has already
-    // passed it, project the next-loop ETA by adding the route's loop
-    // duration so the student still sees a useful countdown.
+    // First pass (skipped at origin stops): find the absolute earliest
+    // ETA at selectedStop. If a trip's ETA for this stop is stale or the
+    // shuttle has already passed it, project the next-loop ETA by adding
+    // the route's loop duration so the student still sees a useful countdown.
     const rowETAs: Array<{ rowKey: string; etaMs: number; etaISO: string; isProjected: boolean }> = [];
-    for (const row of timelineRows) {
-      if (!row.trip?.vehicle_id || !row.trip.stop_etas[selectedStop]) continue;
-      // Completed trips are DONE — their shuttle has finished this loop
-      // and any subsequent arrivals belong to a NEW trip row, not this
-      // one. Projecting a next-loop ETA onto a completed trip caused
-      // the row to get both the DONE badge and the NEXT highlight,
-      // which contradicted the trip's finished state.
-      if (row.trip.status === 'completed') continue;
-      const stopInfo = row.trip.stop_etas[selectedStop];
-      const etaISO = stopInfo.eta;
-      let etaMs: number | null = null;
-      let etaForDisplay: string | null | undefined = etaISO;
-      let isProjected = false;
+    if (!isOriginSelected) {
+      for (const row of timelineRows) {
+        if (!row.trip?.vehicle_id || !row.trip.stop_etas[selectedStop]) continue;
+        // Completed trips are DONE — their shuttle has finished this loop
+        // and any subsequent arrivals belong to a NEW trip row, not this
+        // one. Projecting a next-loop ETA onto a completed trip caused
+        // the row to get both the DONE badge and the NEXT highlight,
+        // which contradicted the trip's finished state.
+        if (row.trip.status === 'completed') continue;
+        const stopInfo = row.trip.stop_etas[selectedStop];
+        const etaISO = stopInfo.eta;
+        let etaMs: number | null = null;
+        let etaForDisplay: string | null | undefined = etaISO;
+        let isProjected = false;
 
-      const rawEtaMs = etaISO ? new Date(etaISO).getTime() : null;
-      const baseMs = stopInfo.last_arrival ? new Date(stopInfo.last_arrival).getTime() : rawEtaMs;
+        const rawEtaMs = etaISO ? new Date(etaISO).getTime() : null;
+        const baseMs = stopInfo.last_arrival ? new Date(stopInfo.last_arrival).getTime() : rawEtaMs;
 
-      if (stopInfo.passed || stopInfo.last_arrival || (rawEtaMs !== null && rawEtaMs <= nowMs)) {
-        // Stop is either passed or the ETA is stale — project to next loop
-        if (baseMs !== null) {
-          etaMs = baseMs + routeLoopMinutes * 60_000;
-          etaForDisplay = new Date(etaMs).toISOString();
-          isProjected = true;
+        if (stopInfo.passed || stopInfo.last_arrival || (rawEtaMs !== null && rawEtaMs <= nowMs)) {
+          // Stop is either passed or the ETA is stale — project to next loop
+          if (baseMs !== null) {
+            etaMs = baseMs + routeLoopMinutes * 60_000;
+            etaForDisplay = new Date(etaMs).toISOString();
+            isProjected = true;
+          }
+        } else if (rawEtaMs !== null) {
+          etaMs = rawEtaMs;
+          etaForDisplay = etaISO;
         }
-      } else if (rawEtaMs !== null) {
-        etaMs = rawEtaMs;
-        etaForDisplay = etaISO;
-      }
 
-      if (etaMs !== null && etaMs > nowMs && etaForDisplay) {
-        rowETAs.push({ rowKey: row.key, etaMs, etaISO: etaForDisplay, isProjected });
-        if (etaMs < soonestETAMs) soonestETAMs = etaMs;
+        if (etaMs !== null && etaMs > nowMs && etaForDisplay) {
+          rowETAs.push({ rowKey: row.key, etaMs, etaISO: etaForDisplay, isProjected });
+          if (etaMs < soonestETAMs) soonestETAMs = etaMs;
+        }
       }
     }
 
@@ -765,7 +785,7 @@ export default function Schedule({
   }
 
   // --- Truncated view ---
-  const shouldTruncate = isToday && !showFullSchedule && timelineRows.length > 7;
+  const shouldTruncate = isToday && !showFullSchedule && timelineRows.length > 10;
 
   // Find the index of the first current-row (earliest active shuttle) as
   // the anchor for the truncation window. If there's no active row, fall
@@ -777,7 +797,7 @@ export default function Schedule({
   if (anchorIdx === -1) anchorIdx = 0;
 
   const baseVisibleItems: TimelineRow[] = shouldTruncate
-    ? timelineRows.slice(Math.max(0, anchorIdx - 1), anchorIdx + 6)
+    ? timelineRows.slice(Math.max(0, anchorIdx - 2), anchorIdx + 8)
     : timelineRows;
 
   // Partition DONE (completed trips) to the top so users aren't confused
@@ -797,10 +817,11 @@ export default function Schedule({
   return (
     <div className="schedule-container">
       <div className="schedule-header">
-        <h2>Schedule</h2>
+        {/* "Schedule" h2 removed — redundant with the nav context and
+            URL path. Gains ~40px vertical real estate on mobile. */}
         <div className="schedule-controls">
           <div className="control-group">
-            <label htmlFor='weekday-dropdown'>Day:</label>
+            <label htmlFor='weekday-dropdown'>Day</label>
             <select id='weekday-dropdown' className="schedule-dropdown" value={selectedDay} onChange={handleDayChange}>
               {daysOfTheWeek.map((day, index) => (
                 <option key={index} value={index}>{day}</option>
@@ -808,8 +829,7 @@ export default function Schedule({
             </select>
           </div>
           <div className="control-group">
-            <label htmlFor='route-toggle'>Route:</label>
-            <div className="route-toggle">
+            <div className="route-toggle" role="group" aria-label="Route">
               {routeNames.map((routeName, index) => (
                 <button
                   key={index}
@@ -825,16 +845,26 @@ export default function Schedule({
       </div>
 
       {/* Countdown summary */}
-      {isToday && selectedStopName && nextETAMinutes !== null && (
+      {isToday && selectedStopName && nextETAMinutes !== null && (() => {
+        // Origin stop (Student Union): scheduled times are departure
+        // times, not arrivals. Downstream stops (COLONIE, etc.): scheduled
+        // times are arrivals. Wording tracks that distinction.
+        const nowVerb = isOriginSelected ? 'departing now' : 'arriving now';
+        const prefix = isOriginSelected
+          ? 'Next departure from '
+          : soonestIsProjected ? 'Next loop at ' : 'Next at ';
+        return (
         <div className="next-shuttle-summary" role="status" aria-live="polite">
           {nextETAMinutes === 0 && !soonestIsProjected ? (
             <>
-              Shuttle <strong>arriving now</strong> at{' '}
+              Shuttle <strong>{nowVerb}</strong>{' '}
+              {isOriginSelected ? 'from ' : 'at '}
               <span className="summary-stop">{selectedStopName}</span>
+              <FreshnessIndicator state={freshnessState} />
             </>
           ) : (
             <>
-              {soonestIsProjected ? 'Next loop at ' : 'Next at '}
+              {prefix}
               <span className="summary-stop">{selectedStopName}</span>
               {' '}in <strong>{
                 nextETAMinutes >= 60
@@ -842,7 +872,8 @@ export default function Schedule({
                   : `${nextETAMinutes} min`
               }</strong>
               {nextETATime && <span className="summary-time"> ({nextETATime})</span>}
-              {soonestIsProjected && (
+              <FreshnessIndicator state={freshnessState} />
+              {soonestIsProjected && !isOriginSelected && (
                 <div className="summary-note">
                   Shuttle just passed — this is the next loop.
                 </div>
@@ -850,7 +881,8 @@ export default function Schedule({
             </>
           )}
         </div>
-      )}
+        );
+      })()}
 
 
       <div className="timeline-container">
@@ -875,8 +907,17 @@ export default function Schedule({
             const firstStopData = firstStop ? route[firstStop] as ShuttleStopData : null;
 
             // Relative time label (upcoming departures within 30 min)
-            const minutesUntil = Math.round((timeDate.getTime() - now.getTime()) / 60_000);
-            const showRelative = isToday && !isPastTime && !isCurrentLoop && minutesUntil > 0 && minutesUntil <= 30;
+            // DISP-01: countdown label. "in N min" for >=1 min, then switches
+            // to "Departing" at the origin stop (Student Union — scheduled
+            // times are route-departure times, not arrivals) or "Arriving"
+            // at downstream stops. Rounded UP so we don't flip to "0 min"
+            // before the minute actually ticks over.
+            const msUntil = timeDate.getTime() - now.getTime();
+            const minutesUntil = Math.ceil(msUntil / 60_000);
+            const showRelative = isToday && !isPastTime && !isCurrentLoop && msUntil > 0 && minutesUntil <= 30;
+            // Timeline rows show the scheduled time for the route as a whole,
+            // which is the departure time from the route's first stop (Union).
+            const countdownLabel = msUntil <= 60_000 ? 'Departing' : `in ${minutesUntil} min`;
 
             // This row's trip (null for scheduled-only rows with no vehicle)
             const loopTrip: Trip | null = trip;
@@ -1007,19 +1048,17 @@ export default function Schedule({
                           </span>
                         );
                       })()}
-                      {loopTrip?.vehicle_id && (
-                        <span className="vehicle-badge" aria-label={`Shuttle ${loopTrip.vehicle_id.slice(-3)}`}>#{loopTrip.vehicle_id.slice(-3)}</span>
-                      )}
-                      {/* Waiting pill — a shuttle is parked at Union and
+                      {/* Ready pill — a shuttle is parked at Union and
                           bound to this upcoming scheduled departure.
                           Shows only when status=scheduled AND a vehicle
                           is assigned (idle-binding path from backend
-                          quick task 260415-drf). Active/completed rows
-                          keep the existing vehicle-badge only. */}
+                          quick task 260415-drf). "Ready" reads more
+                          naturally to students than the dispatcher-
+                          jargon "waiting". */}
                       {loopTrip?.status === 'scheduled' && loopTrip?.vehicle_id && (
-                        <span className="waiting-pill" aria-label="Shuttle waiting for this departure">waiting</span>
+                        <span className="waiting-pill" aria-label="Shuttle ready for this departure">ready</span>
                       )}
-                      {showRelative && <span className="relative-time">in {minutesUntil} min</span>}
+                      {showRelative && <span className="relative-time">{countdownLabel}</span>}
                       {isCompletedTrip && <span className="trip-completed-badge">DONE</span>}
                       {(() => {
                         if (isCompletedTrip) return null;
@@ -1034,12 +1073,12 @@ export default function Schedule({
                         if (isLiveTrip && loopTrip && firstStop) {
                           const ti = getTripStopInfo(firstStop);
                           if (ti?.etaTime) {
-                            return (
-                              <>
-                                <span className="live-eta"> - ETA: {ti.etaTime}</span>
-                                <span className="source-badge source-live">LIVE</span>
-                              </>
-                            );
+                            // LIVE badge alone — the concrete ETA time used
+                            // to appear here as "- ETA: 12:19" but duplicated
+                            // the info already encoded in the row anchor +
+                            // deviation label. The badge alone signals "this
+                            // row is running with live data".
+                            return <span className="source-badge source-live">LIVE</span>;
                           }
                           return null;
                         }
@@ -1050,17 +1089,14 @@ export default function Schedule({
                         // No loopTrip at all — extremely rare. Legacy fallback:
                         // if the global activeETAs has a live prediction for
                         // this route's first stop AND this is the current loop,
-                        // show it. Only fires on routes where the backend
-                        // hasn't produced a trip for this row.
+                        // show the LIVE badge only (same clutter-reduction
+                        // reasoning as above).
                         const fRouteKey = `${firstStop}:${safeSelectedRoute}`;
                         const fEta = activeETAs[fRouteKey] || activeETAs[firstStop];
                         const fDetails = liveETADetails[fRouteKey] || liveETADetails[firstStop];
                         const fMatch = !fDetails?.route || fDetails.route === safeSelectedRoute;
                         return isCurrentLoop && fEta && fMatch ? (
-                          <>
-                            <span className="live-eta"> - ETA: {fEta}</span>
-                            <span className="source-badge source-live">LIVE</span>
-                          </>
+                          <span className="source-badge source-live">LIVE</span>
                         ) : null;
                       })()}
                       {!isPastTime && !isLiveActive && (

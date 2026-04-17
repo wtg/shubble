@@ -181,8 +181,22 @@ const SAFETY_POLL_MS = 30000;
  * `pollInterval`. Transient reconnects (handled by the browser's
  * built-in EventSource retry) do not trigger the fallback.
  */
-export function useTrips(enabled = true, pollInterval = 5000) {
+/**
+ * Live trips subscription.
+ *
+ * Returns both the latest trips array and `lastUpdateAt` — the Date at
+ * which the hook last received fresh data (SSE push or fallback poll).
+ * `lastUpdateAt` drives the freshness indicator on the schedule page
+ * (TRUST-04). `null` until the first successful fetch.
+ */
+export interface UseTripsResult {
+  trips: Trip[];
+  lastUpdateAt: Date | null;
+}
+
+export function useTrips(enabled = true, pollInterval = 5000): UseTripsResult {
   const [trips, setTrips] = useState<Trip[]>([]);
+  const [lastUpdateAt, setLastUpdateAt] = useState<Date | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
@@ -194,7 +208,10 @@ export function useTrips(enabled = true, pollInterval = 5000) {
     let safetyTimer: ReturnType<typeof setInterval> | null = null;
 
     const applyTrips = (data: unknown) => {
-      if (Array.isArray(data) && !cancelled) setTrips(data as Trip[]);
+      if (Array.isArray(data) && !cancelled) {
+        setTrips(data as Trip[]);
+        setLastUpdateAt(new Date());
+      }
     };
 
     const fetchTrips = async () => {
@@ -286,5 +303,5 @@ export function useTrips(enabled = true, pollInterval = 5000) {
     };
   }, [enabled, pollInterval]);
 
-  return trips;
+  return { trips, lastUpdateAt };
 }

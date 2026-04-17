@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 
 import LiveLocationMapKit from './components/LiveLocationMapKit';
+import { HomeCountdown } from './components/HomeCountdown';
 import Schedule from '../schedule/Schedule';
 import "./styles/LiveLocation.css";
 import routeData from '../shared/routes.json';
@@ -32,7 +33,7 @@ export default function LiveLocation() {
   // Single source of truth: /api/trips. The map stop-marker tooltips and
   // the Schedule timeline both consume derived views of this data. The
   // older /api/etas endpoint was deleted in favor of this consolidation.
-  const trips = useTrips(!config.staticETAs);
+  const { trips, lastUpdateAt } = useTrips(!config.staticETAs);
   const { stopETAs, stopETADetails } = useMemo(
     () => deriveStopEtasFromTrips(trips),
     [trips]
@@ -47,6 +48,11 @@ export default function LiveLocation() {
         stopETAs={stopETAs}
         stopETADetails={stopETADetails}
       />
+      <HomeCountdown
+        trips={trips}
+        selectedRoute={selectedRoute}
+        lastUpdateAt={lastUpdateAt}
+      />
       <div className="schedule-table">
         <Schedule
           selectedRoute={selectedRoute}
@@ -54,6 +60,7 @@ export default function LiveLocation() {
           stopETAs={stopETAs}
           stopETADetails={stopETADetails}
           trips={trips}
+          lastUpdateAt={lastUpdateAt}
         />
       </div>
     </div>

@@ -23,17 +23,11 @@
 @media (max-width: 768px) {
     .map {
         width: 100%;
-        /* Smaller map on mobile so the schedule is visible above the fold.
-           Students primarily check the schedule panel — the map is
-           secondary context. */
-        height: 240px;
-    }
-}
-
-/* Very small phones (iPhone SE and similar): shrink the map further */
-@media (max-width: 400px) and (max-height: 700px) {
-    .map {
-        height: 180px;
+        /* Route loop is roughly a 1km square — wider than tall. 320px
+           shows the full loop on a portrait phone without wasting
+           vertical space on empty campus above/below the route. Leaves
+           room for the countdown summary below the map. */
+        height: 320px;
     }
 }
 
