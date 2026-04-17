@@ -651,6 +651,29 @@ ETA_CASES = [
             },
         },
         id="multiple_vehicle_etas",
+    ),
+
+    pytest.param(
+        ["veh_latest"],
+        [
+            make_eta(
+                vehicle_id="veh_latest",
+                etas={"old": "2026-04-01T08:00:00"},
+                timestamp=datetime(2026, 4, 1, 8, 0, 0),
+            ),
+            make_eta(
+                vehicle_id="veh_latest",
+                etas={"new": "2026-04-01T10:00:00"},
+                timestamp=datetime(2026, 4, 1, 9, 30, 0),
+            ),
+        ][-1:], 
+        {
+            "veh_latest": {
+                "stop_times": {"new": "2026-04-01T10:00:00"},
+                "timestamp": "2026-04-01T09:30:00",
+            }
+        },
+        id="latest_eta_only",
     )
 ]
 
