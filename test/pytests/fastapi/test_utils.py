@@ -636,4 +636,12 @@ async def test_get_latest_etas(vehicle_ids, rows, expected):
 
     assert result == expected
 
+@pytest.mark.asyncio
+async def test_get_latest_etas_empty_vehicle_ids():
+    db = make_db([])
+
+    result = await get_latest_etas([], make_session_factory(db))
+
+    assert result == {}
+
 
