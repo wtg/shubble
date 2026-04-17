@@ -4,9 +4,24 @@ import '../styles/MapKitMap.css';
 import ShuttleIcon from "./ShuttleIcon";
 import config from "../../utils/config";
 
+// PERF: SVG shuttle icons only depend on (color, size), and both rarely
+// change. Cache the rendered data-URL so we don't pay the
+// renderToStaticMarkup + btoa cost per vehicle per 5s poll tick.
+const _shuttleIconCache = new Map<string, string>();
+function getShuttleIconUrl(color: string, size: number): string {
+  const key = `${color}|${size}`;
+  const cached = _shuttleIconCache.get(key);
+  if (cached) return cached;
+  const svg = renderToStaticMarkup(<ShuttleIcon color={color} size={size} />);
+  const url = `data:image/svg+xml;base64,${btoa(svg)}`;
+  _shuttleIconCache.set(key, url);
+  return url;
+}
+
 import type { ShuttleRouteData } from "../../types/route";
 import type { VehicleLocationMap, VehicleVelocityMap, VehicleCombinedMap } from "../../types/vehicleLocation";
 import type { Coordinate } from "../../utils/mapUtils";
+import type { StopETAs, StopETADetails } from "../../hooks/useTrips";
 
 import MapKitCanvas from "../../mapkit/MapKitCanvas";
 import MapKitAnimation from "../../mapkit/MapKitAnimation";
@@ -22,6 +37,8 @@ type LiveLocationMapKitProps = {
   isFullscreen?: boolean;
   showTrueLocation?: boolean;
   shuttleIconSize?: number;
+  stopETAs?: StopETAs;
+  stopETADetails?: StopETADetails;
 };
 
 export default function LiveLocationMapKit({
@@ -33,18 +50,34 @@ export default function LiveLocationMapKit({
   isFullscreen = false,
   showTrueLocation = true,
   shuttleIconSize = 25,
+  stopETAs,
+  stopETADetails,
 }: LiveLocationMapKitProps) {
   const [map, setMap] = useState<(mapkit.Map | null)>(null);
   const [vehicles, setVehicles] = useState<VehicleCombinedMap | null>(null);
   const [vehicleAnnotations, setVehicleAnnotations] = useState<Record<string, mapkit.Annotation>>({});
 
-  // Fetch location and velocity data on component mount and set up polling
+  // Fetch location and velocity data on component mount.
+  //
+  // Transport: SSE push via `/api/locations/stream` is the primary
+  // trigger. Every time the worker commits new GPS rows it publishes
+  // `shubble:locations_updated` on Redis; the SSE handler forwards that
+  // to this client. On each trigger we re-fetch /api/locations AND
+  // /api/velocities (velocities has no stream yet — they're updated at
+  // the same worker cycle, so re-fetching together keeps them in sync).
+  //
+  // Fallback: if the stream endpoint is unreachable or the browser has
+  // no EventSource, fall back to setInterval polling at 3s.
   useEffect(() => {
     if (!displayVehicles) return;
 
     let abortController: AbortController | null = null;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    let es: EventSource | null = null;
+    let cancelled = false;
 
     const pollLocation = async () => {
+      if (cancelled) return;
       // Cancel any in-flight request before starting a new one
       if (abortController) {
         abortController.abort();
@@ -88,22 +121,60 @@ export default function LiveLocationMapKit({
           };
         }
 
-        setVehicles(combined);
+        if (!cancelled) setVehicles(combined);
       } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') return;
         console.error('Error fetching location:', error);
       }
+    };
+
+    const startPolling = () => {
+      if (pollTimer !== null || cancelled) return;
+      pollTimer = setInterval(() => { void pollLocation(); }, 3000);
+    };
+
+    const stopPolling = () => {
+      if (pollTimer !== null) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    };
+
+    // Kick off an initial fetch so the map isn't blank while SSE opens.
+    void pollLocation();
+
+    // Try SSE push first; fall back to polling on permanent failure.
+    if (typeof EventSource !== 'undefined') {
+      try {
+        es = new EventSource(`${config.apiBaseUrl}/api/locations/stream`);
+        es.onopen = () => { stopPolling(); };
+        es.onmessage = () => {
+          // Trigger-only: SSE payload is informational. Always go
+          // through pollLocation() so locations + velocities stay in
+          // sync via a single code path.
+          void pollLocation();
+        };
+        es.onerror = () => {
+          if (es?.readyState === EventSource.CLOSED) {
+            startPolling();
+          }
+        };
+      } catch {
+        startPolling();
+      }
+    } else {
+      startPolling();
     }
-
-    pollLocation();
-
-    // refresh location every 5 seconds
-    const refreshLocation = setInterval(pollLocation, 5000);
 
     return () => {
-      clearInterval(refreshLocation);
+      cancelled = true;
+      stopPolling();
+      if (es) {
+        es.close();
+        es = null;
+      }
       if (abortController) abortController.abort();
-    }
+    };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -149,9 +220,8 @@ export default function LiveLocationMapKit({
         return info.COLOR ?? "#444444";
       })();
 
-      // Render ShuttleIcon JSX to a static SVG string
-      const svgString = renderToStaticMarkup(<ShuttleIcon color={routeColor} size={shuttleIconSize} />);
-      const svgShuttle = `data:image/svg+xml;base64,${btoa(svgString)}`;
+      // Cached SVG data URL — renders once per unique (color, size).
+      const svgShuttle = getShuttleIconUrl(routeColor, shuttleIconSize);
 
       // Use predicted speed if available, otherwise fall back to reported speed
       // If showTrueLocation is true, set speed to 0 to disable animation
@@ -197,6 +267,8 @@ export default function LiveLocationMapKit({
         setSelectedRoute={setSelectedRoute}
         isFullscreen={isFullscreen}
         onMapReady={setMap}
+        stopETAs={stopETAs}
+        stopETADetails={stopETADetails}
       />
       <MapKitOverlays
         map={map}

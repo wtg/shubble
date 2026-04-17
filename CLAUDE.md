@@ -495,3 +495,305 @@ uv run alembic -c backend/alembic.ini upgrade head
 - Real-time WebSocket updates
 - Push notifications for delays
 - Historical analytics dashboard
+
+<!-- GSD:project-start source:PROJECT.md -->
+## Project
+
+**Shubble — ETA Accuracy & UX Milestone**
+
+Shubble is a real-time shuttle tracking app for RPI students. It shows live GPS positions on a map and estimated arrival times on a schedule page. This milestone focuses on making the ETA system trustworthy and polished — students should see whether data is live or scheduled, know if a shuttle is early/late, and never be confused by missing data.
+
+**Core Value:** Students trust the ETA numbers. They know if it's a live GPS estimate or a schedule guess, and they can see early/late status at a glance.
+
+### Constraints
+
+- **Tech stack**: React 19, FastAPI, existing Apple MapKit integration — no framework changes
+- **Data freshness**: ETAs refresh every 30s; countdown display must stay in sync
+- **Mobile-first**: Most students check on phones — UI must work well on small screens
+<!-- GSD:project-end -->
+
+<!-- GSD:stack-start source:codebase/STACK.md -->
+## Technology Stack
+
+## Languages
+- Python 3.13 - Backend, worker, test server, database migrations
+- TypeScript 5.9.2 - Frontend type system for React
+- JavaScript (Node.js) - Frontend build and runtime
+- SQL (PostgreSQL dialect) - Database queries via SQLAlchemy ORM
+## Runtime
+- Python 3.13 (via `docker/backend/Dockerfile.backend.dev`)
+- Node.js 24-alpine (via `docker/frontend/Dockerfile.frontend.dev`)
+- **Backend:** uv (Astral, replaces pip/poetry) - Version 0.9+
+- **Frontend:** npm (Node Package Manager)
+## Frameworks
+- **FastAPI** 0.115.0+ - Python backend web framework, async-first
+- **React** 19.2.4 - Frontend UI library
+- **React Router** 7.13.1 - Client-side routing
+- **SQLAlchemy** 2.0.41+ - Python async ORM
+- **Alembic** 1.14.0+ - Database migration tool
+- **pytest** - Python unit/integration testing framework
+- **pytest-asyncio** - Async test support
+- **Vite** 7.3.1 - Frontend build tool (React)
+- **TypeScript** 5.9.2 - Static type checking for frontend
+- **ESLint** 9.39.4 - JavaScript/TypeScript linting
+## Key Dependencies
+- **httpx** 0.28.1+ - Async HTTP client for Samsara API calls
+- **asyncpg** 0.30.0+ - PostgreSQL async driver
+- **redis** - Async Redis client for caching
+- **pydantic** 2.10.0+ - Python data validation
+- **pydantic-settings** 2.7.0+ - Environment configuration management
+- **python-dotenv** 1.1.1+ - Load `.env` files into environment
+- **uvicorn[standard]** 0.34.0+ - ASGI server
+- **brotli-asgi** - Response compression middleware
+- **numpy** - Numerical computing
+- **pandas** 2.0.0-4.0.0 - Data manipulation (used for schedule caching)
+- **scipy** - Scientific computing (schedule optimization via `linear_sum_assignment`)
+- **torch** - PyTorch deep learning
+- **scikit-learn** - Machine learning utilities
+- **matplotlib** - Plotting/visualization
+- **seaborn** - Statistical visualization
+- **tqdm** 4.67.1+ - Progress bars
+- **statsmodels** - Statistical modeling
+- **react-icons** 5.6.0 - Icon library
+- **@types/apple-mapkit-js-browser** 5.78.1 - TypeScript types for MapKit
+- **@vitejs/plugin-react** 5.1.4 - React Fast Refresh for Vite
+- **vite-plugin-pwa** 1.2.0 - Progressive Web App support
+- **ruff** - Fast Python linter/formatter
+- **requests** - HTTP library for testing
+## Configuration
+- `.env` (root, development) - Primary config via `pydantic-settings`
+- `.env.example` - Template (available at: `.env.example`)
+- Environment-specific: Set via `docker-compose.yml` environment sections
+- `DATABASE_URL` - PostgreSQL connection string (auto-converted to asyncpg driver)
+- `REDIS_URL` - Redis cache connection
+- `API_KEY` - Samsara API key for production GPS data
+- `SAMSARA_SECRET` - Base64-encoded webhook signature verification secret
+- `DEPLOY_MODE` - One of: `development`, `staging`, `production`
+- `DEBUG` - Enable debug mode and SQL echo
+- `LOG_LEVEL` - Global log level (fastapi, worker, ml can override)
+- `FRONTEND_URLS` - CORS whitelist (comma-separated)
+- `MAPKIT_KEY` - Apple MapKit JS authentication token
+- `frontend/vite.config.ts` - Vite build settings, dev server proxy, PWA manifest
+- `frontend/tsconfig.json` - TypeScript compiler options
+- `pyproject.toml` - Python project metadata and dependency groups
+- `docker-compose.yml` - Multi-service orchestration with profiles
+## Platform Requirements
+- Docker (containers for all services)
+- Docker Compose (service orchestration)
+- Python 3.13+ (or Docker image)
+- Node.js 24+ (or Docker image)
+- uv 0.9+ (Python package manager)
+- npm 10+ (Node package manager)
+- Docker runtime (builds via provided Dockerfiles)
+- PostgreSQL 17 (persistent database)
+- Redis 7 (persistent cache)
+- External: Samsara API (GPS data) or mock test server
+- External: Apple MapKit JS (map rendering)
+- Development: Linux, macOS, Windows (via WSL2/Docker Desktop)
+- Production: Linux (typical cloud/VPS deployment)
+<!-- GSD:stack-end -->
+
+<!-- GSD:conventions-start source:CONVENTIONS.md -->
+## Conventions
+
+## Naming Patterns
+- Python: `snake_case.py` (e.g., `backend/models.py`, `backend/worker/worker.py`)
+- TypeScript/React: `PascalCase.tsx` for components, `camelCase.ts` for utilities (e.g., `frontend/src/components/ErrorBoundary.tsx`, `frontend/src/utils/config.ts`)
+- Tests: `test_*.py` prefix for Python, no specific pattern for frontend (tests are minimal)
+- Python: `snake_case` (e.g., `update_locations()`, `compute_per_stop_etas()`, `get_latest_etas()`)
+- TypeScript: `camelCase` (e.g., `renderToStaticMarkup()`, `pollLocation()`)
+- React Hooks: `use` prefix (e.g., `useStopETAs()`, `useEffect()`)
+- Python: `snake_case` (e.g., `vehicle_ids`, `session_factory`, `mock_etas`)
+- TypeScript: `camelCase` (e.g., `selectedRoute`, `setSelectedRoute`, `vehicleAnnotations`)
+- React State: Use getter/setter pairs with `const [state, setState]` pattern
+- Python: PascalCase for classes (e.g., `Vehicle`, `VehicleLocation`, `Settings`)
+- TypeScript: PascalCase for interfaces/types (e.g., `VehicleLocationData`, `StopETA`, `LiveLocationMapKitProps`)
+- Discriminated unions in types (e.g., `StopETA` has required `eta`, `vehicle_id`, `route` fields)
+- Python: `UPPER_SNAKE_CASE` for module-level configuration (e.g., `LOG_LEVEL`, `DATABASE_URL`)
+- TypeScript: `UPPER_CASE` for true constants (rare; most configuration is imported from `utils/config`)
+## Code Style
+- Python: Inferred to follow PEP 8 conventions based on project structure (no Prettier/Black config found)
+- TypeScript/JavaScript: Likely Prettier-formatted via Vite build pipeline (no `.prettierrc` found, but standard React project setup)
+- Python: Ruff available in dev dependencies (`pyproject.toml`), but usage pattern unclear
+- TypeScript: ESLint with custom config in `frontend/eslint.config.js` (Flat ESLint format)
+- `@typescript-eslint/no-unsafe-member-access`: **error** (strict type safety)
+- `@typescript-eslint/no-unsafe-assignment`: **warn** (allows unknown types with warning)
+- `@typescript-eslint/no-unsafe-call`: **warn** (allows calling unknown types with warning)
+- `@typescript-eslint/no-unused-vars`: **warn** with `argsIgnorePattern: "^_"` (allows intentionally unused params prefixed with `_`)
+- `react-hooks/rules-of-hooks`: **error** (enforce Hook Rules)
+- `react-hooks/exhaustive-deps`: **warn** (warn on missing dependencies)
+- `react/react-in-jsx-scope`: **off** (React 17+ doesn't require explicit import)
+## Import Organization
+- TypeScript: No path aliases configured in `tsconfig.json` (uses relative imports)
+- Shared build process copies `/shared/` into `src/shared/` at build time (see `frontend/package.json` scripts)
+## Error Handling
+- Async functions use try/except blocks (e.g., in `backend/worker/worker.py` lines 62-90)
+- API errors logged with `logger.error()` before returning error response
+- HTTP non-200 responses handled explicitly: `if response.status_code != 200: logger.error(...); return []`
+- Optional returns: Functions return empty dict `{}` or empty list `[]` on error, not `None` (e.g., `compute_per_stop_etas` returns `{}`)
+- Async context managers use `async with` for resource cleanup (e.g., `async with httpx.AsyncClient() as client:`)
+- Error Boundary component (`frontend/src/components/ErrorBoundary.tsx`) catches React component errors
+- ErrorBoundary uses `getDerivedStateFromError()` and `componentDidCatch()` lifecycle methods
+- Error messages logged to console: `console.error('ErrorBoundary caught an error:', error, errorInfo)`
+- Graceful UI fallback: Shows error banner with reload button instead of crashing
+- Fetch errors in React effects: Use AbortController for cancellation (`new AbortController()`)
+- Pydantic models validate all input in Python backend (e.g., `Settings` class in `backend/config.py`)
+- Type annotations throughout TypeScript prevent runtime type errors
+- No defensive null-checks; rely on TypeScript strict mode
+## Logging
+- Logger created per module: `logger = logging.getLogger(__name__)`
+- Log level configured from environment: `settings.get_log_level(component)` (supports per-component levels)
+- Logging setup in module initialization (see `backend/worker/worker.py` lines 20-28, `backend/fastapi/__init__.py` lines 13-22)
+- Log messages include context: `logger.error(f"API error: {response.status_code} {response.text}")`
+- Lifecycle events logged at startup/shutdown (e.g., "Starting up FastAPI application...", "Database engine initialized")
+- `console.error()` for exceptions and boundaries
+- `console.log()` for development (no structured logging observed)
+## Comments
+- **Docstrings required**: All module, function, and class definitions include docstrings
+- Module docstrings: Single-line summary (e.g., `"""Async background worker for fetching vehicle data from Samsara API."""`)
+- Function docstrings: Args, Returns, purpose (e.g., in `backend/config.py` lines 59-68)
+- Inline comments: Used for non-obvious logic (e.g., in `backend/fastapi/routes.py` line 48: `# lazy="raise" prevents accidental N+1 queries`)
+- TODO comments: Rare but present (e.g., `frontend/src/locations/LiveLocation.tsx` line 15: `// TODO: figure out how to make this type correct...`)
+- React components use TypeScript interfaces for prop documentation (e.g., `interface ErrorBoundaryProps`, `type LiveLocationMapKitProps`)
+- No explicit JSDoc comments observed; types serve as documentation
+## Function Design
+- Python async workers: 15-60 lines for core logic (e.g., `update_locations()` has ~100 lines with pagination loop)
+- TypeScript components: 40-120 lines (e.g., `ErrorBoundary` is 47 lines, `LiveLocation` is 49 lines)
+- React hooks: Extract complex logic into custom hooks (e.g., `useStopETAs()` for shared ETA fetching)
+- Python: Use explicit positional args for required params, `*args`/`**kwargs` avoided
+- Python async: Inject dependencies (e.g., `session_factory`, `cache` decorator) rather than global state
+- TypeScript: Destructure props in function signature (e.g., `{ routeData, selectedRoute, ...}: LiveLocationMapKitProps`)
+- Optional params documented in type interfaces with `?` (e.g., `displayVehicles?: boolean`)
+- Python: Functions document return type in type hints (e.g., `async def compute_per_stop_etas(...) -> dict`)
+- TypeScript: Return types explicit (e.g., `() => JSX.Element`, `async () => Promise<VehicleLocationMap>`)
+- Empty collections preferred over `None`: Return `{}` or `[]` on empty/error (not `null`)
+## Module Design
+- Python: Explicit imports (no `from backend import *`)
+- Backend `__init__.py` files provide package-level exports (e.g., `backend/__init__.py` exports `app`, `models`, `utils`)
+- TypeScript: Default exports for components, named exports for utilities/types
+- Python: Each package has `__init__.py` with selective re-exports (e.g., `backend/worker/__init__.py` exports `run_worker`)
+- TypeScript: No barrel files observed; direct imports used (no `index.ts` re-export pattern)
+- Shared data: JSON files imported directly (`import routeData from './shared/routes.json'`)
+- FastAPI routes receive `request: Request` and access `request.app.state.session_factory`
+- Cache decorator handles Redis connection via `@cache(...)` (see `backend/fastapi/routes.py` line 44)
+- Database session passed explicitly: `async def get_locations(...) -> AsyncGenerator[AsyncSession, None]` pattern in `backend/database.py`
+<!-- GSD:conventions-end -->
+
+<!-- GSD:architecture-start source:ARCHITECTURE.md -->
+## Architecture
+
+## Pattern Overview
+- Client-server architecture with React SPA frontend and FastAPI backend
+- Background worker process polling external APIs independently
+- Redis caching layer for real-time data freshness
+- PostgreSQL as source of truth for all transactional data
+- Webhook integration for external event processing (Samsara geofence events)
+- Async-first design throughout (asyncio, SQLAlchemy async, FastAPI)
+## Layers
+- Purpose: Real-time shuttle tracking UI with interactive map and schedule
+- Location: `frontend/src/`
+- Contains: React components, hooks, type definitions, utility functions
+- Depends on: Backend API endpoints (`/api/*`), shared JSON data (routes, schedules)
+- Used by: Web browsers, accessed via Vite dev server or Nginx in production
+- Purpose: HTTP request handling, data transformation, caching, webhook processing
+- Location: `backend/fastapi/`
+- Contains: Route handlers, request/response serialization, cache decorators
+- Depends on: Database (async SQLAlchemy), Redis, shared utilities
+- Used by: Frontend, external webhooks (Samsara API)
+- Purpose: Async database operations, ORM model definitions, connection pooling
+- Location: `backend/database.py`, `backend/models.py`
+- Contains: SQLAlchemy Base, async engine/session factory, all ORM models
+- Depends on: PostgreSQL 17
+- Used by: FastAPI routes, background worker
+- Purpose: Periodic polling of external APIs, asynchronous data ingestion
+- Location: `backend/worker/`
+- Contains: Long-running async tasks, Samsara API client, location update logic
+- Depends on: Database, Redis, external API (Samsara or mock test server)
+- Used by: Container orchestration (docker-compose) as separate service
+- Purpose: Cross-layer utilities, route matching, schedule processing
+- Location: `backend/config.py`, `backend/utils.py`, `backend/time_utils.py`, `shared/`
+- Contains: Configuration, timezone handling, geofence queries, shared JSON data
+- Depends on: Pydantic settings, database models
+- Used by: All other layers
+## Data Flow
+- **Frontend**: React hooks for local UI state, localStorage for selected route
+- **Backend**: Redis for cache (locations, geofence queries), PostgreSQL for persistence
+- **Worker**: In-memory state during runtime, references database/Redis for querying
+- **Timezone handling**: All timestamps stored in UTC, conversions at layer boundaries via `time_utils.py`
+## Key Abstractions
+- Purpose: Represent current position of a shuttle in service
+- Examples: `backend/models.py:VehicleLocation`, `frontend/src/types/vehicleLocation.ts`
+- Pattern: ORM model on backend, TypeScript interface on frontend, shared through JSON API
+- Purpose: Track when shuttles enter/exit service area boundary
+- Examples: `backend/models.py:GeofenceEvent`
+- Pattern: Webhook-triggered database writes, used for filtering active vehicles
+- Purpose: Predicted arrival time at specific stops
+- Examples: `backend/models.py:ETA`, `frontend/src/hooks/useStopETAs`
+- Pattern: ML-generated predictions stored in database, served via REST endpoint, cached
+- Purpose: Static route definitions and service schedule
+- Examples: `shared/routes.json`, `shared/schedule.json`, `shared/stops.py`
+- Pattern: Static JSON files loaded at startup, shared between frontend and backend
+- Purpose: Link drivers to vehicles over time periods
+- Examples: `backend/models.py:DriverVehicleAssignment`
+- Pattern: Temporal relationship tracking start/end times, queried for current assignments
+## Entry Points
+- Location: `/c/Users/Jzgam/OneDrive/Documents/GitHub/shubble/shubble.py`
+- Triggers: `uvicorn shubble:app --reload` (local) or container startup
+- Responsibilities: Exports FastAPI app instance for ASGI servers
+- Initialization: Triggers `backend/fastapi/__init__.py:create_app()` which sets up lifespan, CORS, middleware, routes
+- Location: `backend/worker/__main__.py`
+- Triggers: `python -m backend.worker` or Docker worker container
+- Responsibilities: Runs async event loop with periodic polling tasks
+- Initialization: Connects to database/Redis, starts infinite loop calling `update_locations()`
+- Location: `frontend/src/main.tsx`
+- Triggers: `vite dev` (local) or Nginx serving compiled assets (production)
+- Responsibilities: Loads config, renders React app
+- Initialization: Calls `loadConfig()` to fetch runtime config, then renders `App.tsx` with Router
+## Error Handling
+- **Backend API errors**: Try-catch blocks log exceptions, return HTTP error status
+- **Frontend component errors**: ErrorBoundary catches unhandled errors, displays banner
+- **Database/network errors**: Async operations timeout and fail gracefully
+- **Missing data**: Endpoints return empty/null gracefully
+## Cross-Cutting Concerns
+- Each module imports logger: `logger = logging.getLogger(__name__)`
+- Log levels configurable per component via `settings.get_log_level(component)`
+- Backend, worker, and ML pipeline can have different log levels
+- Pydantic settings validation in `backend/config.py`
+- Database constraints (unique, foreign key, check) in models
+- Frontend TypeScript interfaces for compile-time checking
+- API response validation with TypeScript types in frontend
+- Samsara API calls use Bearer token in Authorization header
+- Incoming webhooks validated with HMAC-SHA256 using `SAMSARA_SECRET`
+- No user authentication system (public-facing tracker)
+- Redis cache via decorator in `backend/cache.py`
+- Soft TTL (15s): Cache hit returns stale data while refresh happens in background
+- Hard TTL (300s): Forces database query if past hard TTL
+- Namespaces separate cache keys: "locations", "geofence_vehicles", "smart_closest_point"
+- Frontend hooks implement 30s polling with exponential backoff on errors
+<!-- GSD:architecture-end -->
+
+<!-- GSD:skills-start source:skills/ -->
+## Project Skills
+
+No project skills found. Add skills to any of: `.claude/skills/`, `.agents/skills/`, `.cursor/skills/`, or `.github/skills/` with a `SKILL.md` index file.
+<!-- GSD:skills-end -->
+
+<!-- GSD:workflow-start source:GSD defaults -->
+## GSD Workflow Enforcement
+
+Before using Edit, Write, or other file-changing tools, start work through a GSD command so planning artifacts and execution context stay in sync.
+
+Use these entry points:
+- `/gsd-quick` for small fixes, doc updates, and ad-hoc tasks
+- `/gsd-debug` for investigation and bug fixing
+- `/gsd-execute-phase` for planned phase work
+
+Do not make direct repo edits outside a GSD workflow unless the user explicitly asks to bypass it.
+<!-- GSD:workflow-end -->
+
+<!-- GSD:profile-start -->
+## Developer Profile
+
+> Profile not yet configured. Run `/gsd-profile-user` to generate your developer profile.
+> This section is managed by `generate-claude-profile` -- do not edit manually.
+<!-- GSD:profile-end -->

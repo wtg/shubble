@@ -6,8 +6,7 @@ Complete end-to-end pipelines for preprocessing and train/test splitting.
 import logging
 import numpy as np
 import pandas as pd
-from pathlib import Path
-from typing import Tuple, Optional
+from typing import Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -193,22 +192,52 @@ def speed_pipeline(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
 
     logger.info("Calculating distance and speed...")
 
-    # Calculate distance and speed
-    df = (df
-          .pipe(distance_delta, 'closest_lat', 'closest_lon', 'distance_km')
-          .pipe(speed, 'distance_km', 'epoch_seconds', 'speed_kmh'))
+    # Calculate PROJECTED distance (for "progress along route" metric
+    # consumers) using closest_lat/lon. This is useful for things
+    # like schedule-reliability analysis that care about polyline
+    # progress rather than raw displacement.
+    df = df.pipe(distance_delta, 'closest_lat', 'closest_lon', 'distance_km')
 
-    # Mark segment boundaries
+    # Speed, however, must be computed from RAW GPS distance. The
+    # projected points can jump between polyline segments at
+    # intersections or when closest_point ambiguously resolves to
+    # a far-away polyline, producing impossible speeds (60000+ km/h)
+    # on moving shuttles and phantom 30+ km/h on stationary ones.
+    # Raw lat/lon haversine always reflects the shuttle's actual
+    # physical motion.
+    df = (df
+          .pipe(distance_delta, 'latitude', 'longitude', '_raw_distance_km')
+          .pipe(speed, '_raw_distance_km', 'epoch_seconds', 'speed_kmh'))
+
+    # Mark segment boundaries (handles vehicle transitions too since
+    # each vehicle gets its own segment_id).
     df['_new_segment'] = df['segment_id'] != df['segment_id'].shift(1)
 
-    # Set distance and speed to NaN at segment boundaries
+    # Set distance and speed to NaN at segment boundaries — the
+    # "previous" point at a boundary is from a different
+    # vehicle/segment and produces nonsensical deltas.
     df.loc[df['_new_segment'], 'distance_km'] = np.nan
     df.loc[df['_new_segment'], 'speed_kmh'] = np.nan
 
-    # Clean up
-    df = df.drop(columns=['_new_segment'])
+    # Stationary clamp: GPS jitter at the ~1cm level still produces
+    # a tiny but non-zero raw speed (a few km/h). Snap anything
+    # under the jitter floor to 0 so downstream "is the shuttle
+    # moving?" checks get a clean signal.
+    STATIONARY_SPEED_KMH = 3.0  # ~0.8 m/s — slower than a walking pace
+    df.loc[df['speed_kmh'] < STATIONARY_SPEED_KMH, 'speed_kmh'] = 0.0
 
-    logger.info("  ✓ Calculated segment-local speeds")
+    # Physical-max cap: a shuttle physically cannot exceed ~80 km/h
+    # on a campus route. Anything higher indicates a GPS glitch
+    # (bad fix, stale cache, test-server teleport on loop wrap).
+    # Clamp to NaN so consumers can distinguish "noise" from a real
+    # 0 (stopped).
+    PHYSICAL_MAX_KMH = 120.0
+    df.loc[df['speed_kmh'] > PHYSICAL_MAX_KMH, 'speed_kmh'] = np.nan
+
+    # Clean up
+    df = df.drop(columns=['_new_segment', '_raw_distance_km'])
+
+    logger.info("  OK: Calculated segment-local speeds")
     return df
 
 
@@ -278,7 +307,7 @@ def segment_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
         distance_column='dist_to_route',
         max_distance_to_route=max_distance
     )
-    logger.info(f"  ✓ Created {df['segment_id'].nunique()} segments")
+    logger.info(f"  OK: Created {df['segment_id'].nunique()} segments")
 
     # Step 3: Clean NaN route values using segment-aware windowing
     logger.info(f"Step 3/5: Cleaning NaN route values (window size: {window_size})...")
@@ -311,7 +340,7 @@ def segment_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
     initial_segments = df['segment_id'].nunique()
     df = filter_segments_by_length(df, 'segment_id', min_segment_length)
     final_segments = df['segment_id'].nunique()
-    logger.info(f"  ✓ Kept {final_segments}/{initial_segments} segments")
+    logger.info(f"  OK: Kept {final_segments}/{initial_segments} segments")
 
     # Save to cache if caching is enabled
     if cache:
@@ -343,7 +372,13 @@ def stops_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
         DataFrame with added columns: 'stop_name', 'stop_route',
         'dist_from_start', 'dist_to_end', 'polyline_length'
     """
-    from ml.data.stops import add_stops, add_polyline_distances, clean_stops
+    from ml.data.stops import (
+        add_stops,
+        add_polyline_distances,
+        add_stops_from_segments,
+        clean_stops,
+        resolve_duplicate_stops,
+    )
 
     stops = kwargs.get('stops', False)
     cache = kwargs.get('cache', True)
@@ -387,14 +422,14 @@ def stops_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
         df = segment_pipeline(**segment_kwargs)
 
     # Step 2: Add stops
-    logger.info("Step 1/3: Adding stop information...")
+    logger.info("Step 1/4: Adding stop information...")
     add_stops(df, 'latitude', 'longitude', {
         'route_name': 'stop_route',
         'stop_name': 'stop_name'
     })
 
     # Step 3: Add polyline distances
-    logger.info("Step 2/3: Calculating polyline distances...")
+    logger.info("Step 2/4: Calculating polyline distances...")
     add_polyline_distances(
         df, 'latitude', 'longitude',
         {
@@ -409,10 +444,26 @@ def stops_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
         polyline_index_column='polyline_idx',
         segment_index_column='segment_idx'
     )
-    logger.info(f"  ✓ Calculated polyline distances for {len(df)} points")
+    logger.info(f"  OK: Calculated polyline distances for {len(df)} points")
+
+    # Step 3b: Segment-based backfill for drive-bys that the per-point
+    # is_at_stop check missed. At ~30 km/h a shuttle moves ~42m per 5s
+    # poll, exceeding the 20m threshold, so consecutive polls can
+    # straddle a stop without either being within range. This pass
+    # checks the PATH between polls instead of just the samples.
+    logger.info("Step 3/4: Backfilling drive-by stops from segments...")
+    add_stops_from_segments(
+        df,
+        vehicle_id_column='vehicle_id',
+        timestamp_column='timestamp',
+        lat_column='latitude',
+        lon_column='longitude',
+        stop_column='stop_name',
+        route_column='route',
+    )
 
     # Step 4: Clean stops
-    logger.info("Step 3/3: Cleaning unrecorded stop jumps...")
+    logger.info("Step 4/4: Cleaning unrecorded stop jumps...")
     clean_stops(df,
                 route_column='route',
                 polyline_index_column='polyline_idx',
@@ -421,6 +472,18 @@ def stops_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
                 lon_column='longitude',
                 distance_column='dist_to_route'
             )
+
+    # Step 5: Resolve co-located duplicate stops. is_at_stop() always
+    # picks the geometrically-first stop when two share coordinates
+    # (STUDENT_UNION vs STUDENT_UNION_RETURN), so the "return" variant
+    # never gets detections. Fix by remapping end-of-route positions
+    # to the return name based on polyline_idx.
+    resolve_duplicate_stops(
+        df,
+        route_column='route',
+        polyline_index_column='polyline_idx',
+        stop_column='stop_name',
+    )
 
     # Save to cache if caching is enabled
     if cache:
@@ -494,13 +557,13 @@ def eta_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
     removed_points = initial_points - len(df)
     final_segments = df['segment_id'].nunique()
     removed_segments = initial_segments - final_segments
-    logger.info(f"  ✓ Removed {removed_points} points ({removed_points/initial_points*100:.1f}%)")
-    logger.info(f"  ✓ Removed {removed_segments} segments without stops")
+    logger.info(f"  OK: Removed {removed_points} points ({removed_points/initial_points*100:.1f}%)")
+    logger.info(f"  OK: Removed {removed_segments} segments without stops")
 
     # Step 3: Add ETAs
     logger.info("Step 2/2: Calculating ETAs...")
     df = add_eta(df, 'stop_name', 'epoch_seconds', 'eta_seconds')
-    logger.info(f"  ✓ Calculated ETAs for {len(df)} points")
+    logger.info(f"  OK: Calculated ETAs for {len(df)} points")
 
     # Save to cache if caching is enabled
     if cache:
@@ -586,7 +649,7 @@ def split_pipeline(
         logger.info("Loading segmented data...")
         df = segment_pipeline(**kwargs)
 
-    logger.info(f"  ✓ Loaded {len(df)} points, {df['segment_id'].nunique()} segments")
+    logger.info(f"  OK: Loaded {len(df)} points, {df['segment_id'].nunique()} segments")
 
     if len(df) == 0:
         raise ValueError("No valid segments found")
@@ -657,7 +720,7 @@ def split_by_polyline_pipeline(df: pd.DataFrame = None, **kwargs) -> dict[tuple[
         polyline_index_column='polyline_idx'
     )
 
-    logger.info(f"  ✓ Split into {len(polyline_dfs)} unique polylines:")
+    logger.info(f"  OK: Split into {len(polyline_dfs)} unique polylines:")
     for (route, idx), polyline_df in sorted(polyline_dfs.items()):
         logger.info(f"    - {route} segment {idx}: {len(polyline_df)} points")
 
@@ -745,7 +808,7 @@ def lstm_pipeline(
         logger.info(f"\nLimiting to {limit_polylines} polylines...")
         polyline_keys = sorted(polyline_dfs.keys())[:limit_polylines]
         polyline_dfs = {k: polyline_dfs[k] for k in polyline_keys}
-        logger.info(f"  ✓ Processing {len(polyline_dfs)} polylines")
+        logger.info(f"  OK: Processing {len(polyline_dfs)} polylines")
 
     # Store results for each polyline
     polyline_models = {}
@@ -791,8 +854,8 @@ def lstm_pipeline(
             timestamp_column='timestamp',
             segment_column='segment_id'
         )
-        logger.info(f"  ✓ Train: {train_df['segment_id'].nunique()} segments, {len(train_df)} points")
-        logger.info(f"  ✓ Test:  {test_df['segment_id'].nunique()} segments, {len(test_df)} points")
+        logger.info(f"  OK: Train: {train_df['segment_id'].nunique()} segments, {len(train_df)} points")
+        logger.info(f"  OK: Test:  {test_df['segment_id'].nunique()} segments, {len(test_df)} points")
 
         # Save train/test splits
         save_csv(train_df, train_path, "train data")
@@ -807,7 +870,7 @@ def lstm_pipeline(
             initial = len(df_input)
             df_output = df_input.dropna(subset=req_cols)
             if len(df_output) < initial:
-                logger.info(f"  ✓ Dropped {initial - len(df_output)} rows with missing values in {name}")
+                logger.info(f"  OK: Dropped {initial - len(df_output)} rows with missing values in {name}")
             return df_output
 
         train_df = clean_df(train_df, "train set")
@@ -839,9 +902,9 @@ def lstm_pipeline(
 
                 logger.info(f"\n  Saving model to {model_path}...")
                 model.save(model_path, scaler_path=str(scaler_path))
-                logger.info("  ✓ Model trained and saved")
+                logger.info("  OK: Model trained and saved")
             except Exception as e:
-                logger.info(f"  ✗ Training failed: {e}")
+                logger.info(f"  FAIL: Training failed: {e}")
                 continue
         else:
             logger.info(f"\n3. LOADING CACHED MODEL")
@@ -857,7 +920,7 @@ def lstm_pipeline(
                 dropout=dropout
             )
             model.load(model_path, scaler_path=str(scaler_path))
-            logger.info(f"  ✓ Loaded LSTM model")
+            logger.info(f"  OK: Loaded LSTM model")
 
         # 4. Evaluate
         logger.info("\n4. MODEL EVALUATION")
@@ -880,7 +943,7 @@ def lstm_pipeline(
             # Store model and results
             polyline_models[polyline_key] = (model, results)
         except Exception as e:
-            logger.info(f"  ✗ Evaluation failed: {e}")
+            logger.info(f"  FAIL: Evaluation failed: {e}")
             continue
 
     # Summary
@@ -1040,7 +1103,7 @@ def arima_pipeline(
                         'params': pretrained_params,
                         'value_column': value_column
                     }, f)
-                logger.info("  ✓ Model trained and saved")
+                logger.info("  OK: Model trained and saved")
         except Exception as e:
             logger.info(f"  Warning: Training failed: {e}")
             pretrained_params = None
@@ -1055,7 +1118,7 @@ def arima_pipeline(
 
             if cached_model['p'] == p and cached_model['d'] == d and cached_model['q'] == q:
                 pretrained_params = cached_model['params']
-                logger.info(f"  ✓ Loaded ARIMA({p},{d},{q}) parameters")
+                logger.info(f"  OK: Loaded ARIMA({p},{d},{q}) parameters")
             else:
                 logger.info(f"  Warning: Cached model is ARIMA({cached_model['p']},{cached_model['d']},{cached_model['q']}) but requested ARIMA({p},{d},{q})")
                 logger.info("  Continuing without warm-start")
@@ -1237,11 +1300,11 @@ if __name__ == "__main__":
         if polyline_models:
             avg_rmse = sum(r['rmse'] for _, r in polyline_models.values()) / len(polyline_models)
             avg_mae = sum(r['mae'] for _, r in polyline_models.values()) / len(polyline_models)
-            logger.info(f"\n✓ LSTM pipeline complete. Trained {len(polyline_models)} models.")
+            logger.info(f"\nOK: LSTM pipeline complete. Trained {len(polyline_models)} models.")
             logger.info(f"  Average RMSE: {avg_rmse:.4f}, Average MAE: {avg_mae:.4f}")
         else:
-            logger.info("\n✗ No models were trained successfully.")
+            logger.info("\nFAIL: No models were trained successfully.")
     elif args.pipeline == "arima":
         results = arima_pipeline(**kwargs)
         if results:
-            logger.info(f"\n✓ ARIMA pipeline complete. Overall RMSE: {results['overall_rmse']:.4f}")
+            logger.info(f"\nOK: ARIMA pipeline complete. Overall RMSE: {results['overall_rmse']:.4f}")

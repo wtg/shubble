@@ -5,6 +5,7 @@ from datetime import datetime
 import numpy as np
 from fastapi import APIRouter
 
+from .dev_time import dev_now
 from .shuttles import shuttle_lock, shuttles
 
 logger = logging.getLogger(__name__)
@@ -110,7 +111,7 @@ async def mock_driver_assignments(vehicleIds: str = ""):
                 driver_name = f"Driver {shuttle_id[-3:]}"
                 data.append(
                     {
-                        "assignedAtTime": datetime.now()
+                        "assignedAtTime": dev_now()
                         .isoformat(timespec="seconds")
                         .replace("+00:00", "Z"),
                         "driver": {

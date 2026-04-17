@@ -168,6 +168,10 @@ export default function MapKitAnimation({
     if (showTrueLocation) return; // No animation needed
 
     let lastFrameTime = Date.now();
+    // PERF: hoist O(1) id→data lookup out of the animation loop. Previously
+    // this did a fresh Array.find per vehicle per frame (O(N²) at 60fps).
+    const dataByKey = new Map<string, AnimatedAnnotation>();
+    for (const a of annotations) dataByKey.set(a.id, a);
 
     const animate = () => {
       const now = Date.now();
@@ -184,8 +188,8 @@ export default function MapKitAnimation({
       Object.keys(vehicleAnimationStates.current).forEach(key => {
         const animState = vehicleAnimationStates.current[key];
         const annotation = vehicleAnnotations[key] as mapkit.ShuttleAnnotation;
-        // Find the data object corresponding to this key to get the route
-        const dataAnnotation = annotations.find(a => a.id === key);
+        // O(1) lookup in the pre-built map
+        const dataAnnotation = dataByKey.get(key);
 
         if (!dataAnnotation || !annotation || !animState) return;
         if (!dataAnnotation.routePolyline) return;

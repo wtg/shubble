@@ -20,6 +20,14 @@ from backend.database import Base
 
 # Import all models to ensure they're registered with Base
 from backend.models import (
+    Route,
+    Stop,
+    Polyline,
+    BusSchedule,
+    BusScheduleToDaySchedule,
+    DaySchedule,
+    DateToDaySchedule,
+    RouteToBusSchedule,
     Vehicle,
     GeofenceEvent,
     VehicleLocation,

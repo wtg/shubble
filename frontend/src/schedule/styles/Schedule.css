@@ -10,7 +10,7 @@
 
 /* Header Section */
 .schedule-header {
-  margin-bottom: 30px;
+  margin-bottom: 12px;
 }
 
 .schedule-header h2 {
@@ -23,8 +23,8 @@
 
 .schedule-controls {
   display: flex;
-  flex-wrap: wrap;
-  gap: 20px;
+  flex-direction: column;
+  gap: 10px;
   align-items: flex-end;
 }
 
@@ -102,11 +102,18 @@
 .timeline-container {
   position: relative;
   padding: 20px 0;
-  max-height: calc(70vh - 200px);
+  /* Give the schedule more vertical room on all viewports so the user
+     can see multiple shuttle rows without needing to scroll a tiny
+     300-500px sub-container. Cap it at 85vh so there's still room for
+     other UI (map, nav, feedback form). */
+  max-height: calc(85vh - 180px);
   overflow-y: auto;
   scroll-behavior: auto;
-  min-height: 200px;
+  min-height: 300px;
 }
+
+/* Desktop override moved to the bottom of the file so it wins over
+   the base .secondary-timeline-item rules declared later in source. */
 
 .timeline-container::-webkit-scrollbar {
   width: 6px;
@@ -188,6 +195,12 @@
   font-weight: 600;
   color: #2c3e50;
   margin-bottom: 4px;
+  /* Flex row so badges (vehicle, NEXT, DONE) line up horizontally
+     and wrap gracefully on very small screens. */
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
 }
 
 .timeline-stop {
@@ -287,6 +300,259 @@
 .no-eta {
   color: #bdc3c7;
   font-style: italic;
+}
+
+.last-arrival {
+  color: #95a5a6;
+  font-size: 0.85em;
+}
+
+.eta-early {
+  color: #578FCA;
+  font-size: 12px;
+  font-weight: 700;
+  margin-left: 4px;
+}
+
+.eta-late {
+  color: #E67E22;
+  font-size: 12px;
+  font-weight: 700;
+  margin-left: 4px;
+}
+
+/* Source Badges (LIVE/SCHED) */
+.source-badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 4px 4px;
+  border-radius: 4px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.source-badge.source-live {
+  color: #578FCA;
+  background: rgba(87, 143, 202, 0.12);
+  border: 1px solid rgba(87, 143, 202, 0.3);
+}
+
+.source-badge.source-sched {
+  color: #95a5a6;
+  background: rgba(149, 165, 166, 0.12);
+  border: 1px solid rgba(149, 165, 166, 0.3);
+}
+
+/* Vehicle badge — identifies which physical shuttle a trip belongs to.
+   Shown on rows that have an assigned vehicle; lets two concurrent
+   shuttles on the same scheduled time be visually distinguished. */
+.vehicle-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  color: #7a7a7a;
+  background: rgba(122, 122, 122, 0.08);
+  border: 1px solid rgba(122, 122, 122, 0.2);
+  padding: 2px 6px;
+  border-radius: 3px;
+  vertical-align: middle;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Waiting pill — shown on scheduled rows when an idle shuttle is
+   parked at Union and bound to this upcoming departure. Visually
+   distinguishes "schedule says 2:30 AND a specific shuttle is waiting
+   for it" from "schedule says 2:30, no shuttle assigned yet". Amber
+   is distinct from the source-live blue (#578FCA) and the
+   trip-completed-badge gray (#7f8c8d) — it's its own semantic state. */
+.waiting-pill {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #b08c00;
+  background: rgba(176, 140, 0, 0.1);
+  border: 1px solid rgba(176, 140, 0, 0.3);
+  padding: 1px 5px;
+  border-radius: 3px;
+  vertical-align: middle;
+  margin-left: 6px;
+}
+
+/* Soonest arrival highlight — marks the trip row that arrives soonest
+   at the user's selected stop, so with multiple shuttles they know
+   which row to look at. */
+.timeline-item.soonest-arrival {
+  border-left: 3px solid #2980b9;
+  padding-left: 9px; /* compensate for border */
+}
+
+.timeline-item.soonest-arrival .timeline-time::after {
+  content: 'NEXT';
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  color: #2980b9;
+  background: rgba(41, 128, 185, 0.1);
+  border: 1px solid rgba(41, 128, 185, 0.3);
+  padding: 1px 5px;
+  border-radius: 3px;
+  vertical-align: middle;
+}
+
+/* Hover affordance on secondary stops — hints at tappability */
+.secondary-timeline-item:not(.selected-stop):hover {
+  background: rgba(41, 128, 185, 0.04);
+  border-color: rgba(41, 128, 185, 0.2);
+}
+
+.secondary-timeline-item:focus-visible {
+  outline: 2px solid #2980b9;
+  outline-offset: 2px;
+}
+
+/* First-stop name is clickable to select it (e.g. Student Union on the
+   home-stop row). Give it a subtle underline on hover so users discover it. */
+.timeline-item .timeline-stop {
+  display: inline-block;
+  border-radius: 4px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  transition: background 0.15s ease;
+}
+
+.timeline-item .timeline-stop:hover {
+  background: rgba(41, 128, 185, 0.08);
+}
+
+.timeline-item .timeline-stop:focus-visible {
+  outline: 2px solid #2980b9;
+  outline-offset: 2px;
+}
+
+.timeline-item.first-stop-selected .timeline-stop {
+  color: #2980b9;
+  font-weight: 600;
+}
+
+/* Trip completed badge — shown when a shuttle has finished its loop */
+.trip-completed-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  color: #7f8c8d;
+  background: rgba(127, 140, 141, 0.1);
+  border: 1px solid rgba(127, 140, 141, 0.3);
+  padding: 1px 5px;
+  border-radius: 3px;
+  vertical-align: middle;
+}
+
+/* Missing Data Messages */
+.no-service-message {
+  color: #95a5a6;
+  font-style: italic;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.scheduled-fallback {
+  color: #95a5a6;
+  font-style: italic;
+  font-size: 0.9em;
+}
+
+/* Next Shuttle Summary — sticky so students don't lose their countdown
+   when scrolling through the timeline. Background is opaque (not the
+   semi-transparent one used in the regular state) so timeline rows don't
+   bleed through while the summary is pinned. */
+.next-shuttle-summary {
+  font-size: 15px;
+  color: #2c3e50;
+  padding: 10px 14px;
+  margin-bottom: 4px;
+  border: 1px solid #d4e1f0;
+  border-left: 3px solid #578FCA;
+  border-radius: 6px;
+  background: #f1f6fc;
+  position: sticky;
+  top: 60px; /* clear the sticky header (~60px tall) */
+  z-index: 999; /* below header (1000), above timeline content */
+  /* Subtle shadow only appears when the element is actually pinned
+     (scrolled past its natural position). Helps reinforce the floating
+     affordance without being heavy when the page is at the top. */
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+
+.summary-note {
+  font-size: 12px;
+  color: #7f8c8d;
+  margin-top: 2px;
+  font-style: italic;
+}
+
+.summary-stop {
+  color: #578FCA;
+  font-weight: 600;
+}
+
+.summary-time {
+  color: #7f8c8d;
+  font-size: 14px;
+}
+
+/* Relative Time Labels */
+.relative-time {
+  color: #578FCA;
+  font-size: 14px;
+  font-weight: 500;
+  margin-left: 8px;
+}
+
+/* Expand Indicator — sized up from the tiny 12px unicode triangle so
+   it's actually visible at a glance on mobile, and darker for contrast
+   against the row background. Students previously missed the affordance. */
+.expand-indicator {
+  color: #7f8c8d;
+  font-size: 16px;
+  margin-left: 8px;
+  line-height: 1;
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+
+/* Show Full Schedule Link */
+.show-full-schedule {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  margin-top: 8px;
+  background: none;
+  border: none;
+  color: #578FCA;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: center;
+}
+
+.show-full-schedule:hover {
+  text-decoration: underline;
+}
+
+/* Selected Stop Highlight */
+.secondary-timeline-item.selected-stop .secondary-timeline-dot {
+  background: #578FCA;
+  box-shadow: 0 0 0 3px rgba(87, 143, 202, 0.2);
+}
+
+.secondary-timeline-item.selected-stop .secondary-timeline-content {
+  border-color: #578FCA;
+  background: rgba(87, 143, 202, 0.04);
 }
 
 .secondary-timeline-item.has-eta .secondary-timeline-dot {
@@ -424,6 +690,54 @@
   }
 }
 
+/* Departure deviation labels (260415-3ec).
+   Scheduled-matched trips: small "(5:11 PM, +1 min late)" inline label.
+   Off-schedule trips:      arrow pill "↑ 15 min early to 5:30 PM slot".
+   `.timeline-time` is already `display:flex; flex-wrap:wrap` so these
+   wrap onto a second line on narrow viewports — no layout tweaks needed. */
+.timeline-deviation {
+  font-size: 12px;
+  font-weight: 500;
+  margin-left: 4px;
+  white-space: nowrap;
+  color: #7f8c8d;
+  vertical-align: middle;
+}
+
+.deviation-matched-late {
+  color: #d97706;  /* orange -- late (per D-13: late = orange) */
+}
+
+.deviation-matched-early {
+  color: #2563eb;  /* blue -- early (per D-13: early = blue) */
+}
+
+.deviation-unscheduled-early,
+.deviation-unscheduled-late {
+  color: #d97706;
+  font-weight: 600;
+  background: rgba(217, 119, 6, 0.08);
+  border: 1px solid rgba(217, 119, 6, 0.2);
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 11px;
+}
+
+/* Unscheduled-early shares the orange pill styling with unscheduled-late.
+   If a future design wants blue-for-early parity with matched-early,
+   split these rules. */
+
+.deviation-unscheduled-far {
+  color: #95a5a6;
+  font-style: italic;
+  background: rgba(149, 165, 166, 0.08);
+  border: 1px solid rgba(149, 165, 166, 0.2);
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .schedule-container {
@@ -431,15 +745,7 @@
   }
 
   .schedule-controls {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 15px;
-  }
-
-  .control-group {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
+    gap: 8px;
   }
 
   .schedule-dropdown {
@@ -458,7 +764,26 @@
   }
 
   .timeline-content {
-    padding-left: 37px;
+    padding-left: 32px;
+    padding-right: 4px;
+  }
+
+  /* Tighter schedule container on mobile to maximize content width */
+  .schedule-container {
+    padding: 16px 12px;
+  }
+
+  .timeline-item {
+    gap: 10px;
+  }
+
+  .timeline-content-item {
+    padding: 12px 14px;
+  }
+
+  /* Reduce font size of vehicle/NEXT/DONE badges so they stay on one line */
+  .timeline-time {
+    font-size: 17px;
   }
 
   .timeline-content::before {
@@ -476,5 +801,23 @@
 
   .secondary-timeline-dot {
     left: -24px;
+  }
+}
+
+/* Desktop: let the schedule container grow and compact secondary stops
+   so two full shuttle rows can fit without a big sub-scroll. Placed at
+   the END of the file so the overrides win the cascade against the
+   base .secondary-timeline-item rules declared later in source. */
+@media (min-width: 1025px) {
+  .timeline-container {
+    max-height: calc(100vh - 220px);
+  }
+
+  .secondary-timeline-item {
+    margin-bottom: 6px;
+  }
+
+  .secondary-timeline-content {
+    padding: 6px 12px;
   }
 }

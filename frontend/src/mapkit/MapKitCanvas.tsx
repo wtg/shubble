@@ -3,6 +3,7 @@ import '../locations/styles/MapKitMap.css';
 import config from "../utils/config";
 
 import type { ShuttleRouteData, ShuttleStopData } from "../types/route";
+import type { StopETAs, StopETADetails } from "../hooks/useTrips";
 
 type MapKitCanvasProps = {
   routeData: ShuttleRouteData | null;
@@ -11,6 +12,8 @@ type MapKitCanvasProps = {
   setSelectedRoute?: (route: string | null) => void;
   isFullscreen?: boolean;
   onMapReady?: (map: mapkit.Map) => void;
+  stopETAs?: StopETAs;
+  stopETADetails?: StopETADetails;
 };
 
 async function generateRoutePolylines(updatedRouteData: ShuttleRouteData) {
@@ -100,7 +103,7 @@ async function generateRoutePolylines(updatedRouteData: ShuttleRouteData) {
 
 // @ts-expect-error selectedRoutes is never used
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-export default function MapKitCanvas({ routeData, generateRoutes = false, selectedRoute, setSelectedRoute, isFullscreen = false, onMapReady }: MapKitCanvasProps) {
+export default function MapKitCanvas({ routeData, generateRoutes = false, selectedRoute, setSelectedRoute, isFullscreen = false, onMapReady, stopETAs, stopETADetails }: MapKitCanvasProps) {
   const mapRef = useRef(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [map, setMap] = useState<(mapkit.Map | null)>(null);
@@ -173,8 +176,19 @@ export default function MapKitCanvas({ routeData, generateRoutes = false, select
           thisMap.removeAnnotation(selectedMarkerRef.current);
           selectedMarkerRef.current = null;
         }
+
+        // Build subtitle with ETA info
+        let subtitle = '';
+        const stopKey = overlay.stopKey;
+        if (stopKey && stopETAs?.[stopKey]) {
+          subtitle = `Next shuttle: ${stopETAs[stopKey]}`;
+        } else if (stopKey && stopETADetails?.[stopKey]?.lastArrival) {
+          subtitle = `Last arrived: ${stopETADetails[stopKey].lastArrival}`;
+        }
+
         const marker = new mapkit.MarkerAnnotation(overlay.coordinate, {
           title: overlay.stopName,
+          subtitle,
           glyphImage: { 1: "map-marker.png" },
         });
         thisMap.addAnnotation(marker);
@@ -216,35 +230,40 @@ export default function MapKitCanvas({ routeData, generateRoutes = false, select
         (thisMap.element as HTMLElement).style.cursor = "default";
       });
 
-      // Working hover detection
+      // Working hover detection. PERF: getBoundingClientRect and thisMap.region
+      // are now read once per mousemove, not once per overlay. Squared-distance
+      // compare avoids the Math.sqrt in the inner loop.
       let currentHover: mapkit.CircleOverlay | null = null;
+      const circleWidthSq = circleWidth * circleWidth;
       thisMap.element.addEventListener('mousemove', (e) => {
         const rect = thisMap.element.getBoundingClientRect();
         const x = (e as MouseEvent).clientX - rect.left;
         const y = (e as MouseEvent).clientY - rect.top;
+        const region = thisMap.region;
+        if (!region) return;
+        const mapW = rect.width;
+        const mapH = rect.height;
+        const lonCenter = region.center.longitude;
+        const latCenter = region.center.latitude;
+        const lonSpan = region.span.longitudeDelta;
+        const latSpan = region.span.latitudeDelta;
+        const halfLon = lonSpan / 2;
+        const halfLat = latSpan / 2;
 
         let foundOverlay: mapkit.CircleOverlay | null = null;
 
-        // Check overlays for mouse position
         for (const overlay of thisMap.overlays) {
           if (!(overlay instanceof mapkit.CircleOverlay)) continue;
-          if (overlay.stopKey) {
-            // Calculate overlay screen position
-            const mapRect = thisMap.element.getBoundingClientRect();
-            const centerLat = overlay.coordinate.latitude;
-            const centerLng = overlay.coordinate.longitude;
-
-            // Check if mouse is within overlay radius
-            const region = thisMap.region;
-            if (region) {
-              const centerX = mapRect.width * (centerLng - region.center.longitude + region.span.longitudeDelta / 2) / region.span.longitudeDelta;
-              const centerY = mapRect.height * (region.center.latitude - centerLat + region.span.latitudeDelta / 2) / region.span.latitudeDelta;
-
-              const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
-              if (distance < circleWidth) { // Within hover radius
-                foundOverlay = overlay;
-              }
-            }
+          if (!overlay.stopKey) continue;
+          const centerLat = overlay.coordinate.latitude;
+          const centerLng = overlay.coordinate.longitude;
+          const centerX = mapW * (centerLng - lonCenter + halfLon) / lonSpan;
+          const centerY = mapH * (latCenter - centerLat + halfLat) / latSpan;
+          const dx = x - centerX;
+          const dy = y - centerY;
+          if (dx * dx + dy * dy < circleWidthSq) {
+            foundOverlay = overlay;
+            break;  // first match wins
           }
         }
 

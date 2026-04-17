@@ -2,6 +2,8 @@
 **__pycache__/
 node_modules/
 .env
+.env.*
+!.env.example
 frontend/dist
 .DS_Store
 
@@ -10,3 +12,17 @@ frontend/dist
 
 .venv/
 venv/
+
+# Claude Code / GSD workspace
+.claude/
+
+# Screenshot iteration artifacts
+tests/screenshots/iter_*.png
+tests/screenshots/output/
+
+# Executed notebooks + generated plots
+ml/*_executed.ipynb
+ml/*_plots.png
+
+# Local sample data
+test/files/shubble-sample.csv

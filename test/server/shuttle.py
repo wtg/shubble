@@ -7,11 +7,19 @@ import requests
 from enum import Enum
 from dataclasses import dataclass
 from datetime import datetime, timezone
+
+from .dev_time import dev_now
 from typing import Optional
 
 from shared.stops import Stops
 
 logger = logging.getLogger(__name__)
+
+# How long a shuttle dwells at Union between loops in the dev sim.
+# Real shuttles pause ~5 min between loops; we use a shorter value here
+# so iterative testing doesn't take forever. Must be well below the
+# backend's IDLE_THRESHOLD_SEC (1200s) so a normal dwell isn't filtered.
+INTER_LOOP_PAUSE_SEC = 60  # 1 minute (real life: ~5 min)
 
 
 class ShuttleAction(Enum):
@@ -29,6 +37,12 @@ class QueuedAction:
     status: str = "pending"  # pending, in_progress, completed, failed
     route: Optional[str] = None
     duration: Optional[float] = None  # seconds, for ON_BREAK
+    # When True on a LOOPING action, the shuttle runs exactly ONE loop
+    # and then terminates the action (returning to idle) instead of
+    # entering the inter-loop dwell and repeating forever. Used by the
+    # schedule-strict mode so each scheduled departure produces exactly
+    # one run of the route.
+    single_loop: bool = False
 
 
 class Shuttle:
@@ -48,7 +62,7 @@ class Shuttle:
 
         # Location state
         self._location: tuple[float, float] = (0.0, 0.0)
-        self._last_updated: datetime = datetime.now(timezone.utc)
+        self._last_updated: datetime = dev_now(timezone.utc)
         self._speed: float = 20.0  # mph
 
         # Path following state
@@ -57,6 +71,9 @@ class Shuttle:
         self._subpath_index: int = 0
         self._distance_into_segment: float = 0.0
         self._current_route: Optional[str] = None
+        # When non-None, the shuttle is dwelling at Union between loops
+        # until time.time() reaches this value.
+        self._loop_dwell_until: Optional[float] = None
 
         # Thread control
         self._running: bool = False
@@ -111,7 +128,13 @@ class Shuttle:
                 for a in self._action_queue
             ]
 
-    def push_action(self, action: ShuttleAction, route: Optional[str] = None, duration: Optional[float] = None) -> str:
+    def push_action(
+        self,
+        action: ShuttleAction,
+        route: Optional[str] = None,
+        duration: Optional[float] = None,
+        single_loop: bool = False,
+    ) -> str:
         """Add an action to the queue. Returns the action ID."""
         if action == ShuttleAction.LOOPING and route is None:
             raise ValueError("LOOPING action requires a route")
@@ -119,11 +142,21 @@ class Shuttle:
             raise ValueError(f"Invalid or inactive route: {route}")
 
         action_id = str(uuid.uuid4())
-        queued = QueuedAction(id=action_id, action=action, route=route, duration=duration)
+        queued = QueuedAction(
+            id=action_id,
+            action=action,
+            route=route,
+            duration=duration,
+            single_loop=single_loop,
+        )
 
         with self.lock:
             self._action_queue.append(queued)
-            logger.info(f"Shuttle {self.id}: queued {action.value}" + (f" on {route}" if route else ""))
+            logger.info(
+                f"Shuttle {self.id}: queued {action.value}"
+                + (f" on {route}" if route else "")
+                + (" (single_loop)" if single_loop else "")
+            )
 
         return action_id
 
@@ -206,7 +239,7 @@ class Shuttle:
             elif current_action in (ShuttleAction.ENTERING, ShuttleAction.LOOPING, ShuttleAction.EXITING):
                 self._handle_movement()
 
-            self._last_updated = datetime.now(timezone.utc)
+            self._last_updated = dev_now(timezone.utc)
 
     # --- Action Handlers ---
 
@@ -232,8 +265,50 @@ class Shuttle:
 
     def _handle_movement(self):
         """Handle movement actions (ENTERING, LOOPING, EXITING)."""
+        # While paused between loops at Union, just hold position
+        # until the dwell timer expires, then start the next loop.
+        if self._current_action == ShuttleAction.LOOPING and self._loop_dwell_until:
+            if time.time() >= self._loop_dwell_until:
+                self._loop_dwell_until = None
+                self._path = self._get_looping_path(self._current_route)
+                self._reset_path_state()
+            return
+
         if not self._follow_path():
-            # Path complete
+            # LOOPING repeats: real shuttles dwell briefly at Union between
+            # loops (driver stretch, passenger boarding) then continue.
+            # The dev-sim pauses for INTER_LOOP_PAUSE_SEC, much shorter
+            # than real life so testing doesn't take 15 minutes per loop.
+            # The idle-shuttle filter (>20 min at first stop) is well
+            # above this dwell so a normal dwell won't accidentally
+            # hide the trip.
+            #
+            # EXCEPT in schedule-strict mode: when the queued action's
+            # single_loop flag is set, one pass around the route is
+            # enough. Mark completed and return to idle so the shuttle
+            # waits for its NEXT scheduled departure to fire another
+            # single_loop action.
+            if self._current_action == ShuttleAction.LOOPING and self._current_route:
+                current_queued = (
+                    self._action_queue[self._action_index - 1]
+                    if self._action_index > 0 else None
+                )
+                if current_queued and current_queued.single_loop:
+                    current_queued.status = "completed"
+                    logger.info(
+                        f"Shuttle {self.id}: single loop complete on "
+                        f"{self._current_route}, returning to idle"
+                    )
+                    self._current_action = None
+                    return
+                self._loop_dwell_until = time.time() + INTER_LOOP_PAUSE_SEC
+                logger.info(
+                    f"Shuttle {self.id}: loop complete on {self._current_route}, "
+                    f"dwelling at Union for {INTER_LOOP_PAUSE_SEC}s"
+                )
+                return
+
+            # Path complete (non-LOOPING actions)
             if self._current_action == ShuttleAction.EXITING:
                 self._send_webhook(entry=False)
 
@@ -290,7 +365,7 @@ class Shuttle:
         # Distance to travel this update
         speed_mps = self._speed * 0.44704  # mph to m/s
         speed_pseudo = speed_mps / 1000 * 0.02  # Approx to degrees
-        elapsed_seconds = (datetime.now(timezone.utc) - self._last_updated).total_seconds()
+        elapsed_seconds = (dev_now(timezone.utc) - self._last_updated).total_seconds()
         travel_distance = speed_pseudo * elapsed_seconds
 
         # Current segment
@@ -387,7 +462,7 @@ class Shuttle:
 
         payload = {
             'eventId': str(uuid.uuid4()),
-            'eventTime': datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z'),
+            'eventTime': dev_now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z'),
             'eventType': event_type,
             'orgId': 20936,
             'webhookId': '1411751028848270',

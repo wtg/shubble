@@ -1,21 +1,76 @@
 .live-location-div {
     display: flex;
-    flex-direction: row;
-    gap: 40px;
-    width: 90%;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    max-width: 1400px;
+    margin: 0 auto;
+    align-items: center;
     justify-content: center;
-    padding: 20px;
+    padding: 12px;
+    padding-bottom: 80px; /* clear fixed bottom nav on mobile */
     box-sizing: border-box;
 }
 
-.schedule-table {
-    display: none;
+/* Compact countdown shown below the map on mobile — answers "when?"
+   without a page switch. Taps through to /schedule. Hidden on desktop
+   where the full schedule panel is already visible. */
+.home-countdown {
+    display: block;
+    width: 100%;
+    max-width: 500px;
+    text-align: center;
+    font-size: 15px;
+    color: #2c3e50;
+    text-decoration: none;
+    padding: 10px 14px;
+    border: 1px solid #d4e1f0;
+    border-left: 3px solid #578FCA;
+    border-radius: 6px;
+    background: #f1f6fc;
+    box-sizing: border-box;
 }
 
+.home-countdown:active {
+    background: #e3edf7;
+}
+
+.home-countdown-time {
+    color: #7f8c8d;
+    font-size: 14px;
+}
+
+/* Schedule panel: hidden on mobile. */
+.schedule-table {
+    display: none;
+    width: 100%;
+    max-width: 500px;
+}
 
 @media (min-width: 1025px) {
+    .live-location-div {
+        flex-direction: row;
+        align-items: flex-start;
+        justify-content: center;
+        gap: 40px;
+    }
+
+    .live-location-div {
+        padding-bottom: 12px; /* no fixed footer on desktop */
+    }
+
+    /* Hide mobile countdown on desktop — full schedule is visible. */
+    .home-countdown {
+        display: none;
+    }
+
+    /* Show the schedule panel on desktop, side-by-side with the map. */
     .schedule-table {
-	display: block;
+        display: block;
+        width: auto;
+        max-width: 600px;
+        flex: 1 1 auto;
+        min-width: 400px;
     }
 }
 

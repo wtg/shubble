@@ -21,7 +21,18 @@ export type VehicleLocationData = {
     } | null;
 }
 
-// ETA and route data from /api/etas
+// Per-stop ETA from /api/etas (new format)
+export type StopETA = {
+    eta: string;            // ISO 8601 datetime
+    vehicle_id: string;
+    route: string;
+    last_arrival?: string | null;  // ISO 8601 — last shuttle arrival at this stop
+}
+
+// /api/etas response: stop_key -> StopETA
+export type StopETAMap = Record<string, StopETA>;
+
+// Legacy per-vehicle ETA format (deprecated)
 export type VehicleETAData = {
     stop_times: Record<string, string>; // stop_key -> ISO 8601 format datetime
     timestamp: string; // ISO 8601 format

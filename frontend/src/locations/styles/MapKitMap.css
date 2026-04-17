@@ -23,7 +23,11 @@
 @media (max-width: 768px) {
     .map {
         width: 100%;
-        height: 350px;
+        /* Route loop is roughly a 1km square — wider than tall. 320px
+           shows the full loop on a portrait phone without wasting
+           vertical space on empty campus above/below the route. Leaves
+           room for the countdown summary below the map. */
+        height: 320px;
     }
 }
 

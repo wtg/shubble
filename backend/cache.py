@@ -284,15 +284,21 @@ async def clear_namespace(namespace: str) -> int:
     pattern = f"{_prefix}:{namespace}:*"
 
     try:
-        # Use SCAN to find keys (safer than KEYS for large datasets)
-        deleted = 0
-        async for key in redis.scan_iter(match=pattern):
-            await redis.delete(key)
-            deleted += 1
+        # PERF: batch deletes with UNLINK (async unlinking, cheaper than DEL).
+        keys: list[bytes] = [key async for key in redis.scan_iter(match=pattern)]
+        if not keys:
+            return 0
 
-        if deleted > 0:
+        # Pass all keys in a single UNLINK call (falls back to DELETE if the
+        # server doesn't support UNLINK — unlikely for Redis 4+).
+        try:
+            deleted = await redis.unlink(*keys)
+        except Exception:
+            deleted = await redis.delete(*keys)
+
+        if deleted:
             logger.info(f"Cleared {deleted} keys from namespace '{namespace}'")
-        return deleted
+        return deleted or 0
     except Exception as e:
         logger.error(f"Error clearing namespace '{namespace}': {e}")
         return 0
@@ -319,26 +325,39 @@ async def soft_clear_namespace(namespace: str) -> int:
     now = time.time()
 
     try:
+        # PERF: batch the scan+get+ttl with a pipeline so we do 2 round trips
+        # instead of 3*N. Called on every worker cycle from
+        # update_today_dataframe, so the savings compound.
+        keys: list[bytes] = [key async for key in redis.scan_iter(match=pattern)]
+        if not keys:
+            return 0
+
+        async with redis.pipeline(transaction=False) as pipe:
+            for key in keys:
+                pipe.get(key)
+                pipe.ttl(key)
+            fetched = await pipe.execute()
+
         cleared = 0
-        async for key in redis.scan_iter(match=pattern):
-            # Get current value and remaining TTL
-            cached_data = await redis.get(key)
-            remaining_ttl = await redis.ttl(key)
-
-            if cached_data is None or remaining_ttl <= 0:
-                continue
-
-            try:
-                cached: CachedValue = pickle.loads(cached_data)
-                # Set soft_expiry to now (marking as stale)
+        async with redis.pipeline(transaction=False) as writer:
+            for i, key in enumerate(keys):
+                cached_data = fetched[2 * i]
+                remaining_ttl = fetched[2 * i + 1]
+                if cached_data is None or remaining_ttl is None or remaining_ttl <= 0:
+                    continue
+                try:
+                    cached: CachedValue = pickle.loads(cached_data)
+                except Exception:
+                    continue
                 cached.soft_expiry = now
-                # Save back with the same remaining hard TTL
-                pickled = pickle.dumps(cached)
-                await redis.set(key, pickled, ex=remaining_ttl)
+                try:
+                    pickled = pickle.dumps(cached)
+                except Exception:
+                    continue
+                writer.set(key, pickled, ex=remaining_ttl)
                 cleared += 1
-            except Exception:
-                # Skip malformed entries
-                continue
+            if cleared:
+                await writer.execute()
 
         if cleared > 0:
             logger.info(f"Soft-cleared {cleared} keys in namespace '{namespace}'")

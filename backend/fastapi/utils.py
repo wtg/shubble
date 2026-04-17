@@ -1,7 +1,8 @@
 """Utility functions for FastAPI."""
+from datetime import datetime, timezone
 from sqlalchemy import func, and_, select
 from sqlalchemy.orm import selectinload
-from typing import Dict, Tuple, Optional, List, TypedDict, Any
+from typing import Dict, Tuple, Optional, List, TypedDict
 import pandas as pd
 
 from backend.cache import cache
@@ -10,7 +11,8 @@ from backend.function_timer import timed
 from backend.models import VehicleLocation, DriverVehicleAssignment, ETA, PredictedLocation
 from backend.cache_dataframe import get_today_dataframe
 from backend.utils import get_vehicles_in_geofence_query
-from backend.time_utils import get_campus_start_of_day
+from backend.time_utils import dev_now, get_campus_start_of_day
+from shared.stops import Stops
 
 import logging
 
@@ -55,6 +57,13 @@ class ETADict(TypedDict):
     timestamp: str
 
 
+class StopETADict(TypedDict):
+    eta: str
+    vehicle_id: str
+    route: str
+    last_arrival: Optional[str]
+
+
 class VelocityDict(TypedDict):
     speed_kmh: float
     timestamp: str
@@ -91,8 +100,10 @@ async def smart_closest_point(
                 results[vehicle_id] = (None, None, None, None, None, None)
             return results
 
-        df['vehicle_id'] = df['vehicle_id'].astype(str)
-        grouped = df.groupby('vehicle_id')
+        # PERF + correctness: no longer mutating the shared cached df.
+        # vehicle_id comes from the DB as String already; groupby on the
+        # existing column works without forcing an astype dance.
+        grouped = df.groupby('vehicle_id', sort=False)
 
         # Get the latest row for each vehicle
         for vehicle_id in vehicle_ids:
@@ -101,7 +112,8 @@ async def smart_closest_point(
                 results[vehicle_id] = (None, None, None, None, None, None)
                 continue
 
-            latest = grouped.get_group(vid_str).iloc[-1]
+            vehicle_rows = grouped.get_group(vid_str)
+            latest = vehicle_rows.iloc[-1]
 
             # Extract closest point data from the preprocessed columns
             # These columns are added by ml/data/preprocess.py pipeline
@@ -112,6 +124,44 @@ async def smart_closest_point(
             closest_lat = latest.get('closest_lat')
             closest_lon = latest.get('closest_lon')
             stop_name = latest.get('stop_name')  # From stops pipeline
+
+            def _is_na(v):
+                return v is None or (isinstance(v, float) and pd.isna(v))
+
+            # If the latest row has no route (e.g. shuttle currently at
+            # Union where multiple routes are ambiguous), walk
+            # BACKWARD through recent history to find the most recent
+            # row with a valid route. This eliminates the transient
+            # "Vehicle X has no route_name" that appears right after a
+            # shuttle starts or wraps between loops.
+            if _is_na(route_name):
+                # Only walk back a handful of rows — a stale route
+                # from 30+ minutes ago isn't useful.
+                look_back = min(len(vehicle_rows), 12)
+                for i in range(2, look_back + 1):
+                    prev = vehicle_rows.iloc[-i]
+                    prev_route = prev.get('route')
+                    if not _is_na(prev_route):
+                        route_name = prev_route
+                        # Also prefer the same row's closest-point
+                        # info so the response is internally coherent.
+                        distance = prev.get('dist_to_route')
+                        polyline_idx = prev.get('polyline_idx')
+                        segment_idx = prev.get('segment_idx')
+                        closest_lat = prev.get('closest_lat')
+                        closest_lon = prev.get('closest_lon')
+                        break
+
+            # Fallback: if still no route data, use real-time route matching
+            if _is_na(route_name):
+                lat = latest.get('latitude')
+                lon = latest.get('longitude')
+                if lat is not None and lon is not None:
+                    rt_result = Stops.get_closest_point((float(lat), float(lon)))
+                    if rt_result[0] is not None:
+                        distance, closest_point_arr, route_name, polyline_idx, segment_idx = rt_result
+                        closest_lat = closest_point_arr[0] if closest_point_arr is not None else None
+                        closest_lon = closest_point_arr[1] if closest_point_arr is not None else None
 
             # Build closest_point tuple if coordinates are available
             if closest_lat is not None and closest_lon is not None:
@@ -151,7 +201,7 @@ async def smart_closest_point(
 
 
 @timed
-@cache(soft_ttl=15, hard_ttl=300, lock_timeout=0.0, namespace="locations")
+@cache(soft_ttl=3, hard_ttl=300, lock_timeout=0.0, namespace="locations")
 async def get_latest_vehicle_locations(session_factory) -> List[VehicleLocationDict]:
     """
     Get the latest location for each vehicle currently inside the geofence.
@@ -263,19 +313,25 @@ async def get_current_driver_assignments(
 
 @timed
 @cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="etas")
-async def get_latest_etas(vehicle_ids: List[str], session_factory) -> Dict[str, ETADict]:
+async def get_latest_etas(vehicle_ids: List[str], session_factory) -> Dict[str, StopETADict]:
     """
-    Get the latest ETA for each vehicle.
+    Get per-stop ETAs: for each stop, the next shuttle to arrive.
+
+    Queries the latest ETA row per vehicle from the database, then aggregates
+    across all vehicles to find the earliest future ETA for each stop.
+    Also includes last_arrival timestamps from vehicle_locations.
 
     Args:
         vehicle_ids: List of vehicle IDs
         session_factory: Async session factory
 
     Returns:
-        Dictionary mapping vehicle_id to ETADict
+        Dictionary mapping stop_key to StopETADict
     """
     if not vehicle_ids:
         return {}
+
+    now_utc = dev_now(timezone.utc)
 
     async with session_factory() as db:
         # Subquery: latest ETA per vehicle
@@ -304,18 +360,56 @@ async def get_latest_etas(vehicle_ids: List[str], session_factory) -> Dict[str, 
         etas_result = await db.execute(etas_query)
         etas = etas_result.scalars().all()
 
-        etas_dict: Dict[str, ETADict] = {}
-        for eta in etas:
-            etas_dict[eta.vehicle_id] = {
-                "stop_times": eta.etas,
-                "timestamp": eta.timestamp.isoformat(),
-            }
+        # Aggregate per-stop: pick earliest future ETA across all vehicles
+        per_stop: Dict[str, StopETADict] = {}
+        for eta_row in etas:
+            if not eta_row.etas:
+                continue
+            for stop_key, stop_data in eta_row.etas.items():
+                # Handle both new format {eta, route} and legacy format (plain ISO string)
+                if isinstance(stop_data, dict):
+                    eta_iso = stop_data.get("eta", "")
+                    route = stop_data.get("route", "")
+                else:
+                    eta_iso = stop_data
+                    route = ""
 
-        return etas_dict
+                try:
+                    eta_dt = datetime.fromisoformat(eta_iso)
+                except (ValueError, TypeError):
+                    continue
+                if eta_dt <= now_utc:
+                    continue  # Skip past ETAs
+
+                last_arrival = stop_data.get("last_arrival") if isinstance(stop_data, dict) else None
+
+                entry = {
+                    "eta": eta_iso,
+                    "vehicle_id": eta_row.vehicle_id,
+                    "route": route,
+                    "last_arrival": last_arrival,
+                }
+
+                # Skip route-qualified keys from DB storage (they're re-generated below)
+                if ":" in stop_key:
+                    continue
+
+                # Primary key: bare stop name — keep earliest across routes
+                if stop_key not in per_stop or eta_dt < datetime.fromisoformat(per_stop[stop_key]["eta"]):
+                    per_stop[stop_key] = entry
+
+                # Secondary key: route-qualified — ensures each route's ETA is preserved
+                # so the frontend can show the correct one for the selected route
+                if route:
+                    route_key = f"{stop_key}:{route}"
+                    if route_key not in per_stop or eta_dt < datetime.fromisoformat(per_stop[route_key]["eta"]):
+                        per_stop[route_key] = entry
+
+        return per_stop
 
 
 @timed
-@cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="velocities")
+@cache(soft_ttl=3, hard_ttl=300, lock_timeout=5.0, namespace="velocities")
 async def get_latest_velocities(vehicle_ids: List[str], session_factory) -> Dict[str, VelocityDict]:
     """
     Get the latest predicted velocity for each vehicle.

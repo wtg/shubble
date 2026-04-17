@@ -340,9 +340,9 @@ def clean_closest_route(
         df_clean.loc[labels_to_update, polyline_idx_column] = new_polys
 
         filled_count = len(indices_to_update)
-        print(f"  ✓ Filled {filled_count}/{total_nans} NaN values ({filled_count/total_nans*100:.1f}%)")
+        print(f"  Filled {filled_count}/{total_nans} NaN values ({filled_count/total_nans*100:.1f}%)")
     else:
-        print(f"  ✓ Filled 0/{total_nans} NaN values (0.0%)")
+        print(f"  Filled 0/{total_nans} NaN values (0.0%)")
 
     return df_clean
 
@@ -413,41 +413,46 @@ def add_closest_points_educated(
 
     print(f"Refining {len(rows_to_process_indices)} rows with educated route guesses...")
 
-    def process_row(row):
-        lat = row[lat_column]
-        lon = row[lon_column]
-        route = row[route_column]
-        poly_idx = row[polyline_idx_column]
-
-        # Stops.get_closest_point expects poly_idx as int
+    # PERF: collect into columnar lists and bulk-assign instead of progress_apply
+    # which allocates a pd.Series per row. With additive mode typically only
+    # 0-10 rows per worker cycle fall into this branch, but avoiding the
+    # per-row Series construction removes a small per-cycle constant.
+    #
+    # Normalize raw `None`s from Stops.get_closest_point to np.nan for
+    # numeric output columns — pandas rejects None in float64 columns.
+    FLOAT_KEYS = {'distance', 'closest_point_lat', 'closest_point_lon',
+                  'polyline_index', 'segment_index'}
+    subset = df.loc[mask, [lat_column, lon_column, route_column, polyline_idx_column]]
+    out_cols: dict[str, list] = {output_col: [] for output_col in output_columns.values()}
+    for lat, lon, route, poly_idx in subset.itertuples(index=False, name=None):
         try:
             poly_idx = int(poly_idx)
         except (ValueError, TypeError):
-            result = {output_col: np.nan for output_col in output_columns.values()}
-            return pd.Series(result)
+            for output_col in output_columns.values():
+                out_cols[output_col].append(np.nan)
+            continue
 
-        # Get closest point forced to the specific route/polyline
         distance, closest_point, _, _, segment_index = Stops.get_closest_point(
             (lat, lon),
             target_polyline=(route, poly_idx)
         )
-
         value_map = {
-            'distance': distance,
+            'distance': distance if distance is not None else np.nan,
             'closest_point_lat': closest_point[0] if closest_point is not None else np.nan,
             'closest_point_lon': closest_point[1] if closest_point is not None else np.nan,
             'route_name': route,
             'polyline_index': poly_idx,
-            'segment_index': segment_index
+            'segment_index': segment_index if segment_index is not None else np.nan,
         }
+        for key, output_col in output_columns.items():
+            v = value_map.get(key, np.nan)
+            if key in FLOAT_KEYS and v is None:
+                v = np.nan
+            out_cols[output_col].append(v)
 
-        result = {output_col: value_map.get(key, np.nan) for key, output_col in output_columns.items()}
-        return pd.Series(result)
-
-    # Apply to filtered rows
-    results = df.loc[mask].progress_apply(process_row, axis=1)
-
-    # Assign back to original dataframe
-    for key, output_col in output_columns.items():
-        if output_col in results.columns:
-            df.loc[mask, output_col] = results[output_col]
+    for output_col, values in out_cols.items():
+        src_key = next((k for k, v in output_columns.items() if v == output_col), None)
+        if src_key in FLOAT_KEYS:
+            df.loc[mask, output_col] = np.asarray(values, dtype=float)
+        else:
+            df.loc[mask, output_col] = values

@@ -1,23 +1,27 @@
 """FastAPI routes for the Shubble API."""
-import asyncio
 import logging
 import hmac
 from hashlib import sha256
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Request, Depends, HTTPException, Response
-from fastapi.responses import FileResponse, JSONResponse
-from sqlalchemy import func, and_, select
+from typing import Any, Optional
 
-from backend.cache import cache, soft_clear_namespace
+from fastapi import APIRouter, Request, Depends, HTTPException, Response
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from sqlalchemy import and_, select
+
+import json
+
+from backend.cache import cache, get_redis, soft_clear_namespace
 from backend.function_timer import timed
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.orm import selectinload
 from backend.database import get_db
-from backend.models import Vehicle, GeofenceEvent, VehicleLocation, Announcement
+from backend.models import Announcement, BusSchedule, BusScheduleToDaySchedule, DaySchedule, Route, RouteToBusSchedule, Stop, Vehicle, GeofenceEvent, VehicleLocation
 from backend.config import settings
-from backend.time_utils import get_campus_start_of_day
+from backend.time_utils import get_campus_start_of_day, dev_now
 from backend.utils import (
     get_vehicles_in_geofence,
 )
@@ -25,70 +29,64 @@ from backend.fastapi.utils import (
     smart_closest_point,
     get_latest_vehicle_locations,
     get_current_driver_assignments,
-    get_latest_etas,
     get_latest_velocities,
 )
 from shared.stops import Stops
-# from shared.schedules import Schedule
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-@router.get("/api/locations")
-@timed
-@cache(soft_ttl=15, hard_ttl=300, lock_timeout=0.0, namespace="locations")
-async def get_locations(response: Response, request: Request):
-    """
-    Returns the latest location for each vehicle currently inside the geofence.
-    The vehicle is considered inside the geofence if its latest geofence event
-    today is a 'geofenceEntry'.
+# SSE stream keepalive interval. If no pub/sub message arrives, emit a
+# comment line so intermediate proxies don't close the connection as idle.
+_SSE_KEEPALIVE_SEC = 15.0
+# Common SSE response headers. Disable nginx buffering so events flush
+# to the client as soon as they're yielded.
+_SSE_HEADERS = {
+    "Cache-Control": "no-cache, no-transform",
+    "X-Accel-Buffering": "no",
+    "Connection": "keep-alive",
+}
 
-    This endpoint returns raw vehicle location data without ML predictions
-    or route matching. Use /api/predictions for that data.
-    """
-    # Get latest locations for vehicles in geofence
-    # Uses cached function that returns dicts
-    results = await get_latest_vehicle_locations(request.app.state.session_factory)
 
+async def _build_locations_payload(session_factory) -> tuple[dict[str, Any], Optional[str]]:
+    """Assemble the /api/locations response body.
+
+    Shared by the REST handler (GET /api/locations) and the SSE handler
+    (GET /api/locations/stream). Returns (response_data, oldest_iso) so
+    the REST path can still set data-age headers on cache miss.
+    """
+    results = await get_latest_vehicle_locations(session_factory)
     vehicle_ids = [loc["vehicle_id"] for loc in results]
-    
-    # Get current driver assignments for all vehicles in results
+
     current_assignments = await get_current_driver_assignments(
-        vehicle_ids, request.app.state.session_factory
+        vehicle_ids, session_factory
     )
 
-    # Format response
-    response_data = {}
-    oldest_timestamp = None
+    # PERF: ISO-8601 timestamps sort lexicographically in the same order
+    # as chronological order (when UTC / same timezone), so we can find
+    # the oldest via string min() and only do one fromisoformat call.
+    response_data: dict[str, Any] = {}
+    oldest_iso = min((loc["timestamp"] for loc in results), default=None)
 
     for loc in results:
         vehicle = loc["vehicle"]
-        # Track oldest data point for latency calculation
-        # Timestamp is ISO string in cached dict, convert back to datetime
-        ts = datetime.fromisoformat(loc["timestamp"])
-        if oldest_timestamp is None or ts < oldest_timestamp:
-            oldest_timestamp = ts
 
-        # Get current driver info
         driver_info = None
         assignment = current_assignments.get(loc["vehicle_id"])
-        # Assignment is DriverAssignmentDict (dict)
         if assignment and assignment.get("driver"):
             driver_data = assignment["driver"]
             driver_info = {
                 "id": driver_data["id"],
                 "name": driver_data["name"],
             }
-        else:
-            driver_info = None
 
         response_data[loc["vehicle_id"]] = {
             "name": loc["name"],
             "latitude": loc["latitude"],
             "longitude": loc["longitude"],
-            "timestamp": loc["timestamp"], # Already ISO string
+            "timestamp": loc["timestamp"],  # Already ISO string
             "heading_degrees": loc["heading_degrees"],
             "speed_mph": loc["speed_mph"],
             "is_ecu_speed": loc["is_ecu_speed"],
@@ -103,40 +101,193 @@ async def get_locations(response: Response, request: Request):
             "driver": driver_info,
         }
 
+    return response_data, oldest_iso
+
+
+@router.get("/api/locations")
+@timed
+@cache(soft_ttl=3, hard_ttl=300, lock_timeout=0.0, namespace="locations")
+async def get_locations(response: Response, request: Request):
+    """
+    Returns the latest location for each vehicle currently inside the geofence.
+    The vehicle is considered inside the geofence if its latest geofence event
+    today is a 'geofenceEntry'.
+
+    This endpoint returns raw vehicle location data without ML predictions
+    or route matching. Use /api/predictions for that data.
+    """
+    response_data, oldest_iso = await _build_locations_payload(
+        request.app.state.session_factory
+    )
+
     # Add timing metadata as HTTP headers to help frontend synchronize with Samsara API
-    now = datetime.now(timezone.utc)
-    data_age = (now - oldest_timestamp).total_seconds() if oldest_timestamp else None
+    now = dev_now(timezone.utc)
+    data_age = (
+        (now - datetime.fromisoformat(oldest_iso)).total_seconds()
+        if oldest_iso else None
+    )
 
     response.headers['X-Server-Time'] = now.isoformat()
-    response.headers['X-Oldest-Data-Time'] = oldest_timestamp.isoformat() if oldest_timestamp else ''
+    response.headers['X-Oldest-Data-Time'] = oldest_iso or ''
     response.headers['X-Data-Age-Seconds'] = str(data_age) if data_age is not None else ''
 
     return response_data
 
 
-@router.get("/api/etas")
+@router.get("/api/locations/stream")
+async def stream_locations(request: Request):
+    """
+    Server-Sent Events stream of /api/locations data. Pushes a fresh
+    payload whenever the worker publishes to the `shubble:locations_updated`
+    Redis channel (fired after each worker cycle that ingested new GPS rows).
+
+    Client contract: each SSE message body is the same JSON shape as
+    GET /api/locations. Comment lines (`: ka`) are keepalives and should
+    be ignored.
+    """
+    session_factory = request.app.state.session_factory
+    redis = get_redis()
+
+    async def gen():
+        # Initial emit so the client doesn't wait up to _SSE_KEEPALIVE_SEC
+        # or a worker cycle for their first data point.
+        try:
+            payload, _ = await _build_locations_payload(session_factory)
+            yield f"data: {json.dumps(payload)}\n\n"
+        except Exception as e:
+            logger.warning(f"stream_locations initial emit failed: {e}")
+
+        if redis is None:
+            # Without Redis we can't subscribe to pub/sub. Close the stream;
+            # the client will fall back to polling.
+            return
+
+        pubsub = redis.pubsub()
+        try:
+            await pubsub.subscribe("shubble:locations_updated")
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    msg = await pubsub.get_message(
+                        ignore_subscribe_messages=True,
+                        timeout=_SSE_KEEPALIVE_SEC,
+                    )
+                except Exception as e:
+                    logger.warning(f"stream_locations pubsub error: {e}")
+                    break
+
+                if msg is None:
+                    # Keepalive so proxies don't time out the idle connection.
+                    yield ": ka\n\n"
+                    continue
+
+                try:
+                    payload, _ = await _build_locations_payload(session_factory)
+                    yield f"data: {json.dumps(payload)}\n\n"
+                except Exception as e:
+                    logger.warning(f"stream_locations payload build failed: {e}")
+        finally:
+            try:
+                await pubsub.unsubscribe("shubble:locations_updated")
+            except Exception:
+                pass
+            try:
+                await pubsub.close()
+            except Exception:
+                pass
+
+    return StreamingResponse(
+        gen(), media_type="text/event-stream", headers=_SSE_HEADERS
+    )
+
+
+@router.get("/api/trips")
 @timed
-@cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="etas")
-async def get_etas(request: Request, response: Response):
+async def get_trips(request: Request, response: Response):
+    """Returns per-trip ETAs. Each trip is a (route, departure_time) pair
+    with its assigned shuttle's stop ETAs. See backend/worker/trips.py.
     """
-    Returns ETA information for each vehicle currently inside the geofence.
+    redis = get_redis()
+    if redis:
+        raw = await redis.get("shubble:trips_live")
+        if raw:
+            return json.loads(raw)
+    return []
+
+
+@router.get("/api/trips/stream")
+async def stream_trips(request: Request):
     """
-    # Get vehicle IDs currently in geofence using cached query
-    vehicle_ids_set = await get_vehicles_in_geofence(request.app.state.session_factory)
-    vehicle_ids = list(vehicle_ids_set)
+    Server-Sent Events stream of /api/trips data. Pushes the latest
+    `shubble:trips_live` payload whenever the worker publishes to the
+    `shubble:trips_updated` Redis channel (fired at the end of each worker
+    cycle).
 
-    if not vehicle_ids:
-        return {}
+    Client contract: each SSE message body is the same JSON array as
+    GET /api/trips. Comment lines (`: ka`) are keepalives.
+    """
+    redis = get_redis()
 
-    # Get latest ETAs
-    etas_dict = await get_latest_etas(vehicle_ids, request.app.state.session_factory)
+    async def _current_payload() -> str:
+        """Return the SSE data frame for the current Redis trips blob."""
+        if redis is None:
+            return "data: []\n\n"
+        try:
+            raw = await redis.get("shubble:trips_live")
+        except Exception as e:
+            logger.warning(f"stream_trips Redis read failed: {e}")
+            return "data: []\n\n"
+        if raw is None:
+            return "data: []\n\n"
+        text = raw.decode() if isinstance(raw, (bytes, bytearray)) else raw
+        return f"data: {text}\n\n"
 
-    return etas_dict
+    async def gen():
+        # Initial emit so the client gets the current snapshot immediately.
+        yield await _current_payload()
+
+        if redis is None:
+            return
+
+        pubsub = redis.pubsub()
+        try:
+            await pubsub.subscribe("shubble:trips_updated")
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    msg = await pubsub.get_message(
+                        ignore_subscribe_messages=True,
+                        timeout=_SSE_KEEPALIVE_SEC,
+                    )
+                except Exception as e:
+                    logger.warning(f"stream_trips pubsub error: {e}")
+                    break
+
+                if msg is None:
+                    yield ": ka\n\n"
+                    continue
+
+                yield await _current_payload()
+        finally:
+            try:
+                await pubsub.unsubscribe("shubble:trips_updated")
+            except Exception:
+                pass
+            try:
+                await pubsub.close()
+            except Exception:
+                pass
+
+    return StreamingResponse(
+        gen(), media_type="text/event-stream", headers=_SSE_HEADERS
+    )
 
 
 @router.get("/api/velocities")
 @timed
-@cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="velocities")
+@cache(soft_ttl=3, hard_ttl=300, lock_timeout=5.0, namespace="velocities")
 async def get_velocities(request: Request, response: Response):
     """
     Returns predicted velocity and route matching data for each vehicle currently inside the geofence.
@@ -154,6 +305,10 @@ async def get_velocities(request: Request, response: Response):
     # Get route matching data from cached dataframe
     closest_points = await smart_closest_point(vehicle_ids)
 
+    # Get latest locations for real-time route matching fallback
+    locations_dict = await get_latest_vehicle_locations(request.app.state.session_factory)
+    locations_by_id = {loc["vehicle_id"]: loc for loc in locations_dict}
+
     # Format response
     response_data = {}
     for vehicle_id in vehicle_ids:
@@ -167,6 +322,14 @@ async def get_velocities(request: Request, response: Response):
         )
 
         route_name = closest_route_name if closest_distance is not None and closest_distance < 0.050 else None
+
+        # Fallback: real-time route matching when dataframe has no route data
+        if route_name is None:
+            loc = locations_by_id.get(vehicle_id)
+            if loc:
+                rt = Stops.get_closest_point((loc["latitude"], loc["longitude"]))
+                if rt[0] is not None and rt[0] < 0.050:
+                    closest_distance, _, route_name, polyline_index, _ = rt[0], rt[1], rt[2], rt[3], rt[4]
 
         # Determine if vehicle is at a stop
         is_at_stop = stop_name is not None
@@ -323,7 +486,7 @@ async def webhook(request: Request, db: AsyncSession = Depends(get_db)):
 @timed
 async def data_today(db: AsyncSession = Depends(get_db)):
     """Get all location data and geofence events for today."""
-    now = datetime.now(timezone.utc)
+    now = dev_now(timezone.utc)
     start_of_day = get_campus_start_of_day()
 
     # Query locations today
@@ -354,66 +517,138 @@ async def data_today(db: AsyncSession = Depends(get_db)):
     events_result = await db.execute(events_query)
     events_today = events_result.scalars().all()
 
-    # Build response dict
-    locations_today_dict = {}
+    # Build response dict. setdefault avoids the "if in dict else new"
+    # branching and makes geofence-before-location edge cases safe.
+    locations_today_dict: dict = {}
     for location in locations_today:
-        vehicle_location = {
+        entry = locations_today_dict.setdefault(
+            location.vehicle_id, {"entry": None, "exit": None, "data": []}
+        )
+        entry["data"].append({
             "latitude": location.latitude,
             "longitude": location.longitude,
             "timestamp": location.timestamp,
             "speed_mph": location.speed_mph,
             "heading_degrees": location.heading_degrees,
             "address_id": location.address_id,
-        }
-        if location.vehicle_id in locations_today_dict:
-            locations_today_dict[location.vehicle_id]["data"].append(vehicle_location)
-        else:
-            locations_today_dict[location.vehicle_id] = {
-                "entry": None,
-                "exit": None,
-                "data": [vehicle_location],
-            }
+        })
 
     for geofence_event in events_today:
+        # Guard against events for vehicles with no location rows — previously
+        # this raised KeyError and crashed the endpoint.
+        vehicle_entry = locations_today_dict.setdefault(
+            geofence_event.vehicle_id, {"entry": None, "exit": None, "data": []}
+        )
         if geofence_event.event_type == "geofenceEntry":
-            if (
-                "entry" not in locations_today_dict[geofence_event.vehicle_id]
-            ):  # First entry
-                locations_today_dict[geofence_event.vehicle_id]["entry"] = (
-                    geofence_event.event_time
-                )
+            if vehicle_entry["entry"] is None:  # first entry wins
+                vehicle_entry["entry"] = geofence_event.event_time
         elif geofence_event.event_type == "geofenceExit":
-            if (
-                "entry" in locations_today_dict[geofence_event.vehicle_id]
-            ):  # Makes sure that the vehicle already entered
-                locations_today_dict[geofence_event.vehicle_id]["exit"] = (
-                    geofence_event.event_time
-                )
+            if vehicle_entry["entry"] is not None:  # only after an entry
+                vehicle_entry["exit"] = geofence_event.event_time
 
     return locations_today_dict
 
-
 @router.get("/api/routes")
 @timed
-async def get_shuttle_routes():
-    """Serve routes.json file."""
-    root_dir = Path(__file__).parent.parent.parent
-    routes_file = root_dir / "shared" / "routes.json"
-    if routes_file.exists():
-        return FileResponse(routes_file)
-    raise HTTPException(status_code=404, detail="Routes file not found")
+async def get_shuttle_routes(db: AsyncSession = Depends(get_db)):
 
+    result = await db.execute(
+        select(Route)
+        .options(
+            selectinload(Route.stops)
+            .selectinload(Stop.departure_polyline)
+        )
+    )
+
+    routes = result.scalars().all()
+    response = []
+
+    #Loop through routes
+    for route in routes:
+
+        # Skip ENTRY and EXIT routes which are not real shuttle routes
+        if route.name.startswith("ENTRY") or route.name.startswith("EXIT"):
+            continue
+
+        stops = sorted(route.stops, key=lambda s: s.id)
+
+        stops_list = []
+        full_path = []
+
+        #loop through stops to build stops list and path
+        for stop in stops:
+            stops_list.append({
+                "name": stop.name,
+                "latitude": stop.latitude,
+                "longitude": stop.longitude,
+            })
+
+        #Build path from polylines
+        for stop in stops:
+            for poly in stop.departure_polyline:
+                coords = [
+                    [float(lat), float(lng)]
+                    for lat, lng in (c.split(",") for c in poly.coordinates)
+                ]
+                full_path.extend(coords)
+
+        response.append({
+            "name": route.name,
+            "color": route.route_color,
+            "stops": stops_list,
+            "path": full_path,
+        })
+
+    return response
 
 @router.get("/api/schedule")
 @timed
-async def get_shuttle_schedule():
-    """Serve schedule.json file."""
-    root_dir = Path(__file__).parent.parent.parent
-    schedule_file = root_dir / "shared" / "schedule.json"
-    if schedule_file.exists():
-        return FileResponse(schedule_file)
-    raise HTTPException(status_code=404, detail="Schedule file not found")
+async def get_shuttle_schedule(db: AsyncSession = Depends(get_db)):
 
+    result = await db.execute(
+        select(DaySchedule)
+        .options(
+            selectinload(DaySchedule.bus_schedule_to_day_schedule)
+            .selectinload(BusScheduleToDaySchedule.bus_schedule)
+            .selectinload(BusSchedule.route_to_bus_schedules)
+            .selectinload(RouteToBusSchedule.route)
+        )
+    )
+
+    day_schedules = result.scalars().all()
+    response = []
+
+    for day in day_schedules:
+
+        day_obj = {
+            "day_type": day.name,
+            "buses": []
+        }
+
+        #loop through bus schedules
+        for mapping in day.bus_schedule_to_day_schedule:
+            bus = mapping.bus_schedule
+
+            bus_obj = {
+                "name": bus.name,
+                "departures": []
+            }
+
+            #loop through times for this bus
+            for rbs in bus.route_to_bus_schedules:
+               
+                departure = {
+                    "time": rbs.time.strftime("%H:%M"),   
+                    "route": rbs.route.name   
+                }
+
+                bus_obj["departures"].append(departure)
+
+            day_obj["buses"].append(bus_obj)
+
+        response.append(day_obj)
+
+    return response
 
 @router.get("/api/aggregated-schedule")
 @timed
@@ -458,7 +693,7 @@ async def get_matched_shuttle_schedules(force_recompute: bool = False):
 async def data_announcement(db: AsyncSession = Depends(get_db)):
 
     # Query announcements that are active and not expired
-    now = datetime.now(timezone.utc)
+    now = dev_now(timezone.utc)
     announcements_query = (
         select(Announcement)
         .where(
