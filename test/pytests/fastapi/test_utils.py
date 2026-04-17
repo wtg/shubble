@@ -624,6 +624,33 @@ ETA_CASES = [
             }
         },
         id="single_vehicle_eta",
+    ),
+
+    pytest.param(
+        ["veh1", "veh2"],
+        [
+            make_eta(
+                vehicle_id="veh1",
+                etas={"stop1": "2026-04-01T10:00:00"},
+                timestamp=datetime(2026, 4, 1, 9, 0, 0),
+            ),
+            make_eta(
+                vehicle_id="veh2",
+                etas={"stop2": "2026-04-01T11:00:00"},
+                timestamp=datetime(2026, 4, 1, 9, 5, 0),
+            ),
+        ],
+        {
+            "veh1": {
+                "stop_times": {"stop1": "2026-04-01T10:00:00"},
+                "timestamp": "2026-04-01T09:00:00",
+            },
+            "veh2": {
+                "stop_times": {"stop2": "2026-04-01T11:00:00"},
+                "timestamp": "2026-04-01T09:05:00",
+            },
+        },
+        id="multiple_vehicle_etas",
     )
 ]
 
