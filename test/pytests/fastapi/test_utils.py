@@ -6,10 +6,12 @@ from sqlalchemy import literal_column, select
 from backend.fastapi.utils import get_latest_vehicle_locations, VehicleLocationDict
 # Testing 2 utils first
 from backend.fastapi.utils import (
-    get_latest_vehicle_locations,
-    VehicleLocationDict,
-    VehicleInfoDict,
-    get_current_driver_assignments, # Added for driver tests
+    get_latest_vehicle_locations, # DONE
+    VehicleLocationDict, #DONE
+    VehicleInfoDict, # DONE
+    get_current_driver_assignments, #DONE
+    get_latest_etas,
+    # get_latest_velocities # WIP
     # make mock data in database
     # use get_locatest
 
@@ -575,4 +577,63 @@ async def test_three_shuttles_last_inserted_is_distinct():
     assert second != last
 
 
-    #Work on velocities and etas next
+    #schema for vehicles
+    # schema for drivers
+    #dict for vehicles
+    # dict for drivers
+    #one file per each table in models.py
+
+    # move functions and shared logic to helper
+    # this will be just the cases
+    # read in cases from json files
+    # executed in this file
+
+
+
+    # Work on velocities and etas next
+
+    # Get latest ETAs
+    # etas_dict = await get_latest_etas(vehicle_ids, request.app.state.session_factory)
+
+def make_eta(
+    vehicle_id="veh1",
+    etas={"stop1": "2026-04-01T10:00:00"},
+    timestamp=datetime(2026, 4, 1, 9, 0, 0),
+):
+    eta = MagicMock()
+    eta.vehicle_id = vehicle_id
+    eta.etas = etas
+    eta.timestamp = timestamp
+    return eta
+
+
+ETA_CASES = [
+    pytest.param(
+        ["veh1"],
+        [
+            make_eta(
+                vehicle_id="veh1",
+                etas={"stopA": "2026-04-01T10:00:00"},
+                timestamp=datetime(2026, 4, 1, 9, 0, 0),
+            )
+        ],
+        {
+            "veh1": {
+                "stop_times": {"stopA": "2026-04-01T10:00:00"},
+                "timestamp": "2026-04-01T09:00:00",
+            }
+        },
+        id="single_vehicle_eta",
+    )
+]
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("vehicle_ids, rows, expected", ETA_CASES)
+async def test_get_latest_etas(vehicle_ids, rows, expected):
+    db = make_db(rows)
+
+    result = await get_latest_etas(vehicle_ids, make_session_factory(db))
+
+    assert result == expected
+
+
