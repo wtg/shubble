@@ -383,8 +383,8 @@ async def data_today(db: AsyncSession = Depends(get_db)):
 
     return locations_today_dict
 
-@router.get("/api/routes-v2")
-async def get_shuttle_routes2(db: AsyncSession = Depends(get_db)):
+@router.get("/api/routes/v2/")
+async def get_shuttle_routes_v2(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Route)
         .options(
@@ -492,6 +492,7 @@ async def get_shuttle_routes(db: AsyncSession = Depends(get_db)):
 @router.get("/api/schedule")
 async def get_shuttle_schedule(db: AsyncSession = Depends(get_db)):
 
+    # Load day schedules with their bus schedules
     result = await db.execute(
         select(DaySchedule)
         .options(
@@ -501,46 +502,51 @@ async def get_shuttle_schedule(db: AsyncSession = Depends(get_db)):
             .selectinload(RouteToBusSchedule.route)
         )
     )
-
     day_schedules = result.scalars().all()
+
+    # Load date mappings to derive day-of-week -> schedule type
+    date_mappings_result = await db.execute(
+        select(DateToDaySchedule)
+        .options(selectinload(DateToDaySchedule.day_schedule))
+    )
+    date_mappings = date_mappings_result.scalars().all()
+
+    # Build day-of-week -> schedule type from date
+    day_of_week_map = {}
+    for dm in date_mappings:
+        day_of_week = dm.date.strftime("%A").upper()  
+        schedule_type = dm.day_schedule.name          
+        day_of_week_map[day_of_week] = schedule_type
+
     response = {}
 
-    # Day type mapping
-    DAY_TYPE_MAP = {
-        "MONDAY": "weekday",
-        "TUESDAY": "weekday",
-        "WEDNESDAY": "weekday",
-        "THURSDAY": "weekday",
-        "FRIDAY": "weekday",
-        "SATURDAY": "saturday",
-        "SUNDAY": "sunday",
-    }
+    # Add the day-of-week mappings
+    DAY_ORDER = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"]
 
-    # Add mappings first
-    response.update(DAY_TYPE_MAP)
+    response.update({
+        day: day_of_week_map[day]
+        for day in DAY_ORDER
+        if day in day_of_week_map
+    })
 
-    # Build schedules
+    # Build schedules keyed by schedule type
     for day in day_schedules:
-        day_type = day.name
-
-        if day_type not in response:
-            response[day_type] = {}
+        schedule_type = day.name
+        if schedule_type not in response:
+            response[schedule_type] = {}
 
         for mapping in day.bus_schedule_to_day_schedule:
             bus = mapping.bus_schedule
             bus_name = bus.name
 
-            if bus_name not in response[day_type]:
-                response[day_type][bus_name] = []
+            if bus_name not in response[schedule_type]:
+                response[schedule_type][bus_name] = []
 
             for rbs in bus.route_to_bus_schedules:
-                time_str = rbs.time.strftime("%I:%M %p")  
+                time_str = rbs.time.strftime("%I:%M %p")
                 route_name = rbs.route.name
 
-                response[day_type][bus_name].append([
-                    time_str,
-                    route_name
-                ])
+                response[schedule_type][bus_name].append([time_str, route_name])
 
     return response
 
@@ -584,7 +590,7 @@ async def get_week_schedule(db: AsyncSession = Depends(get_db)):
         
                 sched_obj[bus.name]["departures"].append(rbs.time.strftime("%H:%M"))
         
-    response["schedules"] = sched_obj
+    response.update( sched_obj )
     return response
 
 @router.get("/api/aggregated-schedule")
