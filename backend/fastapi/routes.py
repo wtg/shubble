@@ -161,7 +161,7 @@ async def get_velocities(request: Request, response: Response):
         velocity_data = predicted_dict.get(vehicle_id)
 
         # Get closest point result from smart_closest_point
-        closest_distance, _, closest_route_name, polyline_index, _, stop_name = closest_points.get(
+        closest_distance, _, closest_route_name, polyline_index, segment_index, stop_name = closest_points.get(
             vehicle_id,
             (None, None, None, None, None, None)
         )
@@ -176,6 +176,7 @@ async def get_velocities(request: Request, response: Response):
             "speed_kmh": velocity_data["speed_kmh"] if velocity_data else None,
             "timestamp": velocity_data["timestamp"] if velocity_data else None,
             "route_name": route_name,
+            "segment_index": segment_index,
             "polyline_index": polyline_index,
             "is_at_stop": is_at_stop,
             "current_stop": current_stop,

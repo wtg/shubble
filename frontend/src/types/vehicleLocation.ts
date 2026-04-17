@@ -33,6 +33,7 @@ export type VehicleVelocityData = {
     timestamp: string | null;
     route_name: string | null;
     polyline_index: number | null;
+    segment_index: number | null;
     is_at_stop?: boolean;
     current_stop?: string | null;
 }
@@ -57,6 +58,7 @@ export type VehiclePredictionData = {
 export type VehicleCombinedData = VehicleLocationData & {
     route_name: string | null;
     polyline_index: number | null;
+    segment_index: number | null;
     stop_times?: {
         stop_times: Record<string, string>;
         timestamp: string;
