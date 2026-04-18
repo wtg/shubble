@@ -7,7 +7,7 @@ import pandas as pd
 from backend.cache import cache
 from backend.function_timer import timed
 
-from backend.models import VehicleLocation, DriverVehicleAssignment, ETA, PredictedLocation
+from backend.models import Vehicle, GeofenceEvent, VehicleLocation, Driver, DriverVehicleAssignment, ETA, Announcement
 from backend.cache_dataframe import get_today_dataframe
 from backend.utils import get_vehicles_in_geofence_query
 from backend.time_utils import get_campus_start_of_day
@@ -365,3 +365,173 @@ async def get_latest_velocities(vehicle_ids: List[str], session_factory) -> Dict
             }
 
         return predicted_dict
+
+
+@timed
+@cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="vehicles")
+async def get_vehicles(session_factory) -> List[Vehicle]:
+    """
+    Get all vehicles.
+
+    Args:
+        session_factory: Async session factory
+
+    Returns:
+        List of Vehicle ORM objects
+    """
+    async with session_factory() as db:
+        vehicles_query = select(Vehicle)
+        result = await db.execute(vehicles_query)
+        vehicles = result.scalars().all()
+        return vehicles
+
+
+@timed
+async def get_geofence_events_in_time_range(
+    start_time: str, end_time: str, session_factory
+) -> List[GeofenceEvent]:
+    """
+    Get all geofence events within a specified time range.
+
+    Args:
+        start_time: Start of time range (ISO format string)
+        end_time: End of time range (ISO format string)
+        session_factory: Async session factory
+
+    Returns:
+        List of GeofenceEvent ORM objects ordered by event_time ascending
+    """
+    async with session_factory() as db:
+        geofence_events_query = (
+            select(GeofenceEvent)
+            .where(
+                and_(
+                    GeofenceEvent.event_time >= start_time,
+                    GeofenceEvent.event_time <= end_time,
+                )
+            )
+            .order_by(GeofenceEvent.event_time.asc())
+        )
+        geofence_events_result = await db.execute(geofence_events_query)
+        geofence_events = geofence_events_result.scalars().all()
+
+        return geofence_events
+
+
+@timed
+async def get_vehicle_locations_in_time_range(
+    start_time: str, end_time: str, session_factory
+) -> List[VehicleLocation]:
+    """
+    Get all vehicle locations within a specified time range.
+
+    Args:
+        start_time: Start of time range (ISO format string)
+        end_time: End of time range (ISO format string)
+        session_factory: Async session factory
+
+    Returns:
+        List of VehicleLocation ORM objects ordered by timestamp ascending
+    """
+    async with session_factory() as db:
+        vehicle_locations_query = (
+            select(VehicleLocation)
+            .where(
+                and_(
+                    VehicleLocation.timestamp >= start_time,
+                    VehicleLocation.timestamp <= end_time,
+                )
+            )
+            .order_by(VehicleLocation.timestamp.asc())
+        )
+
+        vehicle_locations_result = await db.execute(vehicle_locations_query)
+        vehicle_locations = vehicle_locations_result.scalars().all()
+
+        return vehicle_locations
+
+
+@timed
+@cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="drivers")
+async def get_drivers(session_factory) -> List[Driver]:
+    """
+    Get all drivers.
+
+    Args:
+        session_factory: Async session factory
+
+    Returns:
+        List of Driver ORM objects
+    """
+    async with session_factory() as db:
+        drivers_query = select(Driver)
+        drivers_result = await db.execute(drivers_query)
+        drivers = drivers_result.scalars().all()
+        return drivers
+    
+## figure out what driver vehicle assignment looks like.
+
+
+@timed
+async def get_etas_in_time_range(
+    start_time: str, end_time: str, session_factory
+) -> List[ETA]:
+    """
+    Get all ETA records within a specified time range.
+
+    Args:
+        start_time: Start of time range (ISO format string)
+        end_time: End of time range (ISO format string)
+        session_factory: Async session factory
+
+    Returns:
+        List of ETA ORM objects ordered by timestamp ascending
+    """
+    async with session_factory() as db:
+        etas_query = (
+            select(ETA)
+            .where(
+                and_(
+                    ETA.timestamp >= start_time,
+                    ETA.timestamp <= end_time,
+                )
+            )
+            .order_by(ETA.timestamp.asc())
+        )
+        etas_result = await db.execute(etas_query)
+        etas = etas_result.scalars().all()
+
+        return etas
+
+
+@timed
+@cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="announcements")
+async def get_announcements(
+    start_time: str, end_time: str, session_factory
+) -> List[Announcement]:
+    """
+    Get all announcements within a specified time range.
+
+    Args:
+        start_time: Start of time range (ISO format string)
+        end_time: End of time range (ISO format string)
+        session_factory: Async session factory
+
+    Returns:
+        List of Announcement ORM objects ordered by timestamp ascending
+    """
+    async with session_factory() as db:
+        announcements_query = (
+            select(Announcement)
+            .where(
+                and_(
+                    Announcement.created_at <= end_time,
+                    Announcement.expires_at >= start_time,
+                )
+            )
+            .order_by(Announcement.timestamp.asc())
+        )
+        announcements_result = await db.execute(announcements_query)
+        announcements = announcements_result.scalars().all()
+
+        return announcements

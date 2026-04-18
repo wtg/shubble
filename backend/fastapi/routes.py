@@ -15,7 +15,7 @@ from backend.function_timer import timed
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects import postgresql
 from backend.database import get_db
-from backend.models import Vehicle, GeofenceEvent, VehicleLocation, Announcement
+from backend.models import Vehicle, GeofenceEvent, Announcement
 from backend.config import settings
 from backend.time_utils import get_campus_start_of_day
 from backend.utils import (
@@ -27,6 +27,12 @@ from backend.fastapi.utils import (
     get_current_driver_assignments,
     get_latest_etas,
     get_latest_velocities,
+    get_vehicles,
+    get_geofence_events_in_time_range,
+    get_vehicle_locations_in_time_range,
+    get_drivers,
+    get_etas_in_time_range,
+    get_announcements,
 )
 from shared.stops import Stops
 # from shared.schedules import Schedule
@@ -327,32 +333,10 @@ async def data_today(db: AsyncSession = Depends(get_db)):
     start_of_day = get_campus_start_of_day()
 
     # Query locations today
-    locations_query = (
-        select(VehicleLocation)
-        .where(
-            and_(
-                VehicleLocation.timestamp >= start_of_day,
-                VehicleLocation.timestamp <= now,
-            )
-        )
-        .order_by(VehicleLocation.timestamp.asc())
-    )
-    locations_result = await db.execute(locations_query)
-    locations_today = locations_result.scalars().all()
+    locations_today = get_vehicle_locations_in_time_range(start_of_day, now, db)
 
     # Query events today
-    events_query = (
-        select(GeofenceEvent)
-        .where(
-            and_(
-                GeofenceEvent.event_time >= start_of_day,
-                GeofenceEvent.event_time <= now,
-            )
-        )
-        .order_by(GeofenceEvent.event_time.asc())
-    )
-    events_result = await db.execute(events_query)
-    events_today = events_result.scalars().all()
+    geofence_events_today = get_geofence_events_in_time_range(start_of_day, now, db)
 
     # Build response dict
     locations_today_dict = {}
@@ -374,7 +358,7 @@ async def data_today(db: AsyncSession = Depends(get_db)):
                 "data": [vehicle_location],
             }
 
-    for geofence_event in events_today:
+    for geofence_event in geofence_events_today:
         if geofence_event.event_type == "geofenceEntry":
             if (
                 "entry" not in locations_today_dict[geofence_event.vehicle_id]
@@ -392,6 +376,98 @@ async def data_today(db: AsyncSession = Depends(get_db)):
 
     return locations_today_dict
 
+@router.get("/api/historical")
+@timed
+async def data_historical(db: AsyncSession = Depends(get_db), start_time: datetime = None, end_time: datetime = None):
+    """Get historical location data for a time range."""
+    if start_time is None or end_time is None:
+        raise HTTPException(
+            status_code=400,
+            detail="start_time and end_time query parameters are required",
+        )
+    
+    historical_events_dict = {"vehicles": [], "geofence_events": [], "vehicle_locations": [], "drivers": [], "etas": [], "announcements": []}
+    
+    vehicles = get_vehicles(db)
+    vehicles_list = []
+    for vehicle in vehicles:
+        vehicles_list.append({
+            "id": vehicle.id,
+            "name": vehicle.name,
+            "asset_type": vehicle.asset_type,
+            "license_plate": vehicle.license_plate,
+            "vin": vehicle.vin,
+            "maintenance_id": vehicle.maintenance_id,
+            "gateway_model": vehicle.gateway_model,
+            "gateway_serial": vehicle.gateway_serial,
+        })
+    historical_events_dict["vehicles"] = vehicles_list
+
+    geofence_events = get_geofence_events_in_time_range(start_time, end_time, db)
+    geofence_events_list = []
+    for event in geofence_events:
+        geofence_events_list.append({
+            "id": event.id,
+            "vehicle_id": event.vehicle_id,
+            "event_type": event.event_type,
+            "event_time": event.event_time,
+            "address_name": event.address_name,
+            "address_formatted": event.address_formatted,
+            "latitude": event.latitude,
+            "longitude": event.longitude,
+        })
+
+    vehicle_locations = get_vehicle_locations_in_time_range(start_time, end_time, db)
+    vehicle_locations_list = []
+    for location in vehicle_locations:
+        vehicle_locations_list.append({
+            "id": location.id,
+            "vehicle_id": location.vehicle_id,
+            "name": location.name,
+            "timestamp": location.timestamp,
+            "latitude": location.latitude,
+            "longitude": location.longitude,
+            "heading_degrees": location.heading_degrees,
+            "speed_mph": location.speed_mph,
+            "is_ecu_speed": location.is_ecu_speed,
+            "formatted_location": location.formatted_location,
+        })
+
+    drivers = get_drivers(db)
+    drivers_list = []
+    for driver in drivers:
+        drivers_list.append({
+            "id": driver.id,
+            "name": driver.name,
+        })
+    historical_events_dict["drivers"] = drivers_list
+
+    etas = get_etas_in_time_range(start_time, end_time, db)
+    etas_list = []
+    for eta in etas:
+        stops_list = {}
+        for stop, eta_time in eta.stops_eta.items():
+            stops_list[stop] = eta_time
+        etas_list.append({
+            "id": eta.id,
+            "vehicle_id": eta.vehicle_id,
+            "stops": stops_list,
+        })
+    historical_events_dict["etas"] = etas_list
+
+    announcements = get_announcements(start_time, end_time, db)
+    announcements_list = []
+    for announcement in announcements:
+        announcements_list.append({
+            "id": announcement.id,
+            "message": announcement.message,
+            "type": announcement.type,
+            "created_at": announcement.created_at,
+            "expires_at": announcement.expires_at,
+        })
+    historical_events_dict["announcements"] = announcements_list
+
+    return historical_events_dict
 
 @router.get("/api/routes")
 @timed
@@ -463,7 +539,6 @@ async def data_announcement(db: AsyncSession = Depends(get_db)):
         select(Announcement)
         .where(
             and_(
-                Announcement.active == True,
                 Announcement.expires_at >= now,
             )
         )
