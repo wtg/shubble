@@ -10,8 +10,8 @@ from backend.fastapi.utils import (
     VehicleLocationDict, #DONE
     VehicleInfoDict, # DONE
     get_current_driver_assignments, #DONE
-    get_latest_etas,
-    # get_latest_velocities # WIP
+    get_latest_etas, # DONE
+    get_latest_velocities # DONE
     # make mock data in database
     # use get_locatest
 
@@ -694,4 +694,80 @@ async def test_get_latest_etas_empty_vehicle_ids():
 
     assert result == {}
 
+
+def make_velocity(
+    vehicle_id="veh1",
+    speed_kmh=40.0,
+    timestamp=datetime(2026, 4, 1, 9, 0, 0),
+):
+    v = MagicMock()
+    v.vehicle_id = vehicle_id
+    v.speed_kmh = speed_kmh
+    v.timestamp = timestamp
+    return v
+
+VELOCITY_CASES = [
+    pytest.param(
+        ["veh1"],
+        [
+            make_velocity(
+                vehicle_id="veh1",
+                speed_kmh=42.5,
+                timestamp=datetime(2026, 4, 1, 9, 0, 0),
+            )
+        ],
+        {
+            "veh1": {
+                "speed_kmh": 42.5,
+                "timestamp": "2026-04-01T09:00:00",
+            }
+        },
+        id="single_vehicle_velocity",
+    ),
+
+    pytest.param(
+        ["veh1", "veh2"],
+        [
+            make_velocity(
+                vehicle_id="veh1",
+                speed_kmh=30.0,
+                timestamp=datetime(2026, 4, 1, 9, 0, 0),
+            ),
+            make_velocity(
+                vehicle_id="veh2",
+                speed_kmh=55.0,
+                timestamp=datetime(2026, 4, 1, 9, 5, 0),
+            ),
+        ],
+        {
+            "veh1": {
+                "speed_kmh": 30.0,
+                "timestamp": "2026-04-01T09:00:00",
+            },
+            "veh2": {
+                "speed_kmh": 55.0,
+                "timestamp": "2026-04-01T09:05:00",
+            },
+        },
+        id="multiple_vehicle_velocities",
+    )
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("vehicle_ids, rows, expected", VELOCITY_CASES)
+async def test_get_latest_velocities(vehicle_ids, rows, expected):
+    db = make_db(rows)
+
+    result = await get_latest_velocities(vehicle_ids, make_session_factory(db))
+
+    assert result == expected
+
+@pytest.mark.asyncio
+async def test_get_latest_velocities_empty_vehicle_ids():
+    db = make_db([])
+
+    result = await get_latest_velocities([], make_session_factory(db))
+
+    assert result == {}
 
