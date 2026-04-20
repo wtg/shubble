@@ -61,13 +61,18 @@ function formatRouteName(name: string): string {
   return name.charAt(0) + name.slice(1).toLowerCase();
 }
 
+const SWIPE_THRESHOLD = 50;
+
 export default function Gallery() {
   const routeData = rawRouteData as unknown as ShuttleRouteData;
   const stops = useMemo(() => buildStopList(routeData), [routeData]);
   const [filter, setFilter] = useState<string>('ALL');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [slideDirection, setSlideDirection] = useState<'next' | 'prev'>('next');
-  const thumbnailStripRef = useRef<HTMLDivElement>(null);
+  const [dragOffset, setDragOffset] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const stopNavRef = useRef<HTMLDivElement>(null);
+  const dragStartX = useRef(0);
 
   const changeFilter = useCallback((newFilter: string) => {
     setFilter(newFilter);
@@ -87,10 +92,10 @@ export default function Gallery() {
     return stops.filter((s) => s.routes.includes(filter));
   }, [stops, filter]);
 
-  // Scroll active thumbnail into view
+  // Scroll active stop-name button into view
   useEffect(() => {
-    if (!thumbnailStripRef.current) return;
-    const active = thumbnailStripRef.current.querySelector('.thumbnail.active') as HTMLElement | null;
+    if (!stopNavRef.current) return;
+    const active = stopNavRef.current.querySelector('.stop-name.active') as HTMLElement | null;
     if (active) {
       active.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
     }
@@ -121,22 +126,64 @@ export default function Gallery() {
     return () => window.removeEventListener('keydown', handleKey);
   }, [goPrev, goNext]);
 
+  // Touch / mouse drag handlers
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    setIsDragging(true);
+    dragStartX.current = e.clientX;
+    setDragOffset(0);
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }, []);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!isDragging) return;
+    setDragOffset(e.clientX - dragStartX.current);
+  }, [isDragging]);
+
+  const handlePointerUp = useCallback(() => {
+    if (!isDragging) return;
+    setIsDragging(false);
+    if (dragOffset < -SWIPE_THRESHOLD) {
+      goNext();
+    } else if (dragOffset > SWIPE_THRESHOLD) {
+      goPrev();
+    }
+    setDragOffset(0);
+  }, [isDragging, dragOffset, goNext, goPrev]);
+
   const currentStop = filteredStops[currentIndex];
   if (!currentStop) return null;
 
-  const progress = ((currentIndex + 1) / filteredStops.length) * 100;
+  const prevIndex = currentIndex === 0 ? filteredStops.length - 1 : currentIndex - 1;
+  const nextIndex = currentIndex === filteredStops.length - 1 ? 0 : currentIndex + 1;
+  const prevStop = filteredStops[prevIndex];
+  const nextStop = filteredStops[nextIndex];
+
+  function renderSlideContent(stop: StopInfo) {
+    if (stop.image) {
+      return <img src={`/gallery/${stop.image}`} alt={`${stop.name} shuttle stop`} draggable={false} />;
+    }
+    return (
+      <div className="slide-placeholder">
+        <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 15V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10" />
+          <polyline points="21 15 16 10 5 21" />
+          <circle cx="8.5" cy="8.5" r="1.5" />
+          <line x1="2" y1="22" x2="22" y2="22" />
+        </svg>
+        <span>Photo coming soon</span>
+      </div>
+    );
+  }
 
   return (
     <div className="gallery">
-      {/* Hero header */}
+      {/* Header */}
       <section className="gallery-hero">
         <div className="gallery-hero-bg" />
         <div className="gallery-hero-content">
           <span className="gallery-hero-label">Shuttle Stops</span>
           <h1>Stop Gallery</h1>
-          <p>
-            Know exactly where to wait. Browse every shuttle stop on campus.
-          </p>
+          <p>Know exactly where to wait. Browse every shuttle stop on campus.</p>
         </div>
       </section>
 
@@ -158,123 +205,76 @@ export default function Gallery() {
               style={
                 isActive
                   ? { backgroundColor: color, borderColor: color, color: '#fff' }
-                  : { borderColor: color, color: color }
+                  : { borderColor: color, color }
               }
               onClick={() => changeFilter(name)}
             >
-              <span
-                className="filter-pill-dot"
-                style={{ backgroundColor: color }}
-              />
+              <span className="filter-pill-dot" style={{ backgroundColor: color }} />
               {formatRouteName(name)}
             </button>
           );
         })}
       </section>
 
-      {/* Progress bar */}
-      <div className="gallery-progress-track">
-        <div
-          className="gallery-progress-fill"
-          style={{ width: `${progress}%` }}
-        />
-      </div>
-
       {/* Slideshow */}
       <section className="slideshow">
-        <div className="slide-stage">
-          {/* Prev arrow */}
-          <button className="slide-nav slide-nav--prev" onClick={goPrev} aria-label="Previous stop">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
-          </button>
+        <div
+          className="carousel"
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+          style={{ touchAction: 'pan-y' }}
+        >
+          {/* Previous slide (peek) */}
+          {filteredStops.length > 1 && (
+            <button className="carousel-side carousel-side--prev" onClick={goPrev} aria-label={`Previous: ${prevStop.name}`}>
+              {renderSlideContent(prevStop)}
+            </button>
+          )}
 
-          {/* Slide card */}
+          {/* Current slide (main) */}
           <div
-            className={`slide-card slide-card--${slideDirection}`}
+            className={`carousel-main ${isDragging ? '' : `carousel-main--${slideDirection}`}`}
             key={currentStop.key}
+            style={isDragging ? { transform: `translateX(${dragOffset}px)`, transition: 'none' } : undefined}
           >
-            <div className="slide-card-image">
-              {currentStop.image ? (
-                <img
-                  src={`/gallery/${currentStop.image}`}
-                  alt={`${currentStop.name} shuttle stop`}
-                />
-              ) : (
-                <div className="slide-card-placeholder">
-                  <div className="placeholder-icon">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21 15V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10" />
-                      <polyline points="21 15 16 10 5 21" />
-                      <circle cx="8.5" cy="8.5" r="1.5" />
-                      <line x1="2" y1="22" x2="22" y2="22" />
-                    </svg>
-                  </div>
-                  <span className="placeholder-text">Photo coming soon</span>
-                </div>
-              )}
+            {renderSlideContent(currentStop)}
 
-              {/* Overlay info */}
-              <div className="slide-card-overlay">
-                <div className="slide-card-overlay-inner">
-                  <span className="slide-card-counter">{currentIndex + 1} / {filteredStops.length}</span>
-                  <h2 className="slide-card-title">{currentStop.name}</h2>
-                  <div className="slide-card-badges">
-                    {currentStop.routes.map((r) => (
-                      <span
-                        key={r}
-                        className="route-badge"
-                        style={{ backgroundColor: getRouteColor(routeData, r) }}
-                      >
-                        {formatRouteName(r)}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
+            {/* Route badges */}
+            <div className="slide-badges">
+              {currentStop.routes.map((r) => (
+                <span
+                  key={r}
+                  className="route-badge"
+                  style={{ backgroundColor: getRouteColor(routeData, r) }}
+                >
+                  {formatRouteName(r)}
+                </span>
+              ))}
             </div>
           </div>
 
-          {/* Next arrow */}
-          <button className="slide-nav slide-nav--next" onClick={goNext} aria-label="Next stop">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
-          </button>
+          {/* Next slide (peek) */}
+          {filteredStops.length > 1 && (
+            <button className="carousel-side carousel-side--next" onClick={goNext} aria-label={`Next: ${nextStop.name}`}>
+              {renderSlideContent(nextStop)}
+            </button>
+          )}
         </div>
 
-        {/* Thumbnail strip */}
-        <div className="thumbnail-strip" ref={thumbnailStripRef}>
+        {/* Stop name navigation bar */}
+        <div className="stop-nav" ref={stopNavRef}>
           {filteredStops.map((stop, i) => (
             <button
               key={stop.key}
-              className={`thumbnail ${i === currentIndex ? 'active' : ''}`}
+              className={`stop-name ${i === currentIndex ? 'active' : ''}`}
               onClick={() => goTo(i)}
-              aria-label={`Go to ${stop.name}`}
             >
-              <div className="thumbnail-img">
-                {stop.image ? (
-                  <img src={`/gallery/${stop.image}`} alt={stop.name} loading="lazy" />
-                ) : (
-                  <div className="thumbnail-img-empty">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                      <circle cx="8.5" cy="8.5" r="1.5" />
-                      <polyline points="21 15 16 10 5 21" />
-                    </svg>
-                  </div>
-                )}
-              </div>
-              <span className="thumbnail-name">{stop.name}</span>
+              {stop.name}
             </button>
           ))}
         </div>
-
-        {/* Keyboard hint */}
-        <p className="gallery-hint">
-          Use <kbd>&#8592;</kbd> <kbd>&#8594;</kbd> arrow keys to navigate
-        </p>
       </section>
     </div>
   );
