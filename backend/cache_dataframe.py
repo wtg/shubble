@@ -28,6 +28,7 @@ from ml.pipelines import preprocess_pipeline, segment_pipeline, stops_pipeline
 logger = logging.getLogger(__name__)
 
 
+# HARD CODED IN FOR NOW, will change later
 HORIZON_PER_VEHICLE = 200  # Max rows per vehicle in the horizon dataframe
 
 
