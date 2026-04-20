@@ -29,6 +29,11 @@ export default function Navigation({ GIT_REV }: { GIT_REV: string }) {
                 <span className='big about-underline-animation center'>Schedule</span>
               </Link>
             </li>
+            <li>
+              <Link to='/gallery'>
+                <span className='big about-underline-animation center'>Gallery</span>
+              </Link>
+            </li>
           </ul>
         </nav>
       </header>
@@ -59,6 +64,11 @@ export default function Navigation({ GIT_REV }: { GIT_REV: string }) {
             <li>
               <Link to='/schedule'>
                 <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24"><path fill="#444" d="M15 13h1.5v2.82l2.44 1.41l-.75 1.3L15 16.69zm4-5H5v11h4.67c-.43-.91-.67-1.93-.67-3a7 7 0 0 1 7-7c1.07 0 2.09.24 3 .67zM5 21a2 2 0 0 1-2-2V5c0-1.11.89-2 2-2h1V1h2v2h8V1h2v2h1a2 2 0 0 1 2 2v6.1c1.24 1.26 2 2.99 2 4.9a7 7 0 0 1-7 7c-1.91 0-3.64-.76-4.9-2zm11-9.85A4.85 4.85 0 0 0 11.15 16c0 2.68 2.17 4.85 4.85 4.85A4.85 4.85 0 0 0 20.85 16c0-2.68-2.17-4.85-4.85-4.85" /></svg>              </Link>
+            </li>
+            <li>
+              <Link to='/gallery'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24"><path fill="#444" d="M22 16V4c0-1.1-.9-2-2-2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2m-11-4l2.03 2.71L16 11l4 5H8zM2 6v14c0 1.1.9 2 2 2h14v-2H4V6z"/></svg>
+              </Link>
             </li>
           </ul>
         </nav>

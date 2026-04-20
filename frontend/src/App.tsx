@@ -16,6 +16,7 @@ import Navigation from './components/Navigation';
 import ErrorBoundary from './components/ErrorBoundary';
 import config from "./utils/config";
 import NotFound from './components/NotFound';
+import Gallery from './gallery/Gallery';
 import ApplePrivacyPolicy from './privacy/ApplePrivacyPolicy';
 import AppleAppSupport from './support/AppleAppSupport';
 
@@ -52,6 +53,7 @@ function App() {
             <Route path='/schedule' element={<Schedule selectedRoute={selectedRoute} setSelectedRoute={setSelectedRoute} />} />
             <Route path='/about' element={<About />} />
             <Route path='/data' element={<Data />} />
+            <Route path='/gallery' element={<Gallery />} />
             <Route path='/generate-static-routes' element={<LiveLocationMapKit routeData={routeData} displayVehicles={true} generateRoutes={true} />} />
             <Route path='*' element={<NotFound />} />
           </Route>
