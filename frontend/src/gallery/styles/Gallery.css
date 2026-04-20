@@ -107,147 +107,62 @@
 }
 
 /* ═══════════════════════════════════════
-   Slideshow
+   Swiper Carousel
    ═══════════════════════════════════════ */
 
 .slideshow {
-  /* Break out of any parent container to span full viewport */
-  width: 100vw;
-  margin-left: calc(-50vw + 50%);
-  padding: 0 0 60px;
-  overflow: hidden;
-}
-
-/* ── Carousel (3-panel, full-viewport) ── */
-.carousel {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: grab;
-  user-select: none;
-  gap: 24px;
-}
-
-.carousel:active {
-  cursor: grabbing;
-}
-
-/* ── Side slides (tilted, peeking from viewport edges) ── */
-.carousel-side {
-  position: relative;
-  flex-shrink: 0;
-  width: 22%;
-  aspect-ratio: 16 / 10;
-  border-radius: 14px;
-  overflow: hidden;
-  background: #c0c7d0;
-  opacity: 0.5;
-  cursor: pointer;
-  transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
-  border: none;
-  padding: 0;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-}
-
-/* Left image: left side tilted up */
-.carousel-side--prev {
-  margin-left: -12%;
-  transform: rotate(-6deg) scale(0.88);
-  transform-origin: bottom right;
-}
-
-/* Right image: right side tilted up */
-.carousel-side--next {
-  margin-right: -12%;
-  transform: rotate(6deg) scale(0.88);
-  transform-origin: bottom left;
-}
-
-.carousel-side:hover {
-  opacity: 0.7;
-}
-
-.carousel-side img {
   width: 100%;
-  height: 100%;
-  object-fit: cover;
-  pointer-events: none;
+  padding: 0 0 60px;
 }
 
-.carousel-side .slide-placeholder {
-  font-size: 0;
+.gallery-swiper {
+  width: 100%;
+  padding: 30px 0 20px;
+  overflow: visible;
 }
 
-.carousel-side .slide-placeholder svg {
-  width: 28px;
-  height: 28px;
-}
-
-.carousel-side .slide-placeholder span {
-  display: none;
-}
-
-/* ── Main slide (center) ── */
-.carousel-main {
-  position: relative;
-  flex-shrink: 0;
-  width: 52%;
-  max-width: 760px;
+/* Each slide */
+.gallery-slide {
+  width: 55%;
+  max-width: 720px;
   aspect-ratio: 16 / 10;
   border-radius: 16px;
   overflow: hidden;
   background: #6b7280;
-  border: 3px solid #578FCA;
-  box-shadow: 0 8px 32px rgba(87, 143, 202, 0.2);
-  z-index: 2;
+  position: relative;
+  transition: box-shadow 0.4s ease, border 0.4s ease;
+  border: 3px solid transparent;
 }
 
-.carousel-main img {
+/* Active (center) slide gets the blue border */
+.swiper-slide-active .gallery-slide,
+.gallery-slide.swiper-slide-active {
+  border-color: #578FCA;
+  box-shadow: 0 8px 32px rgba(87, 143, 202, 0.2);
+}
+
+/* Swiper applies transforms directly to .swiper-slide, so target that */
+.gallery-swiper .swiper-slide {
+  width: 55%;
+  max-width: 720px;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #6b7280;
+  position: relative;
+  border: 3px solid transparent;
+  transition: border-color 0.4s ease, box-shadow 0.4s ease;
+}
+
+.gallery-swiper .swiper-slide-active {
+  border-color: #578FCA;
+  box-shadow: 0 8px 32px rgba(87, 143, 202, 0.2);
+}
+
+.gallery-swiper .swiper-slide img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  pointer-events: none;
-}
-
-/* Directional animations — curves in from tilted side position */
-.carousel-main--next {
-  animation: curveFromRight 0.5s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.carousel-main--prev {
-  animation: curveFromLeft 0.5s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-@keyframes curveFromRight {
-  0% {
-    opacity: 0;
-    transform: translateX(55%) rotate(6deg) scale(0.88);
-    transform-origin: bottom left;
-  }
-  50% {
-    opacity: 0.8;
-    transform: translateX(10%) rotate(2deg) scale(0.96);
-  }
-  100% {
-    opacity: 1;
-    transform: translateX(0) rotate(0deg) scale(1);
-  }
-}
-
-@keyframes curveFromLeft {
-  0% {
-    opacity: 0;
-    transform: translateX(-55%) rotate(-6deg) scale(0.88);
-    transform-origin: bottom right;
-  }
-  50% {
-    opacity: 0.8;
-    transform: translateX(-10%) rotate(-2deg) scale(0.96);
-  }
-  100% {
-    opacity: 1;
-    transform: translateX(0) rotate(0deg) scale(1);
-  }
+  display: block;
 }
 
 /* Placeholder */
@@ -261,6 +176,7 @@
   height: 100%;
   color: rgba(255, 255, 255, 0.45);
   background: #6b7280;
+  aspect-ratio: 16 / 10;
 }
 
 .slide-placeholder span {
@@ -289,8 +205,28 @@
   font-size: 0.75rem;
   font-weight: 700;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+}
+
+/* Pagination dots */
+.gallery-pagination {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  padding: 16px 0;
+}
+
+.gallery-pagination .swiper-pagination-bullet {
+  width: 10px;
+  height: 10px;
+  background: #c0c7d0;
+  opacity: 1;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+}
+
+.gallery-pagination .swiper-pagination-bullet-active {
+  background: #578FCA;
+  transform: scale(1.3);
 }
 
 /* ═══════════════════════════════════════
@@ -301,7 +237,7 @@
   display: flex;
   justify-content: center;
   gap: 6px;
-  padding: 24px 24px 0;
+  padding: 8px 24px 0;
   flex-wrap: wrap;
   max-width: 900px;
   margin: 0 auto;
@@ -362,33 +298,13 @@
     padding: 0 0 90px;
   }
 
-  .carousel {
-    gap: 12px;
-  }
-
-  .carousel-side {
-    width: 20%;
-    border-radius: 10px;
-  }
-
-  .carousel-side--prev {
-    margin-left: -14%;
-    transform: rotate(-5deg) scale(0.85);
-  }
-
-  .carousel-side--next {
-    margin-right: -14%;
-    transform: rotate(5deg) scale(0.85);
-  }
-
-  .carousel-main {
-    width: 62%;
-    border-radius: 12px;
+  .gallery-swiper .swiper-slide {
+    width: 70%;
   }
 
   .stop-nav {
     gap: 4px;
-    padding: 16px 0 0;
+    padding: 8px 12px 0;
   }
 
   .stop-name {

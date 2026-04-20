@@ -1,6 +1,13 @@
-import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
+import { Swiper, SwiperSlide } from 'swiper/react';
+import { EffectCoverflow, Pagination, Keyboard } from 'swiper/modules';
+import type { Swiper as SwiperType } from 'swiper';
 import rawRouteData from '../shared/routes.json';
 import type { ShuttleRouteData, ShuttleStopData } from '../types/route';
+
+import 'swiper/css';
+import 'swiper/css/effect-coverflow';
+import 'swiper/css/pagination';
 import './styles/Gallery.css';
 
 type StopInfo = {
@@ -61,22 +68,19 @@ function formatRouteName(name: string): string {
   return name.charAt(0) + name.slice(1).toLowerCase();
 }
 
-const SWIPE_THRESHOLD = 50;
-
 export default function Gallery() {
   const routeData = rawRouteData as unknown as ShuttleRouteData;
   const stops = useMemo(() => buildStopList(routeData), [routeData]);
   const [filter, setFilter] = useState<string>('ALL');
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [slideDirection, setSlideDirection] = useState<'next' | 'prev'>('next');
-  const [dragOffset, setDragOffset] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-  const stopNavRef = useRef<HTMLDivElement>(null);
-  const dragStartX = useRef(0);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const swiperRef = useRef<SwiperType | null>(null);
 
   const changeFilter = useCallback((newFilter: string) => {
     setFilter(newFilter);
-    setCurrentIndex(0);
+    setActiveIndex(0);
+    if (swiperRef.current) {
+      swiperRef.current.slideTo(0, 0);
+    }
   }, []);
 
   const routeNames = useMemo(() => {
@@ -92,88 +96,7 @@ export default function Gallery() {
     return stops.filter((s) => s.routes.includes(filter));
   }, [stops, filter]);
 
-  // Scroll active stop-name button into view
-  useEffect(() => {
-    if (!stopNavRef.current) return;
-    const active = stopNavRef.current.querySelector('.stop-name.active') as HTMLElement | null;
-    if (active) {
-      active.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-    }
-  }, [currentIndex]);
-
-  const goTo = useCallback((index: number) => {
-    setSlideDirection(index > currentIndex ? 'next' : 'prev');
-    setCurrentIndex(index);
-  }, [currentIndex]);
-
-  const goPrev = useCallback(() => {
-    setSlideDirection('prev');
-    setCurrentIndex((i) => (i === 0 ? filteredStops.length - 1 : i - 1));
-  }, [filteredStops.length]);
-
-  const goNext = useCallback(() => {
-    setSlideDirection('next');
-    setCurrentIndex((i) => (i === filteredStops.length - 1 ? 0 : i + 1));
-  }, [filteredStops.length]);
-
-  // Keyboard navigation
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft') goPrev();
-      else if (e.key === 'ArrowRight') goNext();
-    };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [goPrev, goNext]);
-
-  // Touch / mouse drag handlers
-  const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    setIsDragging(true);
-    dragStartX.current = e.clientX;
-    setDragOffset(0);
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  }, []);
-
-  const handlePointerMove = useCallback((e: React.PointerEvent) => {
-    if (!isDragging) return;
-    setDragOffset(e.clientX - dragStartX.current);
-  }, [isDragging]);
-
-  const handlePointerUp = useCallback(() => {
-    if (!isDragging) return;
-    setIsDragging(false);
-    if (dragOffset < -SWIPE_THRESHOLD) {
-      goNext();
-    } else if (dragOffset > SWIPE_THRESHOLD) {
-      goPrev();
-    }
-    setDragOffset(0);
-  }, [isDragging, dragOffset, goNext, goPrev]);
-
-  const currentStop = filteredStops[currentIndex];
-  if (!currentStop) return null;
-
-  const prevIndex = currentIndex === 0 ? filteredStops.length - 1 : currentIndex - 1;
-  const nextIndex = currentIndex === filteredStops.length - 1 ? 0 : currentIndex + 1;
-  const prevStop = filteredStops[prevIndex];
-  const nextStop = filteredStops[nextIndex];
-
-  function renderSlideContent(stop: StopInfo) {
-    if (stop.image) {
-      return <img src={`/gallery/${stop.image}`} alt={`${stop.name} shuttle stop`} draggable={false} />;
-    }
-    return (
-      <div className="slide-placeholder">
-        <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M21 15V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10" />
-          <polyline points="21 15 16 10 5 21" />
-          <circle cx="8.5" cy="8.5" r="1.5" />
-          <line x1="2" y1="22" x2="22" y2="22" />
-        </svg>
-        <span>Photo coming soon</span>
-      </div>
-    );
-  }
+  if (filteredStops.length === 0) return null;
 
   return (
     <div className="gallery">
@@ -216,60 +139,78 @@ export default function Gallery() {
         })}
       </section>
 
-      {/* Slideshow */}
+      {/* Swiper carousel */}
       <section className="slideshow">
-        <div
-          className="carousel"
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
-          style={{ touchAction: 'pan-y' }}
+        <Swiper
+          onSwiper={(swiper) => { swiperRef.current = swiper; }}
+          onSlideChange={(swiper) => setActiveIndex(swiper.realIndex)}
+          effect="coverflow"
+          grabCursor
+          centeredSlides
+          slidesPerView="auto"
+          speed={600}
+          loop
+          loopAdditionalSlides={2}
+          keyboard={{ enabled: true }}
+          pagination={{ clickable: true, el: '.gallery-pagination' }}
+          coverflowEffect={{
+            rotate: 40,
+            stretch: 0,
+            depth: 120,
+            modifier: 1,
+            slideShadows: false,
+          }}
+          modules={[EffectCoverflow, Pagination, Keyboard]}
+          className="gallery-swiper"
         >
-          {/* Previous slide (peek) */}
-          {filteredStops.length > 1 && (
-            <button className="carousel-side carousel-side--prev" onClick={goPrev} aria-label={`Previous: ${prevStop.name}`}>
-              {renderSlideContent(prevStop)}
-            </button>
-          )}
+          {filteredStops.map((stop) => (
+            <SwiperSlide key={stop.key} className="gallery-slide">
+              {stop.image ? (
+                <img
+                  src={`/gallery/${stop.image}`}
+                  alt={`${stop.name} shuttle stop`}
+                  draggable={false}
+                />
+              ) : (
+                <div className="slide-placeholder">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10" />
+                    <polyline points="21 15 16 10 5 21" />
+                    <circle cx="8.5" cy="8.5" r="1.5" />
+                    <line x1="2" y1="22" x2="22" y2="22" />
+                  </svg>
+                  <span>Photo coming soon</span>
+                </div>
+              )}
 
-          {/* Current slide (main) */}
-          <div
-            className={`carousel-main ${isDragging ? '' : `carousel-main--${slideDirection}`}`}
-            key={currentStop.key}
-            style={isDragging ? { transform: `translateX(${dragOffset}px)`, transition: 'none' } : undefined}
-          >
-            {renderSlideContent(currentStop)}
+              {/* Route badges */}
+              <div className="slide-badges">
+                {stop.routes.map((r) => (
+                  <span
+                    key={r}
+                    className="route-badge"
+                    style={{ backgroundColor: getRouteColor(routeData, r) }}
+                  >
+                    {formatRouteName(r)}
+                  </span>
+                ))}
+              </div>
+            </SwiperSlide>
+          ))}
+        </Swiper>
 
-            {/* Route badges */}
-            <div className="slide-badges">
-              {currentStop.routes.map((r) => (
-                <span
-                  key={r}
-                  className="route-badge"
-                  style={{ backgroundColor: getRouteColor(routeData, r) }}
-                >
-                  {formatRouteName(r)}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          {/* Next slide (peek) */}
-          {filteredStops.length > 1 && (
-            <button className="carousel-side carousel-side--next" onClick={goNext} aria-label={`Next: ${nextStop.name}`}>
-              {renderSlideContent(nextStop)}
-            </button>
-          )}
-        </div>
+        <div className="gallery-pagination" />
 
         {/* Stop name navigation bar */}
-        <div className="stop-nav" ref={stopNavRef}>
+        <div className="stop-nav">
           {filteredStops.map((stop, i) => (
             <button
               key={stop.key}
-              className={`stop-name ${i === currentIndex ? 'active' : ''}`}
-              onClick={() => goTo(i)}
+              className={`stop-name ${i === activeIndex ? 'active' : ''}`}
+              onClick={() => {
+                setActiveIndex(i);
+                swiperRef.current?.slideToLoop(i, 600);
+              }}
             >
               {stop.name}
             </button>
