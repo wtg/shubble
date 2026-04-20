@@ -113,55 +113,33 @@
 .slideshow {
   width: 100%;
   padding: 0 0 60px;
-  overflow: hidden;
+}
+
+/* Wrapper for swiper + arrows */
+.carousel-wrapper {
+  position: relative;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 0 64px;
 }
 
 .gallery-swiper {
   width: 100%;
-  padding: 30px 0 20px;
-  overflow: visible;
+  padding: 20px 0;
 }
 
 /* Each slide */
 .gallery-slide {
-  width: 55%;
-  max-width: 720px;
   aspect-ratio: 16 / 10;
-  border-radius: 16px;
-  overflow: hidden;
-  background: #6b7280;
   position: relative;
-  transition: box-shadow 0.4s ease, border 0.4s ease;
-  border: 3px solid transparent;
 }
 
-/* Active (center) slide gets the blue border */
-.swiper-slide-active .gallery-slide,
-.gallery-slide.swiper-slide-active {
-  border-color: #578FCA;
-  box-shadow: 0 8px 32px rgba(87, 143, 202, 0.2);
-}
-
-/* Swiper applies transforms directly to .swiper-slide, so target that */
 .gallery-swiper .swiper-slide {
-  width: 55%;
-  max-width: 720px;
-  border-radius: 16px;
+  border-radius: 12px;
   overflow: hidden;
   background: #6b7280;
-  position: relative;
-  border: 3px solid transparent;
-  transition: border-color 0.4s ease, box-shadow 0.4s ease;
-}
-
-.gallery-swiper .swiper-slide-active {
-  border-color: #578FCA;
-  box-shadow: 0 8px 32px rgba(87, 143, 202, 0.2);
-}
-
-.gallery-swiper .swiper-slide:not(.swiper-slide-active) {
-  transform-origin: center center;
-  scale: 0.75;
+  border: none;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
 }
 
 .gallery-swiper .swiper-slide img {
@@ -169,6 +147,48 @@
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+/* Navigation arrows */
+.gallery-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 2px solid #ddd;
+  background: white;
+  color: #444;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.gallery-arrow:hover {
+  border-color: #578FCA;
+  color: #578FCA;
+  background: #f0f7ff;
+  box-shadow: 0 4px 16px rgba(87, 143, 202, 0.2);
+}
+
+.gallery-arrow--prev {
+  left: 4px;
+}
+
+.gallery-arrow--next {
+  right: 4px;
+}
+
+/* Swiper's built-in disabled state */
+.gallery-arrow.swiper-button-disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
 }
 
 /* Placeholder */
@@ -304,8 +324,18 @@
     padding: 0 0 90px;
   }
 
-  .gallery-swiper .swiper-slide {
-    width: 70%;
+  .carousel-wrapper {
+    padding: 0 48px;
+  }
+
+  .gallery-arrow {
+    width: 38px;
+    height: 38px;
+  }
+
+  .gallery-arrow svg {
+    width: 20px;
+    height: 20px;
   }
 
   .stop-nav {

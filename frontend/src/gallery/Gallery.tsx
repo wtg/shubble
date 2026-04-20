@@ -1,12 +1,12 @@
 import { useState, useMemo, useCallback, useRef } from 'react';
 import { Swiper, SwiperSlide } from 'swiper/react';
-import { EffectCoverflow, Pagination, Keyboard } from 'swiper/modules';
+import { Navigation, Pagination, Keyboard } from 'swiper/modules';
 import type { Swiper as SwiperType } from 'swiper';
 import rawRouteData from '../shared/routes.json';
 import type { ShuttleRouteData, ShuttleStopData } from '../types/route';
 
 import 'swiper/css';
-import 'swiper/css/effect-coverflow';
+import 'swiper/css/navigation';
 import 'swiper/css/pagination';
 import './styles/Gallery.css';
 
@@ -141,26 +141,21 @@ export default function Gallery() {
 
       {/* Swiper carousel */}
       <section className="slideshow">
+        <div className="carousel-wrapper">
         <Swiper
           onSwiper={(swiper) => { swiperRef.current = swiper; }}
           onSlideChange={(swiper) => setActiveIndex(swiper.realIndex)}
-          effect="coverflow"
           grabCursor
-          centeredSlides
-          slidesPerView="auto"
-          speed={600}
+          slidesPerView={1}
+          speed={500}
           loop
-          loopAdditionalSlides={2}
           keyboard={{ enabled: true }}
-          pagination={{ clickable: true, el: '.gallery-pagination' }}
-          coverflowEffect={{
-            rotate: -20,
-            stretch: -300,
-            depth: 350,
-            modifier: 1,
-            slideShadows: false,
+          navigation={{
+            nextEl: '.gallery-arrow--next',
+            prevEl: '.gallery-arrow--prev',
           }}
-          modules={[EffectCoverflow, Pagination, Keyboard]}
+          pagination={{ clickable: true, el: '.gallery-pagination' }}
+          modules={[Navigation, Pagination, Keyboard]}
           className="gallery-swiper"
         >
           {filteredStops.map((stop) => (
@@ -198,6 +193,20 @@ export default function Gallery() {
             </SwiperSlide>
           ))}
         </Swiper>
+
+        {/* Navigation arrows */}
+        <button className="gallery-arrow gallery-arrow--prev" aria-label="Previous">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+        </button>
+        <button className="gallery-arrow gallery-arrow--next" aria-label="Next">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </button>
+
+        </div>
 
         <div className="gallery-pagination" />
 
