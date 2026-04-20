@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import rawRouteData from '../shared/routes.json';
 import type { ShuttleRouteData, ShuttleStopData } from '../types/route';
 import './styles/Gallery.css';
@@ -66,6 +66,13 @@ export default function Gallery() {
   const stops = useMemo(() => buildStopList(routeData), [routeData]);
   const [filter, setFilter] = useState<string>('ALL');
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [slideDirection, setSlideDirection] = useState<'next' | 'prev'>('next');
+  const thumbnailStripRef = useRef<HTMLDivElement>(null);
+
+  const changeFilter = useCallback((newFilter: string) => {
+    setFilter(newFilter);
+    setCurrentIndex(0);
+  }, []);
 
   const routeNames = useMemo(() => {
     const names = new Set<string>();
@@ -80,20 +87,27 @@ export default function Gallery() {
     return stops.filter((s) => s.routes.includes(filter));
   }, [stops, filter]);
 
-  // Reset index when filter changes
+  // Scroll active thumbnail into view
   useEffect(() => {
-    setCurrentIndex(0);
-  }, [filter]);
+    if (!thumbnailStripRef.current) return;
+    const active = thumbnailStripRef.current.querySelector('.thumbnail.active') as HTMLElement | null;
+    if (active) {
+      active.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+  }, [currentIndex]);
 
   const goTo = useCallback((index: number) => {
+    setSlideDirection(index > currentIndex ? 'next' : 'prev');
     setCurrentIndex(index);
-  }, []);
+  }, [currentIndex]);
 
   const goPrev = useCallback(() => {
+    setSlideDirection('prev');
     setCurrentIndex((i) => (i === 0 ? filteredStops.length - 1 : i - 1));
   }, [filteredStops.length]);
 
   const goNext = useCallback(() => {
+    setSlideDirection('next');
     setCurrentIndex((i) => (i === filteredStops.length - 1 ? 0 : i + 1));
   }, [filteredStops.length]);
 
@@ -110,122 +124,141 @@ export default function Gallery() {
   const currentStop = filteredStops[currentIndex];
   if (!currentStop) return null;
 
+  const progress = ((currentIndex + 1) / filteredStops.length) * 100;
+
   return (
     <div className="gallery">
-      <section className="gallery-header">
-        <h1>Shuttle Stop Gallery</h1>
-        <p>
-          See what each shuttle stop looks like so you know exactly where to wait.
-        </p>
+      {/* Hero header */}
+      <section className="gallery-hero">
+        <div className="gallery-hero-bg" />
+        <div className="gallery-hero-content">
+          <span className="gallery-hero-label">Shuttle Stops</span>
+          <h1>Stop Gallery</h1>
+          <p>
+            Know exactly where to wait. Browse every shuttle stop on campus.
+          </p>
+        </div>
       </section>
 
+      {/* Route filter pills */}
       <section className="gallery-filters">
         <button
-          className={`filter-btn ${filter === 'ALL' ? 'active' : ''}`}
-          onClick={() => setFilter('ALL')}
+          className={`filter-pill ${filter === 'ALL' ? 'active' : ''}`}
+          onClick={() => changeFilter('ALL')}
         >
           All Stops
         </button>
-        {routeNames.map((name) => (
-          <button
-            key={name}
-            className={`filter-btn ${filter === name ? 'active' : ''}`}
-            style={
-              filter === name
-                ? { backgroundColor: getRouteColor(routeData, name), borderColor: getRouteColor(routeData, name) }
-                : { borderColor: getRouteColor(routeData, name), color: getRouteColor(routeData, name) }
-            }
-            onClick={() => setFilter(name)}
-          >
-            {formatRouteName(name)}
-          </button>
-        ))}
+        {routeNames.map((name) => {
+          const color = getRouteColor(routeData, name);
+          const isActive = filter === name;
+          return (
+            <button
+              key={name}
+              className={`filter-pill ${isActive ? 'active' : ''}`}
+              style={
+                isActive
+                  ? { backgroundColor: color, borderColor: color, color: '#fff' }
+                  : { borderColor: color, color: color }
+              }
+              onClick={() => changeFilter(name)}
+            >
+              <span
+                className="filter-pill-dot"
+                style={{ backgroundColor: color }}
+              />
+              {formatRouteName(name)}
+            </button>
+          );
+        })}
       </section>
 
+      {/* Progress bar */}
+      <div className="gallery-progress-track">
+        <div
+          className="gallery-progress-fill"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+
+      {/* Slideshow */}
       <section className="slideshow">
-        {/* Main slide */}
-        <div className="slide-container">
-          <button className="slide-arrow slide-arrow-left" onClick={goPrev} aria-label="Previous stop">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <div className="slide-stage">
+          {/* Prev arrow */}
+          <button className="slide-nav slide-nav--prev" onClick={goPrev} aria-label="Previous stop">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="15 18 9 12 15 6" />
             </svg>
           </button>
 
-          <div className="slide-content" key={currentStop.key}>
-            <div className="slide-image">
+          {/* Slide card */}
+          <div
+            className={`slide-card slide-card--${slideDirection}`}
+            key={currentStop.key}
+          >
+            <div className="slide-card-image">
               {currentStop.image ? (
                 <img
                   src={`/gallery/${currentStop.image}`}
                   alt={`${currentStop.name} shuttle stop`}
                 />
               ) : (
-                <div className="placeholder-image">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                    <circle cx="8.5" cy="8.5" r="1.5" />
-                    <polyline points="21 15 16 10 5 21" />
-                  </svg>
-                  <span>Photo coming soon</span>
+                <div className="slide-card-placeholder">
+                  <div className="placeholder-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10" />
+                      <polyline points="21 15 16 10 5 21" />
+                      <circle cx="8.5" cy="8.5" r="1.5" />
+                      <line x1="2" y1="22" x2="22" y2="22" />
+                    </svg>
+                  </div>
+                  <span className="placeholder-text">Photo coming soon</span>
                 </div>
               )}
-            </div>
 
-            <div className="slide-info">
-              <h2 className="slide-title">{currentStop.name}</h2>
-              <div className="slide-routes">
-                {currentStop.routes.map((r) => (
-                  <span
-                    key={r}
-                    className="route-badge"
-                    style={{ backgroundColor: getRouteColor(routeData, r) }}
-                  >
-                    {formatRouteName(r)} Route
-                  </span>
-                ))}
+              {/* Overlay info */}
+              <div className="slide-card-overlay">
+                <div className="slide-card-overlay-inner">
+                  <span className="slide-card-counter">{currentIndex + 1} / {filteredStops.length}</span>
+                  <h2 className="slide-card-title">{currentStop.name}</h2>
+                  <div className="slide-card-badges">
+                    {currentStop.routes.map((r) => (
+                      <span
+                        key={r}
+                        className="route-badge"
+                        style={{ backgroundColor: getRouteColor(routeData, r) }}
+                      >
+                        {formatRouteName(r)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
               </div>
-              <p className="slide-counter">
-                {currentIndex + 1} of {filteredStops.length}
-              </p>
             </div>
           </div>
 
-          <button className="slide-arrow slide-arrow-right" onClick={goNext} aria-label="Next stop">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          {/* Next arrow */}
+          <button className="slide-nav slide-nav--next" onClick={goNext} aria-label="Next stop">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="9 18 15 12 9 6" />
             </svg>
           </button>
         </div>
 
-        {/* Dot indicators */}
-        <div className="slide-dots">
-          {filteredStops.map((stop, i) => (
-            <button
-              key={stop.key}
-              className={`slide-dot ${i === currentIndex ? 'active' : ''}`}
-              onClick={() => goTo(i)}
-              aria-label={`Go to ${stop.name}`}
-            />
-          ))}
-        </div>
-
         {/* Thumbnail strip */}
-        <div className="thumbnail-strip">
+        <div className="thumbnail-strip" ref={thumbnailStripRef}>
           {filteredStops.map((stop, i) => (
             <button
               key={stop.key}
               className={`thumbnail ${i === currentIndex ? 'active' : ''}`}
               onClick={() => goTo(i)}
+              aria-label={`Go to ${stop.name}`}
             >
-              <div className="thumbnail-inner">
+              <div className="thumbnail-img">
                 {stop.image ? (
-                  <img
-                    src={`/gallery/${stop.image}`}
-                    alt={stop.name}
-                    loading="lazy"
-                  />
+                  <img src={`/gallery/${stop.image}`} alt={stop.name} loading="lazy" />
                 ) : (
-                  <div className="thumbnail-placeholder">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#bbb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <div className="thumbnail-img-empty">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                       <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
                       <circle cx="8.5" cy="8.5" r="1.5" />
                       <polyline points="21 15 16 10 5 21" />
@@ -233,10 +266,15 @@ export default function Gallery() {
                   </div>
                 )}
               </div>
-              <span className="thumbnail-label">{stop.name}</span>
+              <span className="thumbnail-name">{stop.name}</span>
             </button>
           ))}
         </div>
+
+        {/* Keyboard hint */}
+        <p className="gallery-hint">
+          Use <kbd>&#8592;</kbd> <kbd>&#8594;</kbd> arrow keys to navigate
+        </p>
       </section>
     </div>
   );
