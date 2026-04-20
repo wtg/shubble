@@ -154,9 +154,9 @@ export default function Gallery() {
           keyboard={{ enabled: true }}
           pagination={{ clickable: true, el: '.gallery-pagination' }}
           coverflowEffect={{
-            rotate: 40,
-            stretch: 0,
-            depth: 120,
+            rotate: -20,
+            stretch: -300,
+            depth: 350,
             modifier: 1,
             slideShadows: false,
           }}

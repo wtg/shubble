@@ -113,6 +113,7 @@
 .slideshow {
   width: 100%;
   padding: 0 0 60px;
+  overflow: hidden;
 }
 
 .gallery-swiper {
@@ -156,6 +157,11 @@
 .gallery-swiper .swiper-slide-active {
   border-color: #578FCA;
   box-shadow: 0 8px 32px rgba(87, 143, 202, 0.2);
+}
+
+.gallery-swiper .swiper-slide:not(.swiper-slide-active) {
+  transform-origin: center center;
+  scale: 0.75;
 }
 
 .gallery-swiper .swiper-slide img {
