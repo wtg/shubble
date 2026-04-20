@@ -111,44 +111,60 @@
    ═══════════════════════════════════════ */
 
 .slideshow {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 0 16px 60px;
+  /* Break out of any parent container to span full viewport */
+  width: 100vw;
+  margin-left: calc(-50vw + 50%);
+  padding: 0 0 60px;
+  overflow: hidden;
 }
 
-/* ── Carousel (3-panel layout) ── */
+/* ── Carousel (3-panel, full-viewport) ── */
 .carousel {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
   cursor: grab;
   user-select: none;
+  gap: 24px;
 }
 
 .carousel:active {
   cursor: grabbing;
 }
 
-/* ── Side slides (prev / next peek) ── */
+/* ── Side slides (tilted, peeking from viewport edges) ── */
 .carousel-side {
   position: relative;
   flex-shrink: 0;
-  width: 14%;
+  width: 22%;
   aspect-ratio: 16 / 10;
-  border-radius: 12px;
+  border-radius: 14px;
   overflow: hidden;
-  background: #b0b8c4;
+  background: #c0c7d0;
   opacity: 0.5;
   cursor: pointer;
-  transition: all 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
   border: none;
   padding: 0;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+/* Left image: left side tilted up */
+.carousel-side--prev {
+  margin-left: -12%;
+  transform: rotate(-6deg) scale(0.88);
+  transform-origin: bottom right;
+}
+
+/* Right image: right side tilted up */
+.carousel-side--next {
+  margin-right: -12%;
+  transform: rotate(6deg) scale(0.88);
+  transform-origin: bottom left;
 }
 
 .carousel-side:hover {
   opacity: 0.7;
-  transform: scale(1.03);
 }
 
 .carousel-side img {
@@ -174,8 +190,9 @@
 /* ── Main slide (center) ── */
 .carousel-main {
   position: relative;
-  flex: 1;
-  max-width: 720px;
+  flex-shrink: 0;
+  width: 52%;
+  max-width: 760px;
   aspect-ratio: 16 / 10;
   border-radius: 16px;
   overflow: hidden;
@@ -192,34 +209,44 @@
   pointer-events: none;
 }
 
-/* Directional animations */
+/* Directional animations — curves in from tilted side position */
 .carousel-main--next {
-  animation: carouselNext 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: curveFromRight 0.5s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .carousel-main--prev {
-  animation: carouselPrev 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: curveFromLeft 0.5s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-@keyframes carouselNext {
-  from {
+@keyframes curveFromRight {
+  0% {
     opacity: 0;
-    transform: translateX(60px) scale(0.95);
+    transform: translateX(55%) rotate(6deg) scale(0.88);
+    transform-origin: bottom left;
   }
-  to {
+  50% {
+    opacity: 0.8;
+    transform: translateX(10%) rotate(2deg) scale(0.96);
+  }
+  100% {
     opacity: 1;
-    transform: translateX(0) scale(1);
+    transform: translateX(0) rotate(0deg) scale(1);
   }
 }
 
-@keyframes carouselPrev {
-  from {
+@keyframes curveFromLeft {
+  0% {
     opacity: 0;
-    transform: translateX(-60px) scale(0.95);
+    transform: translateX(-55%) rotate(-6deg) scale(0.88);
+    transform-origin: bottom right;
   }
-  to {
+  50% {
+    opacity: 0.8;
+    transform: translateX(-10%) rotate(-2deg) scale(0.96);
+  }
+  100% {
     opacity: 1;
-    transform: translateX(0) scale(1);
+    transform: translateX(0) rotate(0deg) scale(1);
   }
 }
 
@@ -274,8 +301,10 @@
   display: flex;
   justify-content: center;
   gap: 6px;
-  padding: 20px 0 0;
+  padding: 24px 24px 0;
   flex-wrap: wrap;
+  max-width: 900px;
+  margin: 0 auto;
 }
 
 .stop-name {
@@ -330,19 +359,30 @@
   }
 
   .slideshow {
-    padding: 0 8px 90px;
+    padding: 0 0 90px;
   }
 
   .carousel {
-    gap: 8px;
+    gap: 12px;
   }
 
   .carousel-side {
-    width: 10%;
-    border-radius: 8px;
+    width: 20%;
+    border-radius: 10px;
+  }
+
+  .carousel-side--prev {
+    margin-left: -14%;
+    transform: rotate(-5deg) scale(0.85);
+  }
+
+  .carousel-side--next {
+    margin-right: -14%;
+    transform: rotate(5deg) scale(0.85);
   }
 
   .carousel-main {
+    width: 62%;
     border-radius: 12px;
   }
 
