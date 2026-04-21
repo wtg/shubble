@@ -20,7 +20,6 @@ SHUBBLE_DIR = os.environ.get("SHUBBLE_DIR", "")
 VITE_DIR = os.path.join(SHUBBLE_DIR, "test", "client")
 SESSION = "shubble-dev"
 
-# Detect native Windows (not WSL)
 IS_NATIVE_WINDOWS = platform.system() == "Windows"
 
 # -------- HELPERS --------
@@ -91,15 +90,15 @@ def start_unix():
         else:
             tmux_new_window(SESSION, name, cwd, cmd)
 
-    print("✅ Shubble services started.")
+    print("✅ Shubble started")
     os.execvp("tmux", ["tmux", "attach", "-t", SESSION])
 
 def stop_unix():
-    print("🛑 Stopping Shubble services...")
+    print("🛑 Stopping Shubble...")
     run(["docker", "compose", "--profile", "frontend", "down"], cwd=SHUBBLE_DIR)
     run(["docker", "compose", "down", "redis", "postgres"], cwd=SHUBBLE_DIR)
     tmux_silent(["kill-session", "-t", SESSION])
-    print("✅ Shubble stack stopped.")
+    print("✅ Shubble stack stopped")
 
 # -------- WINDOWS: Native Windows Terminal --------
 WIN_SERVICES = [
@@ -135,15 +134,14 @@ def start_windows():
         ]
 
     subprocess.Popen(wt_args)
-    print("✅ Shubble services started in Windows Terminal.")
+    print("✅ Shubble started in Windows Terminal.")
     print("ℹ️  To stop: run 'python quick_dev.py stop' or close the Windows Terminal window.")
 
 def stop_windows():
-    print("🛑 Stopping Shubble services...")
+    print("🛑 Stopping Shubble...")
     run(["docker", "compose", "--profile", "frontend", "down"], cwd=SHUBBLE_DIR)
     run(["docker", "compose", "down", "redis", "postgres"], cwd=SHUBBLE_DIR)
-    print("✅ Shubble stack stopped.")
-    print("ℹ️  Close the Windows Terminal window to finish.")
+    print("✅ Shubble stack stopped")
 
 # -------- MAIN --------
 def main():
