@@ -27,7 +27,10 @@ const STOP_IMAGES: Record<string, string> = {
 function buildStopList(routeData: ShuttleRouteData): StopInfo[] {
   const stopMap = new Map<string, StopInfo>();
 
+  const hiddenRoutes = ['ENTRY1', 'EXIT1', 'EXIT2'];
+
   for (const [routeName, direction] of Object.entries(routeData)) {
+    if (hiddenRoutes.includes(routeName)) continue;
     for (const stopKey of direction.STOPS) {
       const stopData = direction[stopKey] as ShuttleStopData | undefined;
       if (!stopData || !stopData.NAME) continue;
@@ -83,10 +86,14 @@ export default function Gallery() {
     }
   }, []);
 
+  const HIDDEN_ROUTES = ['ENTRY1', 'EXIT1', 'EXIT2'];
+
   const routeNames = useMemo(() => {
     const names = new Set<string>();
     for (const stop of stops) {
-      for (const r of stop.routes) names.add(r);
+      for (const r of stop.routes) {
+        if (!HIDDEN_ROUTES.includes(r)) names.add(r);
+      }
     }
     return Array.from(names);
   }, [stops]);
@@ -100,15 +107,7 @@ export default function Gallery() {
 
   return (
     <div className="gallery">
-      {/* Header */}
-      <section className="gallery-hero">
-        <div className="gallery-hero-bg" />
-        <div className="gallery-hero-content">
-          <span className="gallery-hero-label">Shuttle Stops</span>
-          <h1>Stop Gallery</h1>
-          <p>Know exactly where to wait. Browse every shuttle stop on campus.</p>
-        </div>
-      </section>
+      <h1 className="gallery-title">Shuttle Stop Gallery</h1>
 
       {/* Route filter pills */}
       <section className="gallery-filters">

@@ -8,57 +8,15 @@
   min-height: 100%;
 }
 
-/* ── Hero ── */
-.gallery-hero {
-  position: relative;
-  overflow: hidden;
-  padding: 48px 24px 32px;
-  text-align: center;
-}
-
-.gallery-hero-bg {
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(ellipse 80% 60% at 20% 100%, rgba(87, 143, 202, 0.15) 0%, transparent 70%),
-    radial-gradient(ellipse 70% 50% at 80% 0%, rgba(32, 110, 249, 0.10) 0%, transparent 60%),
-    #ffffff;
-  z-index: 0;
-}
-
-.gallery-hero-content {
-  position: relative;
-  z-index: 1;
-  max-width: 560px;
-  margin: 0 auto;
-}
-
-.gallery-hero-label {
-  display: inline-block;
-  font-family: "Karla", sans-serif;
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #578FCA;
-  margin-bottom: 10px;
-}
-
-.gallery-hero h1 {
+/* ── Title ── */
+.gallery-title {
   font-family: "KoHo", sans-serif;
-  font-size: 2.6rem;
+  font-size: 2.2rem;
   font-weight: 700;
   color: var(--text-color);
-  margin: 0 0 10px;
-  line-height: 1.1;
-}
-
-.gallery-hero p {
-  font-family: "Karla", sans-serif;
-  font-size: 1.05rem;
-  color: #666;
+  text-align: center;
   margin: 0;
-  line-height: 1.5;
+  padding: 40px 20px 20px;
 }
 
 /* ── Filter pills ── */
@@ -298,16 +256,9 @@
    Mobile  ( <= 1024px )
    ════════════════════════ */
 @media (max-width: 1024px) {
-  .gallery-hero {
-    padding: 32px 20px 24px;
-  }
-
-  .gallery-hero h1 {
-    font-size: 2rem;
-  }
-
-  .gallery-hero p {
-    font-size: 0.92rem;
+  .gallery-title {
+    font-size: 1.8rem;
+    padding: 28px 16px 16px;
   }
 
   .gallery-filters {
