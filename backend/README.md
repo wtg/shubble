@@ -163,7 +163,7 @@ The backend uses two workers: the locations worker and ML worker. The locations 
 
 ### Locations Worker
 
-The worker polls the Samsara API for GPS data and stores it in the database.
+The locations worker polls the Samsara API for GPS data and stores it in the database.
 
 ```bash
 # Run worker
@@ -174,6 +174,21 @@ uv run python -m backend.locations_worker.locations_worker
 # - Only fetches vehicles currently in geofence
 # - Handles pagination for large vehicle fleets
 # - Skips duplicate locations (same vehicle + timestamp)
+```
+
+### ML Worker
+
+The ML worker reads location data from database, runs route matching and ETA predictions, and writes results to the database.
+
+```bash
+# Run worker
+
+uv run python -m backend.ml_worker.ml_worker
+
+# Worker behavior:
+# - Runs every 5 seconds
+# - Predicts ETA for each stop with an LSTM model
+# - Predicts vehicle speed with ARIMA
 ```
 
 ## Docker
