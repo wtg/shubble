@@ -1,4 +1,5 @@
 """Utility functions for database queries."""
+
 from sqlalchemy import func, and_, select
 
 from backend.cache import cache

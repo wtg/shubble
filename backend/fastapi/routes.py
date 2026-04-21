@@ -1,4 +1,5 @@
 """FastAPI routes for the Shubble API."""
+
 import asyncio
 import logging
 import hmac
@@ -59,7 +60,7 @@ async def get_locations(response: Response, request: Request):
     results = await get_latest_vehicle_locations(request.app.state.session_factory)
 
     vehicle_ids = [loc["vehicle_id"] for loc in results]
-    
+
     # Get current driver assignments for all vehicles in results
     current_assignments = await get_current_driver_assignments(
         vehicle_ids, request.app.state.session_factory
@@ -94,7 +95,7 @@ async def get_locations(response: Response, request: Request):
             "name": loc["name"],
             "latitude": loc["latitude"],
             "longitude": loc["longitude"],
-            "timestamp": loc["timestamp"], # Already ISO string
+            "timestamp": loc["timestamp"],  # Already ISO string
             "heading_degrees": loc["heading_degrees"],
             "speed_mph": loc["speed_mph"],
             "is_ecu_speed": loc["is_ecu_speed"],
@@ -113,9 +114,13 @@ async def get_locations(response: Response, request: Request):
     now = datetime.now(timezone.utc)
     data_age = (now - oldest_timestamp).total_seconds() if oldest_timestamp else None
 
-    response.headers['X-Server-Time'] = now.isoformat()
-    response.headers['X-Oldest-Data-Time'] = oldest_timestamp.isoformat() if oldest_timestamp else ''
-    response.headers['X-Data-Age-Seconds'] = str(data_age) if data_age is not None else ''
+    response.headers["X-Server-Time"] = now.isoformat()
+    response.headers["X-Oldest-Data-Time"] = (
+        oldest_timestamp.isoformat() if oldest_timestamp else ""
+    )
+    response.headers["X-Data-Age-Seconds"] = (
+        str(data_age) if data_age is not None else ""
+    )
 
     return response_data
 
@@ -155,7 +160,9 @@ async def get_velocities(request: Request, response: Response):
         return {}
 
     # Get latest velocities
-    predicted_dict = await get_latest_velocities(vehicle_ids, request.app.state.session_factory)
+    predicted_dict = await get_latest_velocities(
+        vehicle_ids, request.app.state.session_factory
+    )
 
     # Get route matching data from cached dataframe
     closest_points = await smart_closest_point(vehicle_ids)
@@ -167,12 +174,15 @@ async def get_velocities(request: Request, response: Response):
         velocity_data = predicted_dict.get(vehicle_id)
 
         # Get closest point result from smart_closest_point
-        closest_distance, _, closest_route_name, polyline_index, _, stop_name = closest_points.get(
-            vehicle_id,
-            (None, None, None, None, None, None)
+        closest_distance, _, closest_route_name, polyline_index, _, stop_name = (
+            closest_points.get(vehicle_id, (None, None, None, None, None, None))
         )
 
-        route_name = closest_route_name if closest_distance is not None and closest_distance < 0.050 else None
+        route_name = (
+            closest_route_name
+            if closest_distance is not None and closest_distance < 0.050
+            else None
+        )
 
         # Determine if vehicle is at a stop
         is_at_stop = stop_name is not None
@@ -376,70 +386,90 @@ async def data_today(db: AsyncSession = Depends(get_db)):
 
     return locations_today_dict
 
+
 @router.get("/api/historical")
 @timed
-async def data_historical(db: AsyncSession = Depends(get_db), start_time: datetime = None, end_time: datetime = None):
+async def data_historical(
+    db: AsyncSession = Depends(get_db),
+    start_time: datetime = None,
+    end_time: datetime = None,
+):
     """Get historical location data for a time range."""
     if start_time is None or end_time is None:
         raise HTTPException(
             status_code=400,
             detail="start_time and end_time query parameters are required",
         )
-    
-    historical_events_dict = {"vehicles": [], "geofence_events": [], "vehicle_locations": [], "drivers": [], "etas": [], "announcements": []}
-    
+
+    historical_events_dict = {
+        "vehicles": [],
+        "geofence_events": [],
+        "vehicle_locations": [],
+        "drivers": [],
+        "etas": [],
+        "announcements": [],
+    }
+
     vehicles = get_vehicles(db)
     vehicles_list = []
     for vehicle in vehicles:
-        vehicles_list.append({
-            "id": vehicle.id,
-            "name": vehicle.name,
-            "asset_type": vehicle.asset_type,
-            "license_plate": vehicle.license_plate,
-            "vin": vehicle.vin,
-            "maintenance_id": vehicle.maintenance_id,
-            "gateway_model": vehicle.gateway_model,
-            "gateway_serial": vehicle.gateway_serial,
-        })
+        vehicles_list.append(
+            {
+                "id": vehicle.id,
+                "name": vehicle.name,
+                "asset_type": vehicle.asset_type,
+                "license_plate": vehicle.license_plate,
+                "vin": vehicle.vin,
+                "maintenance_id": vehicle.maintenance_id,
+                "gateway_model": vehicle.gateway_model,
+                "gateway_serial": vehicle.gateway_serial,
+            }
+        )
     historical_events_dict["vehicles"] = vehicles_list
 
     geofence_events = get_geofence_events_in_time_range(start_time, end_time, db)
     geofence_events_list = []
     for event in geofence_events:
-        geofence_events_list.append({
-            "id": event.id,
-            "vehicle_id": event.vehicle_id,
-            "event_type": event.event_type,
-            "event_time": event.event_time,
-            "address_name": event.address_name,
-            "address_formatted": event.address_formatted,
-            "latitude": event.latitude,
-            "longitude": event.longitude,
-        })
+        geofence_events_list.append(
+            {
+                "id": event.id,
+                "vehicle_id": event.vehicle_id,
+                "event_type": event.event_type,
+                "event_time": event.event_time,
+                "address_name": event.address_name,
+                "address_formatted": event.address_formatted,
+                "latitude": event.latitude,
+                "longitude": event.longitude,
+            }
+        )
 
     vehicle_locations = get_vehicle_locations_in_time_range(start_time, end_time, db)
     vehicle_locations_list = []
     for location in vehicle_locations:
-        vehicle_locations_list.append({
-            "id": location.id,
-            "vehicle_id": location.vehicle_id,
-            "name": location.name,
-            "timestamp": location.timestamp,
-            "latitude": location.latitude,
-            "longitude": location.longitude,
-            "heading_degrees": location.heading_degrees,
-            "speed_mph": location.speed_mph,
-            "is_ecu_speed": location.is_ecu_speed,
-            "formatted_location": location.formatted_location,
-        })
+        vehicle_locations_list.append(
+            {
+                "id": location.id,
+                "vehicle_id": location.vehicle_id,
+                "name": location.name,
+                "timestamp": location.timestamp,
+                "latitude": location.latitude,
+                "longitude": location.longitude,
+                "heading_degrees": location.heading_degrees,
+                "speed_mph": location.speed_mph,
+                "is_ecu_speed": location.is_ecu_speed,
+                "formatted_location": location.formatted_location,
+            }
+        )
 
     drivers = get_drivers(db)
     drivers_list = []
     for driver in drivers:
-        drivers_list.append({
-            "id": driver.id,
-            "name": driver.name,
-        })
+        drivers_list.append(
+            {
+                "id": driver.id,
+                "name": driver.name,
+            }
+        )
     historical_events_dict["drivers"] = drivers_list
 
     etas = get_etas_in_time_range(start_time, end_time, db)
@@ -448,26 +478,31 @@ async def data_historical(db: AsyncSession = Depends(get_db), start_time: dateti
         stops_list = {}
         for stop, eta_time in eta.stops_eta.items():
             stops_list[stop] = eta_time
-        etas_list.append({
-            "id": eta.id,
-            "vehicle_id": eta.vehicle_id,
-            "stops": stops_list,
-        })
+        etas_list.append(
+            {
+                "id": eta.id,
+                "vehicle_id": eta.vehicle_id,
+                "stops": stops_list,
+            }
+        )
     historical_events_dict["etas"] = etas_list
 
     announcements = get_announcements(start_time, end_time, db)
     announcements_list = []
     for announcement in announcements:
-        announcements_list.append({
-            "id": announcement.id,
-            "message": announcement.message,
-            "type": announcement.type,
-            "created_at": announcement.created_at,
-            "expires_at": announcement.expires_at,
-        })
+        announcements_list.append(
+            {
+                "id": announcement.id,
+                "message": announcement.message,
+                "type": announcement.type,
+                "created_at": announcement.created_at,
+                "expires_at": announcement.expires_at,
+            }
+        )
     historical_events_dict["announcements"] = announcements_list
 
     return historical_events_dict
+
 
 @router.get("/api/routes")
 @timed
@@ -515,7 +550,7 @@ async def get_matched_shuttle_schedules(force_recompute: bool = False):
         # The force_recompute parameter would need custom cache invalidation logic
         # For now, we compute fresh data if requested
 
-        matched = {} # Schedule.match_shuttles_to_schedules()
+        matched = {}  # Schedule.match_shuttles_to_schedules()
 
         return {
             "status": "success",
@@ -525,9 +560,8 @@ async def get_matched_shuttle_schedules(force_recompute: bool = False):
 
     except Exception as e:
         logger.exception(f"Error in matched schedule endpoint: {e}")
-        return JSONResponse(
-            {"status": "error", "message": str(e)}, status_code=500
-        )
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
+
 
 @router.get("/api/announcements")
 @cache(soft_ttl=900, hard_ttl=3600, namespace="announcements")

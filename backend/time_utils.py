@@ -1,4 +1,5 @@
 """Time utility functions for timezone handling."""
+
 from datetime import datetime, timedelta, timezone
 
 from backend.config import settings
@@ -13,7 +14,7 @@ def get_campus_start_of_day():
         datetime: The most recent DAY_START in campus timezone, converted to UTC.
     """
     now = datetime.now(settings.CAMPUS_TZ)
-    
+
     # timestamp parse DAY_START
     day_start_time = settings.DAY_START
     day_start_campus_tz = now.replace(

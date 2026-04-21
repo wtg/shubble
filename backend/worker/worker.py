@@ -1,4 +1,5 @@
 """Async background worker for fetching vehicle data from Samsara API."""
+
 import asyncio
 import logging
 import os
@@ -90,7 +91,7 @@ async def update_locations(session_factory):
 
                 async with session_factory() as session:
                     values_to_insert = []
-                    
+
                     for vehicle in data.get("data", []):
                         # Process each vehicle's GPS data
                         vehicle_id = vehicle.get("id")
@@ -109,25 +110,29 @@ async def update_locations(session_factory):
                             timestamp_str.replace("Z", "+00:00")
                         )
 
-                        values_to_insert.append({
-                            "vehicle_id": vehicle_id,
-                            "timestamp": timestamp,
-                            "name": vehicle_name,
-                            "latitude": gps.get("latitude"),
-                            "longitude": gps.get("longitude"),
-                            "heading_degrees": gps.get("headingDegrees"),
-                            "speed_mph": gps.get("speedMilesPerHour"),
-                            "is_ecu_speed": gps.get("isEcuSpeed", False),
-                            "formatted_location": gps.get("reverseGeo", {}).get(
-                                "formattedLocation"
-                            ),
-                            "address_id": gps.get("address", {}).get("id"),
-                            "address_name": gps.get("address", {}).get("name"),
-                        })
+                        values_to_insert.append(
+                            {
+                                "vehicle_id": vehicle_id,
+                                "timestamp": timestamp,
+                                "name": vehicle_name,
+                                "latitude": gps.get("latitude"),
+                                "longitude": gps.get("longitude"),
+                                "heading_degrees": gps.get("headingDegrees"),
+                                "speed_mph": gps.get("speedMilesPerHour"),
+                                "is_ecu_speed": gps.get("isEcuSpeed", False),
+                                "formatted_location": gps.get("reverseGeo", {}).get(
+                                    "formattedLocation"
+                                ),
+                                "address_id": gps.get("address", {}).get("id"),
+                                "address_name": gps.get("address", {}).get("name"),
+                            }
+                        )
 
                     if values_to_insert:
                         # Use PostgreSQL bulk upsert with ON CONFLICT DO NOTHING and RETURNING
-                        insert_stmt = postgresql.insert(VehicleLocation).values(values_to_insert)
+                        insert_stmt = postgresql.insert(VehicleLocation).values(
+                            values_to_insert
+                        )
                         # ON CONFLICT on the composite index (vehicle_id, timestamp) DO NOTHING
                         insert_stmt = insert_stmt.on_conflict_do_nothing(
                             index_elements=["vehicle_id", "timestamp"]
@@ -137,7 +142,7 @@ async def update_locations(session_factory):
 
                         result = await session.execute(insert_stmt)
                         batch_inserted_ids = result.scalars().all()
-                        
+
                         new_records_added += len(batch_inserted_ids)
                         inserted_vehicle_ids.extend(batch_inserted_ids)
 
@@ -211,7 +216,7 @@ async def update_driver_assignments(session_factory, vehicle_ids):
 
                 data = response.json()
                 logger.info(
-                    f'Driver assignments API response: {len(data.get("data", []))} assignments returned'
+                    f"Driver assignments API response: {len(data.get('data', []))} assignments returned"
                 )
 
                 pagination = data.get("pagination", {})
@@ -253,7 +258,9 @@ async def update_driver_assignments(session_factory, vehicle_ids):
                         if not driver:
                             driver = Driver(id=driver_id, name=driver_name)
                             session.add(driver)
-                            logger.info(f"Created new driver: {driver_name} ({driver_id})")
+                            logger.info(
+                                f"Created new driver: {driver_name} ({driver_id})"
+                            )
                         elif driver.name != driver_name:
                             driver.name = driver_name
 
@@ -329,7 +336,9 @@ async def run_worker():
                 await asyncio.sleep(sleep_time)
             else:
                 # Tick took longer than interval - skip ahead
-                logger.warning(f"Worker cycle exceeded {interval_seconds}s interval by {-sleep_time:.2f}s")
+                logger.warning(
+                    f"Worker cycle exceeded {interval_seconds}s interval by {-sleep_time:.2f}s"
+                )
                 next_tick = now
 
     try:
@@ -347,7 +356,9 @@ async def run_worker():
                 # If locations were updated, refresh the ML data cache
                 updated_vehicles = results[0]
                 if updated_vehicles:
-                    logger.info(f"Triggering ML cache update for {len(updated_vehicles)} vehicles")
+                    logger.info(
+                        f"Triggering ML cache update for {len(updated_vehicles)} vehicles"
+                    )
                     await update_today_dataframe()
 
                     # Generate predictions

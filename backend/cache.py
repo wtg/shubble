@@ -21,6 +21,7 @@ Usage:
     # Clear a namespace
     await soft_clear_namespace("locations")
 """
+
 import asyncio
 import functools
 import logging
@@ -37,15 +38,17 @@ logger = logging.getLogger(__name__)
 @dataclass
 class CachedValue:
     """Wrapper for cached values with soft TTL tracking."""
+
     value: Any
     soft_expiry: float  # Unix timestamp when soft TTL expires
+
 
 # Global Redis client
 _redis_client: Optional[aioredis.Redis] = None
 _prefix: str = "shubble-cache"
 
-P = ParamSpec('P')
-T = TypeVar('T')
+P = ParamSpec("P")
+T = TypeVar("T")
 
 
 async def init_cache(redis_url: str, prefix: str = "shubble-cache") -> aioredis.Redis:
@@ -136,10 +139,7 @@ def _is_serializable(obj: Any) -> bool:
     if isinstance(obj, (list, tuple)):
         return all(_is_serializable(item) for item in obj)
     if isinstance(obj, dict):
-        return all(
-            isinstance(k, str) and _is_serializable(v)
-            for k, v in obj.items()
-        )
+        return all(isinstance(k, str) and _is_serializable(v) for k, v in obj.items())
     return False
 
 
@@ -170,6 +170,7 @@ def cache(
         async def get_locations(vehicle_ids: list[str]):
             ...
     """
+
     def decorator(func: Callable[P, T]) -> Callable[P, T]:
         @functools.wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
@@ -177,7 +178,9 @@ def cache(
 
             # If Redis not available, just call the function
             if redis is None:
-                logger.warning(f"Cache not initialized, calling {func.__name__} directly")
+                logger.warning(
+                    f"Cache not initialized, calling {func.__name__} directly"
+                )
                 return await func(*args, **kwargs)
 
             # Generate cache key and lock key
@@ -224,8 +227,7 @@ def cache(
 
                     # Store in cache with soft expiry timestamp
                     new_cached = CachedValue(
-                        value=result,
-                        soft_expiry=time.time() + soft_ttl
+                        value=result, soft_expiry=time.time() + soft_ttl
                     )
                     pickled = pickle.dumps(new_cached)
                     await redis.set(cache_key, pickled, ex=hard_ttl)
@@ -264,6 +266,7 @@ def cache(
                     return await func(*args, **kwargs)
 
         return wrapper
+
     return decorator
 
 
@@ -410,7 +413,7 @@ async def set_cached(
     soft_ttl: int = 60,
     hard_ttl: int = 300,
     *args,
-    **kwargs
+    **kwargs,
 ) -> bool:
     """Set a cache value directly.
 
@@ -433,10 +436,7 @@ async def set_cached(
     cache_key = _make_key(namespace, func_name, args, kwargs)
 
     try:
-        cached_value = CachedValue(
-            value=value,
-            soft_expiry=time.time() + soft_ttl
-        )
+        cached_value = CachedValue(value=value, soft_expiry=time.time() + soft_ttl)
         pickled = pickle.dumps(cached_value)
         await redis.set(cache_key, pickled, ex=hard_ttl)
         return True

@@ -1,4 +1,5 @@
 """Utility functions for FastAPI."""
+
 from sqlalchemy import func, and_, select
 from sqlalchemy.orm import selectinload
 from typing import Dict, Tuple, Optional, List, TypedDict, Any
@@ -7,7 +8,16 @@ import pandas as pd
 from backend.cache import cache
 from backend.function_timer import timed
 
-from backend.models import Vehicle, GeofenceEvent, VehicleLocation, Driver, DriverVehicleAssignment, ETA, Announcement
+from backend.models import (
+    Vehicle,
+    GeofenceEvent,
+    VehicleLocation,
+    Driver,
+    DriverVehicleAssignment,
+    ETA,
+    Announcement,
+    PredictedLocation,
+)
 from backend.cache_dataframe import get_today_dataframe
 from backend.utils import get_vehicles_in_geofence_query
 from backend.time_utils import get_campus_start_of_day
@@ -63,8 +73,18 @@ class VelocityDict(TypedDict):
 @timed
 @cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="smart_closest_point")
 async def smart_closest_point(
-    vehicle_ids: List[str]
-) -> Dict[str, Tuple[Optional[float], Optional[Tuple[float, float]], Optional[str], Optional[int], Optional[int], Optional[str]]]:
+    vehicle_ids: List[str],
+) -> Dict[
+    str,
+    Tuple[
+        Optional[float],
+        Optional[Tuple[float, float]],
+        Optional[str],
+        Optional[int],
+        Optional[int],
+        Optional[str],
+    ],
+]:
     """
     Get the closest point data for each vehicle from the cached dataframe (cached for 15 seconds).
 
@@ -91,8 +111,8 @@ async def smart_closest_point(
                 results[vehicle_id] = (None, None, None, None, None, None)
             return results
 
-        df['vehicle_id'] = df['vehicle_id'].astype(str)
-        grouped = df.groupby('vehicle_id')
+        df["vehicle_id"] = df["vehicle_id"].astype(str)
+        grouped = df.groupby("vehicle_id")
 
         # Get the latest row for each vehicle
         for vehicle_id in vehicle_ids:
@@ -105,13 +125,13 @@ async def smart_closest_point(
 
             # Extract closest point data from the preprocessed columns
             # These columns are added by ml/data/preprocess.py pipeline
-            distance = latest.get('dist_to_route')
-            route_name = latest.get('route')
-            polyline_idx = latest.get('polyline_idx')
-            segment_idx = latest.get('segment_idx')
-            closest_lat = latest.get('closest_lat')
-            closest_lon = latest.get('closest_lon')
-            stop_name = latest.get('stop_name')  # From stops pipeline
+            distance = latest.get("dist_to_route")
+            route_name = latest.get("route")
+            polyline_idx = latest.get("polyline_idx")
+            segment_idx = latest.get("segment_idx")
+            closest_lat = latest.get("closest_lat")
+            closest_lon = latest.get("closest_lon")
+            stop_name = latest.get("stop_name")  # From stops pipeline
 
             # Build closest_point tuple if coordinates are available
             if closest_lat is not None and closest_lon is not None:
@@ -138,7 +158,14 @@ async def smart_closest_point(
             else:
                 stop_name = None
 
-            results[vehicle_id] = (distance, closest_point, route_name, polyline_idx, segment_idx, stop_name)
+            results[vehicle_id] = (
+                distance,
+                closest_point,
+                route_name,
+                polyline_idx,
+                segment_idx,
+                stop_name,
+            )
 
     except Exception as e:
         # If anything goes wrong, return None for all vehicles
@@ -172,10 +199,7 @@ async def get_latest_vehicle_locations(session_factory) -> List[VehicleLocationD
                 VehicleLocation.vehicle_id.in_(select(geofence_entries.c.vehicle_id)),
                 VehicleLocation.timestamp >= get_campus_start_of_day(),
             )
-            .order_by(
-                VehicleLocation.vehicle_id,
-                VehicleLocation.timestamp.desc()
-            )
+            .order_by(VehicleLocation.vehicle_id, VehicleLocation.timestamp.desc())
             .distinct(VehicleLocation.vehicle_id)
             .options(selectinload(VehicleLocation.vehicle))
         )
@@ -234,8 +258,7 @@ async def get_current_driver_assignments(
 
     async with session_factory() as db:
         assignments_query = (
-            select(DriverVehicleAssignment)
-            .where(
+            select(DriverVehicleAssignment).where(
                 DriverVehicleAssignment.vehicle_id.in_(vehicle_ids),
                 DriverVehicleAssignment.assignment_end.is_(None),
             )
@@ -263,7 +286,9 @@ async def get_current_driver_assignments(
 
 @timed
 @cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="etas")
-async def get_latest_etas(vehicle_ids: List[str], session_factory) -> Dict[str, ETADict]:
+async def get_latest_etas(
+    vehicle_ids: List[str], session_factory
+) -> Dict[str, ETADict]:
     """
     Get the latest ETA for each vehicle.
 
@@ -290,15 +315,12 @@ async def get_latest_etas(vehicle_ids: List[str], session_factory) -> Dict[str, 
         )
 
         # Join to get full ETA data
-        etas_query = (
-            select(ETA)
-            .join(
-                latest_etas,
-                and_(
-                    ETA.vehicle_id == latest_etas.c.vehicle_id,
-                    ETA.timestamp == latest_etas.c.latest_time,
-                ),
-            )
+        etas_query = select(ETA).join(
+            latest_etas,
+            and_(
+                ETA.vehicle_id == latest_etas.c.vehicle_id,
+                ETA.timestamp == latest_etas.c.latest_time,
+            ),
         )
 
         etas_result = await db.execute(etas_query)
@@ -316,7 +338,9 @@ async def get_latest_etas(vehicle_ids: List[str], session_factory) -> Dict[str, 
 
 @timed
 @cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="velocities")
-async def get_latest_velocities(vehicle_ids: List[str], session_factory) -> Dict[str, VelocityDict]:
+async def get_latest_velocities(
+    vehicle_ids: List[str], session_factory
+) -> Dict[str, VelocityDict]:
     """
     Get the latest predicted velocity for each vehicle.
 
@@ -343,15 +367,12 @@ async def get_latest_velocities(vehicle_ids: List[str], session_factory) -> Dict
         )
 
         # Join to get full predicted location data
-        predicted_query = (
-            select(PredictedLocation)
-            .join(
-                latest_predicted,
-                and_(
-                    PredictedLocation.vehicle_id == latest_predicted.c.vehicle_id,
-                    PredictedLocation.timestamp == latest_predicted.c.latest_time,
-                ),
-            )
+        predicted_query = select(PredictedLocation).join(
+            latest_predicted,
+            and_(
+                PredictedLocation.vehicle_id == latest_predicted.c.vehicle_id,
+                PredictedLocation.timestamp == latest_predicted.c.latest_time,
+            ),
         )
 
         predicted_result = await db.execute(predicted_query)
@@ -468,7 +489,8 @@ async def get_drivers(session_factory) -> List[Driver]:
         drivers_result = await db.execute(drivers_query)
         drivers = drivers_result.scalars().all()
         return drivers
-    
+
+
 ## figure out what driver vehicle assignment looks like.
 
 

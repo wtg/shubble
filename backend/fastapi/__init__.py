@@ -1,4 +1,5 @@
 """FastAPI application factory."""
+
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -71,6 +72,7 @@ def create_app() -> FastAPI:
 
     # Register routes
     from .routes import router
+
     app.include_router(router)
 
     return app

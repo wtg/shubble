@@ -1,4 +1,5 @@
 """Configuration using Pydantic BaseSettings."""
+
 import base64
 import logging
 from datetime import datetime, time
@@ -9,10 +10,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
 
+
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
 
     # Hosting settings
     DEBUG: bool = True
@@ -20,7 +24,9 @@ class Settings(BaseSettings):
 
     # Logging settings
     LOG_LEVEL: str = "info"  # Global default log level
-    FASTAPI_LOG_LEVEL: Optional[str] = None  # FastAPI backend logging (falls back to LOG_LEVEL)
+    FASTAPI_LOG_LEVEL: Optional[str] = (
+        None  # FastAPI backend logging (falls back to LOG_LEVEL)
+    )
     WORKER_LOG_LEVEL: Optional[str] = None  # Worker logging (falls back to LOG_LEVEL)
     ML_LOG_LEVEL: Optional[str] = None  # ML pipeline logging (falls back to LOG_LEVEL)
 
@@ -53,7 +59,7 @@ class Settings(BaseSettings):
         if v.startswith("postgres://"):
             return v.replace("postgres://", "postgresql://", 1)
         return v
-    
+
     @field_validator("DAY_START", mode="before")
     @classmethod
     def parse_day_start(cls, v: str | time) -> time:
@@ -63,7 +69,9 @@ class Settings(BaseSettings):
         try:
             return datetime.strptime(v, "%H:%M:%S").time()
         except ValueError as exc:
-            logger.error(f"Invalid DAY_START format: {v}. Expected HH:MM:SS. Error: {exc}")
+            logger.error(
+                f"Invalid DAY_START format: {v}. Expected HH:MM:SS. Error: {exc}"
+            )
             return time(0, 0, 0)  # Default to midnight if parsing fails
 
     @property
@@ -71,7 +79,9 @@ class Settings(BaseSettings):
         """Decode base64 Samsara secret."""
         if self.SAMSARA_SECRET:
             return base64.b64decode(self.SAMSARA_SECRET.encode("utf-8"))
-        raise ValueError("SAMSARA_SECRET is required for webhook signature verification.")
+        raise ValueError(
+            "SAMSARA_SECRET is required for webhook signature verification."
+        )
 
     def get_log_level(self, component: str = "default") -> str:
         """
@@ -84,7 +94,9 @@ class Settings(BaseSettings):
             The log level string (e.g., "INFO", "DEBUG", "WARNING")
         """
         component_levels = {
-            "fastapi": self.FASTAPI_LOG_LEVEL.lower() if self.FASTAPI_LOG_LEVEL else None,
+            "fastapi": self.FASTAPI_LOG_LEVEL.lower()
+            if self.FASTAPI_LOG_LEVEL
+            else None,
             "worker": self.WORKER_LOG_LEVEL.lower() if self.WORKER_LOG_LEVEL else None,
             "ml": self.ML_LOG_LEVEL.lower() if self.ML_LOG_LEVEL else None,
         }
