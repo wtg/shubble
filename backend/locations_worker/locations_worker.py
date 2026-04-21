@@ -15,13 +15,13 @@ from backend.models import VehicleLocation, Driver, DriverVehicleAssignment
 from backend.utils import get_vehicles_in_geofence
 
 # Logging config for Worker
-worker_log_level = settings.get_log_level("Locations worker")
+worker_log_level = settings.get_log_level("locations-worker")
 numeric_level = logging._nameToLevel.get(worker_log_level.upper(), logging.INFO)
 logging.basicConfig(
     level=numeric_level,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
-logger = logging.getLogger("locations-worker")
+logger = logging.getLogger(__name__)
 logger.info(f"Worker logging level: {worker_log_level}")
 
 async def update_locations(session_factory):
