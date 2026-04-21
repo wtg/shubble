@@ -159,11 +159,15 @@ DEPLOY_MODE=development  # development, staging, production
 
 ## Background Worker
 
+The backend uses two workers: the locations worker and ML worker. The locations worker is designed to run independently from the ML worker. Thus, the locations worker can continue to run even if the ML worker crashes.
+
+### Locations Worker
+
 The worker polls the Samsara API for GPS data and stores it in the database.
 
 ```bash
 # Run worker
-uv run python -m backend.worker
+uv run python -m backend.locations_worker.locations_worker
 
 # Worker behavior:
 # - Polls every 5 seconds
