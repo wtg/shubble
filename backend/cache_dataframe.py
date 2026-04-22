@@ -10,6 +10,7 @@ recompute affected rows instead of reprocessing the entire dataset:
 
 This significantly reduces computation time as the dataset grows throughout the day.
 """
+
 import asyncio
 import logging
 import pickle
@@ -18,7 +19,6 @@ from datetime import datetime, timezone
 import pandas as pd
 from sqlalchemy import select
 
-from backend.config import settings
 from backend.cache import soft_clear_namespace, get_redis
 from backend.database import get_db
 from backend.models import VehicleLocation
@@ -50,8 +50,10 @@ def process_raw_dataframe(raw_df: pd.DataFrame) -> pd.DataFrame:
 
     # Defensive: ensure timestamp is datetime64 regardless of source
     # (old cached data pickled before dc1f5b5 may have object dtype)
-    if 'timestamp' in raw_df.columns and not pd.api.types.is_datetime64_any_dtype(raw_df['timestamp']):
-        raw_df['timestamp'] = pd.to_datetime(raw_df['timestamp'])
+    if "timestamp" in raw_df.columns and not pd.api.types.is_datetime64_any_dtype(
+        raw_df["timestamp"]
+    ):
+        raw_df["timestamp"] = pd.to_datetime(raw_df["timestamp"])
 
     # Run pipelines in sequence, injecting the dataframe to bypass disk cache loading
     # We pass flag=True to ensure any internal checks know we want to compute
@@ -59,17 +61,21 @@ def process_raw_dataframe(raw_df: pd.DataFrame) -> pd.DataFrame:
     # additive=True: Only compute closest points for rows with NaN values
     # require_majority_valid=False: Use strict majority for route cleaning (default behavior)
     df = preprocess_pipeline(df=raw_df, preprocess=True, cache=False, additive=True)
-    df = segment_pipeline(df=df, segment=True, cache=False, min_segment_length=1,
-                         require_majority_valid=False, additive=True)
+    df = segment_pipeline(
+        df=df,
+        segment=True,
+        cache=False,
+        min_segment_length=1,
+        require_majority_valid=False,
+        additive=True,
+    )
     df = stops_pipeline(df=df, stops=True, cache=False)
 
     return df
 
 
 def relevant_rows(
-    cached_df: pd.DataFrame,
-    new_raw_df: pd.DataFrame,
-    window_size: int = 5
+    cached_df: pd.DataFrame, new_raw_df: pd.DataFrame, window_size: int = 5
 ) -> pd.DataFrame:
     """
     Get rows from cached dataframe that need recomputation when new data arrives.
@@ -91,7 +97,7 @@ def relevant_rows(
         return new_raw_df
 
     # Get unique vehicles in new data
-    new_vehicle_ids = new_raw_df['vehicle_id'].unique()
+    new_vehicle_ids = new_raw_df["vehicle_id"].unique()
 
     # Number of previous points needed per vehicle
     context_points = window_size // 2
@@ -100,9 +106,9 @@ def relevant_rows(
 
     for vehicle_id in new_vehicle_ids:
         # Get previous points for this vehicle from cache
-        vehicle_cached = cached_df[
-            cached_df['vehicle_id'] == vehicle_id
-        ].sort_values('timestamp')
+        vehicle_cached = cached_df[cached_df["vehicle_id"] == vehicle_id].sort_values(
+            "timestamp"
+        )
 
         # Take last N points as context
         if len(vehicle_cached) > 0:
@@ -110,7 +116,7 @@ def relevant_rows(
             relevant_rows_list.append(context)
 
         # Add new points for this vehicle
-        vehicle_new = new_raw_df[new_raw_df['vehicle_id'] == vehicle_id]
+        vehicle_new = new_raw_df[new_raw_df["vehicle_id"] == vehicle_id]
         relevant_rows_list.append(vehicle_new)
 
     # Combine all relevant rows
@@ -118,8 +124,8 @@ def relevant_rows(
         result = pd.concat(relevant_rows_list, ignore_index=True)
         # Sort and deduplicate using (vehicle_id, timestamp) as key
         # In case context overlaps with new data
-        result = result.sort_values('timestamp').drop_duplicates(
-            subset=['vehicle_id', 'timestamp'], keep='last'
+        result = result.sort_values("timestamp").drop_duplicates(
+            subset=["vehicle_id", "timestamp"], keep="last"
         )
         return result
     else:
@@ -146,7 +152,7 @@ async def load_today_dataframe(since: datetime | None = None) -> pd.DataFrame:
             VehicleLocation.vehicle_id,
             VehicleLocation.latitude,
             VehicleLocation.longitude,
-            VehicleLocation.timestamp
+            VehicleLocation.timestamp,
         )
 
         # Apply time filter based on whether 'since' is provided
@@ -161,13 +167,12 @@ async def load_today_dataframe(since: datetime | None = None) -> pd.DataFrame:
 
     # Convert to DataFrame
     df = pd.DataFrame(
-        rows,
-        columns=['vehicle_id', 'latitude', 'longitude', 'timestamp']
+        rows, columns=["vehicle_id", "latitude", "longitude", "timestamp"]
     )
 
     # Ensure timestamp is datetime64 (SQLAlchemy rows come back as Python datetime
     # objects which pandas stores as object dtype without explicit conversion)
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
 
     return df
 
@@ -180,7 +185,7 @@ async def get_today_dataframe() -> pd.DataFrame:
     Returns:
         Processed DataFrame
     """
-    today_str = get_campus_start_of_day().strftime('%Y-%m-%d')
+    today_str = get_campus_start_of_day().strftime("%Y-%m-%d")
     cache_key, timestamp_key = get_cache_and_timestamp_key(today_str)
 
     # Connect to Redis
@@ -240,7 +245,7 @@ async def update_today_dataframe(window_size: int = 5) -> pd.DataFrame:
     Returns:
         Updated processed DataFrame
     """
-    today_str = get_campus_start_of_day().strftime('%Y-%m-%d')
+    today_str = get_campus_start_of_day().strftime("%Y-%m-%d")
     cache_key, timestamp_key = get_cache_and_timestamp_key(today_str)
 
     # Connect to Redis
@@ -256,7 +261,7 @@ async def update_today_dataframe(window_size: int = 5) -> pd.DataFrame:
 
     # Cache exists, perform incremental update
     logger.info(f"Cache found for {today_str}, checking for updates")
-    last_updated = datetime.fromisoformat(last_updated_bytes.decode('utf-8'))
+    last_updated = datetime.fromisoformat(last_updated_bytes.decode("utf-8"))
 
     # Load new raw data since last update
     new_raw_df = await load_today_dataframe(since=last_updated)
@@ -272,7 +277,7 @@ async def update_today_dataframe(window_size: int = 5) -> pd.DataFrame:
     current_processed_df = pickle.loads(cached_data)
 
     # Check if required columns exist
-    raw_cols = ['vehicle_id', 'latitude', 'longitude', 'timestamp']
+    raw_cols = ["vehicle_id", "latitude", "longitude", "timestamp"]
     if not all(col in current_processed_df.columns for col in raw_cols):
         logger.warning("Cached dataframe missing raw columns. Triggering full reload.")
         return await get_today_dataframe()
@@ -280,10 +285,14 @@ async def update_today_dataframe(window_size: int = 5) -> pd.DataFrame:
     # Get rows that need recomputation (new rows + context)
     # This uses the windowed approach to include context for each vehicle
     rows_to_process = relevant_rows(current_processed_df, new_raw_df, window_size)
-    logger.info(f"Extracted {len(rows_to_process)} rows to process (includes {window_size // 2} context points per vehicle)")
+    logger.info(
+        f"Extracted {len(rows_to_process)} rows to process (includes {window_size // 2} context points per vehicle)"
+    )
 
     # Get all processed columns (excluding raw columns)
-    processed_cols = [col for col in current_processed_df.columns if col not in raw_cols]
+    processed_cols = [
+        col for col in current_processed_df.columns if col not in raw_cols
+    ]
 
     # Initialize processed columns with NaN if they don't exist
     for col in processed_cols:
@@ -293,13 +302,13 @@ async def update_today_dataframe(window_size: int = 5) -> pd.DataFrame:
     # Identify which rows are genuinely new (not context)
     # Context rows will already have processed values, new rows will have NaN
     # We determine this by checking if 'route' column exists and has values
-    if 'route' in rows_to_process.columns:
+    if "route" in rows_to_process.columns:
         # Rows from cache (context) will have route values
         # New raw rows will have NaN for route
         # Mark rows with NaN route as new (need processing)
-        new_row_keys = set(zip(new_raw_df['vehicle_id'], new_raw_df['timestamp']))
+        new_row_keys = set(zip(new_raw_df["vehicle_id"], new_raw_df["timestamp"]))
         for idx, row in rows_to_process.iterrows():
-            key = (row['vehicle_id'], row['timestamp'])
+            key = (row["vehicle_id"], row["timestamp"])
             if key in new_row_keys:
                 # This is a new row - set all processed columns to NaN
                 for col in processed_cols:
@@ -309,35 +318,37 @@ async def update_today_dataframe(window_size: int = 5) -> pd.DataFrame:
         for col in processed_cols:
             rows_to_process[col] = pd.NA
 
-    logger.info(f"Processing {len(rows_to_process)} rows with additive mode (preserves context, computes new)")
+    logger.info(
+        f"Processing {len(rows_to_process)} rows with additive mode (preserves context, computes new)"
+    )
     newly_processed_df = await asyncio.to_thread(process_raw_dataframe, rows_to_process)
 
     # Create a set of (vehicle_id, timestamp) pairs that are genuinely new
     # (not from the context window)
-    new_keys = set(zip(new_raw_df['vehicle_id'], new_raw_df['timestamp']))
+    new_keys = set(zip(new_raw_df["vehicle_id"], new_raw_df["timestamp"]))
 
     # Filter newly_processed_df to only include truly new rows
     # by checking if (vehicle_id, timestamp) exists in new_keys
-    newly_processed_keys = list(zip(
-        newly_processed_df['vehicle_id'],
-        newly_processed_df['timestamp']
-    ))
+    newly_processed_keys = list(
+        zip(newly_processed_df["vehicle_id"], newly_processed_df["timestamp"])
+    )
     mask = [key in new_keys for key in newly_processed_keys]
     genuinely_new_processed = newly_processed_df[mask].copy()
 
-    logger.info(f"Adding {len(genuinely_new_processed)} newly processed records to cache")
+    logger.info(
+        f"Adding {len(genuinely_new_processed)} newly processed records to cache"
+    )
 
     # Combine with existing processed data
     updated_processed_df = pd.concat(
-        [current_processed_df, genuinely_new_processed],
-        ignore_index=True
+        [current_processed_df, genuinely_new_processed], ignore_index=True
     )
 
     # Sort and deduplicate using (vehicle_id, timestamp) as key
     # Keep 'last' to prefer newly processed rows over cached ones in case of updates
-    updated_processed_df = updated_processed_df.sort_values('timestamp').drop_duplicates(
-        subset=['vehicle_id', 'timestamp'], keep='last'
-    )
+    updated_processed_df = updated_processed_df.sort_values(
+        "timestamp"
+    ).drop_duplicates(subset=["vehicle_id", "timestamp"], keep="last")
 
     # Update cache
     pickled_df = pickle.dumps(updated_processed_df)

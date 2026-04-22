@@ -1,4 +1,5 @@
 """Async database configuration for FastAPI."""
+
 from fastapi import Request
 from typing import AsyncGenerator, TYPE_CHECKING
 from sqlalchemy.ext.asyncio import (

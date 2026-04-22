@@ -1,7 +1,18 @@
 """SQLAlchemy models for async database operations."""
+
 from datetime import datetime, timezone
 from typing import Optional
-from sqlalchemy import String, Integer, Float, Boolean, DateTime, ForeignKey, Index, UniqueConstraint, JSON
+from sqlalchemy import (
+    String,
+    Integer,
+    Float,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    UniqueConstraint,
+    JSON,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.database import Base
 
@@ -21,11 +32,19 @@ class Vehicle(Base):
     # Relationships
     # lazy="raise" prevents accidental N+1 queries. Use explicit
     # selectinload()/joinedload() in queries that need related objects.
-    geofence_events: Mapped[list["GeofenceEvent"]] = relationship(back_populates="vehicle", lazy="raise")
-    locations: Mapped[list["VehicleLocation"]] = relationship(back_populates="vehicle", lazy="raise")
-    driver_assignments: Mapped[list["DriverVehicleAssignment"]] = relationship(back_populates="vehicle", lazy="raise")
+    geofence_events: Mapped[list["GeofenceEvent"]] = relationship(
+        back_populates="vehicle", lazy="raise"
+    )
+    locations: Mapped[list["VehicleLocation"]] = relationship(
+        back_populates="vehicle", lazy="raise"
+    )
+    driver_assignments: Mapped[list["DriverVehicleAssignment"]] = relationship(
+        back_populates="vehicle", lazy="raise"
+    )
     etas: Mapped[list["ETA"]] = relationship(back_populates="vehicle", lazy="raise")
-    predicted_locations: Mapped[list["PredictedLocation"]] = relationship(back_populates="vehicle", lazy="raise")
+    predicted_locations: Mapped[list["PredictedLocation"]] = relationship(
+        back_populates="vehicle", lazy="raise"
+    )
 
     def __repr__(self):
         return f"<Vehicle {self.id} - {self.name}>"
@@ -38,27 +57,37 @@ class GeofenceEvent(Base):
     )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)  # eventId from webhook
-    vehicle_id: Mapped[str] = mapped_column(String, ForeignKey("vehicles.id"), nullable=False)
+    vehicle_id: Mapped[str] = mapped_column(
+        String, ForeignKey("vehicles.id"), nullable=False
+    )
     event_type: Mapped[str] = mapped_column(String, nullable=False)
-    event_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    event_time: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     address_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     address_formatted: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     latitude: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     longitude: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
 
     # Relationships
     vehicle: Mapped["Vehicle"] = relationship(back_populates="geofence_events")
 
     def __repr__(self):
-        return f"<GeofenceEvent {self.id} {self.event_type} for vehicle {self.vehicle_id}>"
+        return (
+            f"<GeofenceEvent {self.id} {self.event_type} for vehicle {self.vehicle_id}>"
+        )
 
 
 class VehicleLocation(Base):
     __tablename__ = "vehicle_locations"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    vehicle_id: Mapped[str] = mapped_column(String, ForeignKey("vehicles.id"), nullable=False)
+    vehicle_id: Mapped[str] = mapped_column(
+        String, ForeignKey("vehicles.id"), nullable=False
+    )
     name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     latitude: Mapped[float] = mapped_column(Float, nullable=False)
@@ -69,7 +98,9 @@ class VehicleLocation(Base):
     formatted_location: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     address_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     address_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
 
     # Relationships
     vehicle: Mapped["Vehicle"] = relationship(back_populates="locations")
@@ -77,7 +108,9 @@ class VehicleLocation(Base):
     # Indexes
     __table_args__ = (
         Index("ix_vehicle_locations_vehicle_timestamp", vehicle_id, timestamp.desc()),
-        UniqueConstraint("vehicle_id", "timestamp", name="uq_vehicle_locations_vehicle_timestamp"),
+        UniqueConstraint(
+            "vehicle_id", "timestamp", name="uq_vehicle_locations_vehicle_timestamp"
+        ),
     )
 
     def __repr__(self):
@@ -89,10 +122,14 @@ class Driver(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True)  # Samsara driver ID
     name: Mapped[str] = mapped_column(String, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
 
     # Relationships
-    assignments: Mapped[list["DriverVehicleAssignment"]] = relationship(back_populates="driver", lazy="raise")
+    assignments: Mapped[list["DriverVehicleAssignment"]] = relationship(
+        back_populates="driver", lazy="raise"
+    )
 
     def __repr__(self):
         return f"<Driver {self.id} - {self.name}>"
@@ -102,11 +139,21 @@ class DriverVehicleAssignment(Base):
     __tablename__ = "driver_vehicle_assignments"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    driver_id: Mapped[str] = mapped_column(String, ForeignKey("drivers.id"), nullable=False, index=True)
-    vehicle_id: Mapped[str] = mapped_column(String, ForeignKey("vehicles.id"), nullable=False, index=True)
-    assignment_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    assignment_end: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)  # null = currently assigned
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    driver_id: Mapped[str] = mapped_column(
+        String, ForeignKey("drivers.id"), nullable=False, index=True
+    )
+    vehicle_id: Mapped[str] = mapped_column(
+        String, ForeignKey("vehicles.id"), nullable=False, index=True
+    )
+    assignment_start: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    assignment_end: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )  # null = currently assigned
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
 
     # Relationships
     driver: Mapped["Driver"] = relationship(back_populates="assignments")
@@ -118,15 +165,17 @@ class DriverVehicleAssignment(Base):
 
 class ETA(Base):
     __tablename__ = "etas"
-    __table_args__ = (
-        Index("ix_etas_vehicle_timestamp", "vehicle_id", "timestamp"),
-    )
+    __table_args__ = (Index("ix_etas_vehicle_timestamp", "vehicle_id", "timestamp"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    vehicle_id: Mapped[str] = mapped_column(String, ForeignKey("vehicles.id"), nullable=False)
+    vehicle_id: Mapped[str] = mapped_column(
+        String, ForeignKey("vehicles.id"), nullable=False
+    )
     etas: Mapped[dict] = mapped_column(JSON, nullable=False)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
 
     # Relationships
     vehicle: Mapped["Vehicle"] = relationship(back_populates="etas")
@@ -142,10 +191,14 @@ class PredictedLocation(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    vehicle_id: Mapped[str] = mapped_column(String, ForeignKey("vehicles.id"), nullable=False)
+    vehicle_id: Mapped[str] = mapped_column(
+        String, ForeignKey("vehicles.id"), nullable=False
+    )
     speed_kmh: Mapped[float] = mapped_column(Float, nullable=False)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
 
     # Relationships
     vehicle: Mapped["Vehicle"] = relationship(back_populates="predicted_locations")
@@ -153,15 +206,22 @@ class PredictedLocation(Base):
     def __repr__(self):
         return f"<PredictedLocation {self.vehicle_id} @ {self.timestamp} - {self.speed_kmh} km/h>"
 
+
 class Announcement(Base):
     __tablename__ = "announcements"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     message: Mapped[str] = mapped_column(String, nullable=False)
-    type: Mapped[str] = mapped_column(String, nullable=False) # 'info' | 'warning' | 'error'
+    type: Mapped[str] = mapped_column(
+        String, nullable=False
+    )  # 'info' | 'warning' | 'error'
     active: Mapped[bool] = mapped_column(Boolean, default=True)
-    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
 
     # No Relationships
 

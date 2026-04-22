@@ -1,4 +1,5 @@
 """Entry point for running the worker as a module."""
+
 import asyncio
 from .worker import run_worker
 

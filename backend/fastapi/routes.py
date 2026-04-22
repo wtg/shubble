@@ -1,5 +1,5 @@
 """FastAPI routes for the Shubble API."""
-import asyncio
+
 import logging
 import hmac
 from hashlib import sha256
@@ -8,14 +8,14 @@ from pathlib import Path
 
 from fastapi import APIRouter, Request, Depends, HTTPException, Response
 from fastapi.responses import FileResponse, JSONResponse
-from sqlalchemy import func, and_, select
+from sqlalchemy import select
 
 from backend.cache import cache, soft_clear_namespace
 from backend.function_timer import timed
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects import postgresql
 from backend.database import get_db
-from backend.models import Vehicle, GeofenceEvent, VehicleLocation, Announcement
+from backend.models import Vehicle, GeofenceEvent
 from backend.config import settings
 from backend.time_utils import get_campus_start_of_day
 from backend.utils import (
@@ -27,8 +27,13 @@ from backend.fastapi.utils import (
     get_current_driver_assignments,
     get_latest_etas,
     get_latest_velocities,
+    get_vehicles,
+    get_geofence_events_in_time_range,
+    get_vehicle_locations_in_time_range,
+    get_drivers,
+    get_etas_in_time_range,
+    get_announcements,
 )
-from shared.stops import Stops
 # from shared.schedules import Schedule
 
 logger = logging.getLogger(__name__)
@@ -53,7 +58,7 @@ async def get_locations(response: Response, request: Request):
     results = await get_latest_vehicle_locations(request.app.state.session_factory)
 
     vehicle_ids = [loc["vehicle_id"] for loc in results]
-    
+
     # Get current driver assignments for all vehicles in results
     current_assignments = await get_current_driver_assignments(
         vehicle_ids, request.app.state.session_factory
@@ -88,7 +93,7 @@ async def get_locations(response: Response, request: Request):
             "name": loc["name"],
             "latitude": loc["latitude"],
             "longitude": loc["longitude"],
-            "timestamp": loc["timestamp"], # Already ISO string
+            "timestamp": loc["timestamp"],  # Already ISO string
             "heading_degrees": loc["heading_degrees"],
             "speed_mph": loc["speed_mph"],
             "is_ecu_speed": loc["is_ecu_speed"],
@@ -107,9 +112,13 @@ async def get_locations(response: Response, request: Request):
     now = datetime.now(timezone.utc)
     data_age = (now - oldest_timestamp).total_seconds() if oldest_timestamp else None
 
-    response.headers['X-Server-Time'] = now.isoformat()
-    response.headers['X-Oldest-Data-Time'] = oldest_timestamp.isoformat() if oldest_timestamp else ''
-    response.headers['X-Data-Age-Seconds'] = str(data_age) if data_age is not None else ''
+    response.headers["X-Server-Time"] = now.isoformat()
+    response.headers["X-Oldest-Data-Time"] = (
+        oldest_timestamp.isoformat() if oldest_timestamp else ""
+    )
+    response.headers["X-Data-Age-Seconds"] = (
+        str(data_age) if data_age is not None else ""
+    )
 
     return response_data
 
@@ -149,7 +158,9 @@ async def get_velocities(request: Request, response: Response):
         return {}
 
     # Get latest velocities
-    predicted_dict = await get_latest_velocities(vehicle_ids, request.app.state.session_factory)
+    predicted_dict = await get_latest_velocities(
+        vehicle_ids, request.app.state.session_factory
+    )
 
     # Get route matching data from cached dataframe
     closest_points = await smart_closest_point(vehicle_ids)
@@ -166,7 +177,11 @@ async def get_velocities(request: Request, response: Response):
             (None, None, None, None, None, None)
         )
 
-        route_name = closest_route_name if closest_distance is not None and closest_distance < 0.050 else None
+        route_name = (
+            closest_route_name
+            if closest_distance is not None and closest_distance < 0.050
+            else None
+        )
 
         # Determine if vehicle is at a stop
         is_at_stop = stop_name is not None
@@ -183,6 +198,255 @@ async def get_velocities(request: Request, response: Response):
         }
 
     return response_data
+
+
+@router.get("/api/today")
+@timed
+async def data_today(request: Request, response: Response):
+    """Get all location data and geofence events for today."""
+    now = datetime.now(timezone.utc)
+    start_of_day = get_campus_start_of_day()
+
+    # Query locations today
+    locations_today = await get_vehicle_locations_in_time_range(
+        start_of_day, now, request.app.state.session_factory
+    )
+
+    geofence_events_today = await get_geofence_events_in_time_range(
+        start_of_day, now, request.app.state.session_factory
+    )
+
+    # Build response dict
+    locations_today_dict = {}
+    for location in locations_today:
+        vehicle_location = {
+            "latitude": location.latitude,
+            "longitude": location.longitude,
+            "timestamp": location.timestamp,
+            "speed_mph": location.speed_mph,
+            "heading_degrees": location.heading_degrees,
+            "address_id": location.address_id,
+        }
+        if location.vehicle_id in locations_today_dict:
+            locations_today_dict[location.vehicle_id]["data"].append(vehicle_location)
+        else:
+            locations_today_dict[location.vehicle_id] = {
+                "entry": None,
+                "exit": None,
+                "data": [vehicle_location],
+            }
+
+    for geofence_event in geofence_events_today:
+        if geofence_event.event_type == "geofenceEntry":
+            if (
+                "entry" not in locations_today_dict[geofence_event.vehicle_id]
+            ):  # First entry
+                locations_today_dict[geofence_event.vehicle_id]["entry"] = (
+                    geofence_event.event_time
+                )
+        elif geofence_event.event_type == "geofenceExit":
+            if (
+                "entry" in locations_today_dict[geofence_event.vehicle_id]
+            ):  # Makes sure that the vehicle already entered
+                locations_today_dict[geofence_event.vehicle_id]["exit"] = (
+                    geofence_event.event_time
+                )
+
+    return locations_today_dict
+
+
+@router.get("/api/historical")
+@timed
+async def data_historical(
+    request: Request,
+    response: Response,
+    start_time: datetime = None,
+    end_time: datetime = None,
+):
+    """Get historical location data for a time range."""
+    if start_time is None or end_time is None:
+        raise HTTPException(
+            status_code=400,
+            detail="start_time and end_time query parameters are required",
+        )
+
+    historical_events_dict = {
+        "vehicles": [],
+        "geofence_events": [],
+        "vehicle_locations": [],
+        "drivers": [],
+        "etas": [],
+        "announcements": [],
+    }
+
+    vehicles = await get_vehicles(request.app.state.session_factory)
+    vehicles_list = []
+    for vehicle in vehicles:
+        vehicles_list.append(
+            {
+                "id": vehicle.id,
+                "name": vehicle.name,
+                "asset_type": vehicle.asset_type,
+                "license_plate": vehicle.license_plate,
+                "vin": vehicle.vin,
+                "maintenance_id": vehicle.maintenance_id,
+                "gateway_model": vehicle.gateway_model,
+                "gateway_serial": vehicle.gateway_serial,
+            }
+        )
+    historical_events_dict["vehicles"] = vehicles_list
+
+    geofence_events = await get_geofence_events_in_time_range(
+        start_time, end_time, request.app.state.session_factory
+    )
+    geofence_events_list = []
+    for event in geofence_events:
+        geofence_events_list.append(
+            {
+                "id": event.id,
+                "vehicle_id": event.vehicle_id,
+                "event_type": event.event_type,
+                "event_time": event.event_time,
+                "address_name": event.address_name,
+                "address_formatted": event.address_formatted,
+                "latitude": event.latitude,
+                "longitude": event.longitude,
+            }
+        )
+    historical_events_dict["geofence_events"] = geofence_events_list
+
+    vehicle_locations = await get_vehicle_locations_in_time_range(
+        start_time, end_time, request.app.state.session_factory
+    )
+    vehicle_locations_list = []
+    for location in vehicle_locations:
+        vehicle_locations_list.append(
+            {
+                "id": location.id,
+                "vehicle_id": location.vehicle_id,
+                "name": location.name,
+                "timestamp": location.timestamp,
+                "latitude": location.latitude,
+                "longitude": location.longitude,
+                "heading_degrees": location.heading_degrees,
+                "speed_mph": location.speed_mph,
+                "is_ecu_speed": location.is_ecu_speed,
+                "formatted_location": location.formatted_location,
+            }
+        )
+    historical_events_dict["vehicle_locations"] = vehicle_locations_list
+
+    drivers = await get_drivers(request.app.state.session_factory)
+    drivers_list = []
+    for driver in drivers:
+        drivers_list.append(
+            {
+                "id": driver.id,
+                "name": driver.name,
+            }
+        )
+    historical_events_dict["drivers"] = drivers_list
+
+    etas = await get_etas_in_time_range(
+        start_time, end_time, request.app.state.session_factory
+    )
+    etas_list = []
+    for eta in etas:
+        stops_list = {}
+        for stop, eta_time in eta.etas.items():
+            stops_list[stop] = eta_time
+        etas_list.append(
+            {
+                "id": eta.id,
+                "vehicle_id": eta.vehicle_id,
+                "stops": stops_list,
+            }
+        )
+    historical_events_dict["etas"] = etas_list
+
+    announcements = await get_announcements(
+        start_time, end_time, request.app.state.session_factory
+    )
+    announcements_list = []
+    for announcement in announcements:
+        announcements_list.append(
+            {
+                "id": announcement.id,
+                "message": announcement.message,
+                "type": announcement.type,
+                "created_at": announcement.created_at,
+                "expires_at": announcement.expires_at,
+            }
+        )
+    historical_events_dict["announcements"] = announcements_list
+
+    return historical_events_dict
+
+
+@router.get("/api/routes")
+@timed
+async def get_shuttle_routes():
+    """Serve routes.json file."""
+    root_dir = Path(__file__).parent.parent.parent
+    routes_file = root_dir / "shared" / "routes.json"
+    if routes_file.exists():
+        return FileResponse(routes_file)
+    raise HTTPException(status_code=404, detail="Routes file not found")
+
+
+@router.get("/api/schedule")
+@timed
+async def get_shuttle_schedule():
+    """Serve schedule.json file."""
+    root_dir = Path(__file__).parent.parent.parent
+    schedule_file = root_dir / "shared" / "schedule.json"
+    if schedule_file.exists():
+        return FileResponse(schedule_file)
+    raise HTTPException(status_code=404, detail="Schedule file not found")
+
+
+@router.get("/api/aggregated-schedule")
+@timed
+async def get_aggregated_shuttle_schedule():
+    """Serve aggregated_schedule.json file."""
+    root_dir = Path(__file__).parent.parent.parent
+    aggregated_file = root_dir / "shared" / "aggregated_schedule.json"
+    if aggregated_file.exists():
+        return FileResponse(aggregated_file)
+    raise HTTPException(status_code=404, detail="Aggregated schedule file not found")
+
+
+@router.get("/api/matched-schedules")
+@timed
+@cache(soft_ttl=3600, hard_ttl=86400, namespace="matched_schedules")
+async def get_matched_shuttle_schedules(force_recompute: bool = False):
+    """
+    Return cached matched schedules unless force_recompute=true,
+    in which case recompute and update the cache.
+    """
+    try:
+        # Note: With fastapi-cache2, the @cache decorator handles caching automatically
+        # The force_recompute parameter would need custom cache invalidation logic
+        # For now, we compute fresh data if requested
+
+        matched = {}  # Schedule.match_shuttles_to_schedules()
+
+        return {
+            "status": "success",
+            "matchedSchedules": matched,
+            "source": "recomputed" if force_recompute else "computed",
+        }
+
+    except Exception as e:
+        logger.exception(f"Error in matched schedule endpoint: {e}")
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
+
+
+@router.get("/api/announcements")
+@cache(soft_ttl=900, hard_ttl=3600, namespace="announcements")
+async def data_announcement(request: Request, response: Response):
+    now = datetime.now(timezone.utc)
+    return await get_announcements(now, now, request.app.state.session_factory)
 
 
 @router.post("/api/webhook")
@@ -218,7 +482,7 @@ async def webhook(request: Request, db: AsyncSession = Depends(get_db)):
     try:
         data = await request.json()
     except Exception:
-        logger.error(f"Invalid JSON received")
+        logger.error("Invalid JSON received")
         return JSONResponse(
             {"status": "error", "message": "Invalid JSON"}, status_code=400
         )
@@ -318,159 +582,3 @@ async def webhook(request: Request, db: AsyncSession = Depends(get_db)):
         await db.rollback()
         logger.exception(f"Error processing webhook data: {e}")
         return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
-
-
-@router.get("/api/today")
-@timed
-async def data_today(db: AsyncSession = Depends(get_db)):
-    """Get all location data and geofence events for today."""
-    now = datetime.now(timezone.utc)
-    start_of_day = get_campus_start_of_day()
-
-    # Query locations today
-    locations_query = (
-        select(VehicleLocation)
-        .where(
-            and_(
-                VehicleLocation.timestamp >= start_of_day,
-                VehicleLocation.timestamp <= now,
-            )
-        )
-        .order_by(VehicleLocation.timestamp.asc())
-    )
-    locations_result = await db.execute(locations_query)
-    locations_today = locations_result.scalars().all()
-
-    # Query events today
-    events_query = (
-        select(GeofenceEvent)
-        .where(
-            and_(
-                GeofenceEvent.event_time >= start_of_day,
-                GeofenceEvent.event_time <= now,
-            )
-        )
-        .order_by(GeofenceEvent.event_time.asc())
-    )
-    events_result = await db.execute(events_query)
-    events_today = events_result.scalars().all()
-
-    # Build response dict
-    locations_today_dict = {}
-    for location in locations_today:
-        vehicle_location = {
-            "latitude": location.latitude,
-            "longitude": location.longitude,
-            "timestamp": location.timestamp,
-            "speed_mph": location.speed_mph,
-            "heading_degrees": location.heading_degrees,
-            "address_id": location.address_id,
-        }
-        if location.vehicle_id in locations_today_dict:
-            locations_today_dict[location.vehicle_id]["data"].append(vehicle_location)
-        else:
-            locations_today_dict[location.vehicle_id] = {
-                "entry": None,
-                "exit": None,
-                "data": [vehicle_location],
-            }
-
-    for geofence_event in events_today:
-        if geofence_event.event_type == "geofenceEntry":
-            if (
-                "entry" not in locations_today_dict[geofence_event.vehicle_id]
-            ):  # First entry
-                locations_today_dict[geofence_event.vehicle_id]["entry"] = (
-                    geofence_event.event_time
-                )
-        elif geofence_event.event_type == "geofenceExit":
-            if (
-                "entry" in locations_today_dict[geofence_event.vehicle_id]
-            ):  # Makes sure that the vehicle already entered
-                locations_today_dict[geofence_event.vehicle_id]["exit"] = (
-                    geofence_event.event_time
-                )
-
-    return locations_today_dict
-
-
-@router.get("/api/routes")
-@timed
-async def get_shuttle_routes():
-    """Serve routes.json file."""
-    root_dir = Path(__file__).parent.parent.parent
-    routes_file = root_dir / "shared" / "routes.json"
-    if routes_file.exists():
-        return FileResponse(routes_file)
-    raise HTTPException(status_code=404, detail="Routes file not found")
-
-
-@router.get("/api/schedule")
-@timed
-async def get_shuttle_schedule():
-    """Serve schedule.json file."""
-    root_dir = Path(__file__).parent.parent.parent
-    schedule_file = root_dir / "shared" / "schedule.json"
-    if schedule_file.exists():
-        return FileResponse(schedule_file)
-    raise HTTPException(status_code=404, detail="Schedule file not found")
-
-
-@router.get("/api/aggregated-schedule")
-@timed
-async def get_aggregated_shuttle_schedule():
-    """Serve aggregated_schedule.json file."""
-    root_dir = Path(__file__).parent.parent.parent
-    aggregated_file = root_dir / "shared" / "aggregated_schedule.json"
-    if aggregated_file.exists():
-        return FileResponse(aggregated_file)
-    raise HTTPException(status_code=404, detail="Aggregated schedule file not found")
-
-
-@router.get("/api/matched-schedules")
-@timed
-@cache(soft_ttl=3600, hard_ttl=86400, namespace="matched_schedules")
-async def get_matched_shuttle_schedules(force_recompute: bool = False):
-    """
-    Return cached matched schedules unless force_recompute=true,
-    in which case recompute and update the cache.
-    """
-    try:
-        # Note: With fastapi-cache2, the @cache decorator handles caching automatically
-        # The force_recompute parameter would need custom cache invalidation logic
-        # For now, we compute fresh data if requested
-
-        matched = {} # Schedule.match_shuttles_to_schedules()
-
-        return {
-            "status": "success",
-            "matchedSchedules": matched,
-            "source": "recomputed" if force_recompute else "computed",
-        }
-
-    except Exception as e:
-        logger.exception(f"Error in matched schedule endpoint: {e}")
-        return JSONResponse(
-            {"status": "error", "message": str(e)}, status_code=500
-        )
-
-@router.get("/api/announcements")
-@cache(soft_ttl=900, hard_ttl=3600, namespace="announcements")
-async def data_announcement(db: AsyncSession = Depends(get_db)):
-
-    # Query announcements that are active and not expired
-    now = datetime.now(timezone.utc)
-    announcements_query = (
-        select(Announcement)
-        .where(
-            and_(
-                Announcement.active == True,
-                Announcement.expires_at >= now,
-            )
-        )
-        # Order by most recent first
-        .order_by(Announcement.created_at.desc())
-    )
-    announcements_result = await db.execute(announcements_query)
-    announcements = announcements_result.scalars().all()
-    return announcements

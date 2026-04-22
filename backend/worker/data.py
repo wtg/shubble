@@ -1,4 +1,5 @@
 """Data prediction utilities for worker."""
+
 import asyncio
 import logging
 from contextlib import aclosing
@@ -13,7 +14,6 @@ from ml.deploy.arima import load_arima
 from ml.training.train import fit_arima
 from backend.models import ETA, PredictedLocation
 from backend.database import get_db
-from backend.config import settings
 from backend.cache import cache, soft_clear_namespace
 from backend.function_timer import timed
 from ml.cache import get_polyline_dir
@@ -27,6 +27,7 @@ Q = 2
 
 # Cache for loaded models: (route_name, polyline_idx) -> LSTMModel
 _MODEL_CACHE: Dict[Tuple[str, int], Any] = {}
+
 
 @timed
 @cache(soft_ttl=300, hard_ttl=3600, namespace="average_travel_time")
@@ -52,13 +53,18 @@ async def load_average_travel_time(route: str, polyline_idx: int) -> Optional[fl
         df = pd.read_csv(csv_path)
         if len(df) == 0:
             return None
-        return float(df.iloc[0]['avg_travel_time_seconds'])
+        return float(df.iloc[0]["avg_travel_time_seconds"])
     except Exception as e:
-        logger.warning(f"Failed to load average travel time for {route} polyline {polyline_idx}: {e}")
+        logger.warning(
+            f"Failed to load average travel time for {route} polyline {polyline_idx}: {e}"
+        )
         return None
 
+
 @timed
-async def _get_vehicle_data(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+async def _get_vehicle_data(
+    vehicle_ids: List[str], df: Optional[pd.DataFrame] = None
+) -> pd.DataFrame:
     """Helper to get and filter vehicle data."""
     if df is None:
         try:
@@ -71,14 +77,17 @@ async def _get_vehicle_data(vehicle_ids: List[str], df: Optional[pd.DataFrame] =
         return pd.DataFrame()
 
     # Filter for vehicles
-    df['vehicle_id'] = df['vehicle_id'].astype(str)
+    df["vehicle_id"] = df["vehicle_id"].astype(str)
     target_ids = [str(vid) for vid in vehicle_ids]
-    target_df = df[df['vehicle_id'].isin(target_ids)].copy()
+    target_df = df[df["vehicle_id"].isin(target_ids)].copy()
 
     return target_df
 
+
 @timed
-async def predict_eta(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None) -> Dict[str, datetime]:
+async def predict_eta(
+    vehicle_ids: List[str], df: Optional[pd.DataFrame] = None
+) -> Dict[str, datetime]:
     """
     Predict ETA (absolute datetime of arrival at next stop) for a list of vehicle IDs using LSTM.
     """
@@ -88,20 +97,20 @@ async def predict_eta(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None)
 
     # Group by vehicle and prepare batches
     sequence_length = 10
-    input_columns = ['latitude', 'longitude', 'speed_kmh', 'dist_to_end']
+    input_columns = ["latitude", "longitude", "speed_kmh", "dist_to_end"]
 
     batches: Dict[Tuple[str, int], List[Tuple[str, np.ndarray, datetime]]] = {}
 
-    for vehicle_id, vehicle_df in target_df.groupby('vehicle_id'):
-        vehicle_df = vehicle_df.sort_values('timestamp')
+    for vehicle_id, vehicle_df in target_df.groupby("vehicle_id"):
+        vehicle_df = vehicle_df.sort_values("timestamp")
         if len(vehicle_df) < sequence_length:
             continue
 
         sequence_df = vehicle_df.tail(sequence_length)
         last_point = sequence_df.iloc[-1]
 
-        route = last_point.get('route')
-        polyline_idx = last_point.get('polyline_idx')
+        route = last_point.get("route")
+        polyline_idx = last_point.get("polyline_idx")
 
         if pd.isna(route) or pd.isna(polyline_idx):
             continue
@@ -115,7 +124,7 @@ async def predict_eta(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None)
         features = sequence_df[input_columns].fillna(0).values.astype(np.float32)
 
         # Get last timestamp for this vehicle
-        last_ts = pd.to_datetime(last_point['timestamp']).to_pydatetime()
+        last_ts = pd.to_datetime(last_point["timestamp"]).to_pydatetime()
         if last_ts.tzinfo is None:
             last_ts = last_ts.replace(tzinfo=timezone.utc)
 
@@ -156,8 +165,11 @@ async def predict_eta(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None)
 
     return results
 
+
 @timed
-async def get_all_stop_times(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None) -> Dict[str, List[Tuple[str, datetime]]]:
+async def get_all_stop_times(
+    vehicle_ids: List[str], df: Optional[pd.DataFrame] = None
+) -> Dict[str, List[Tuple[str, datetime]]]:
     """
     Get all stop times for a list of vehicle IDs: historical, predicted, and future.
 
@@ -204,14 +216,16 @@ async def get_all_stop_times(vehicle_ids: List[str], df: Optional[pd.DataFrame] 
 
     for vehicle_id in vehicle_ids:
         # Get all data for this vehicle
-        vehicle_df = full_df[full_df['vehicle_id'] == str(vehicle_id)].sort_values('timestamp')
+        vehicle_df = full_df[full_df["vehicle_id"] == str(vehicle_id)].sort_values(
+            "timestamp"
+        )
         if vehicle_df.empty:
             continue
 
         last_point = vehicle_df.iloc[-1]
-        route = last_point.get('route')
-        current_polyline_idx = last_point.get('polyline_idx')
-        now_stop_key = last_point.get('stop_name')
+        route = last_point.get("route")
+        current_polyline_idx = last_point.get("polyline_idx")
+        now_stop_key = last_point.get("stop_name")
 
         if pd.isna(route) or pd.isna(current_polyline_idx):
             continue
@@ -224,11 +238,13 @@ async def get_all_stop_times(vehicle_ids: List[str], df: Optional[pd.DataFrame] 
             continue
 
         route_data = routes[route]
-        if 'STOPS' not in route_data:
+        if "STOPS" not in route_data:
             logger.warning(f"STOPS not found for route {route}")
             continue
 
-        stops = route_data['STOPS']  # List of stop keys like ["STUDENT_UNION", "COLONIE", ...]
+        stops = route_data[
+            "STOPS"
+        ]  # List of stop keys like ["STUDENT_UNION", "COLONIE", ...]
 
         # Polyline index N represents transition from STOPS[N] to STOPS[N+1]
         # So if current_polyline_idx = 0, vehicle is going from STOPS[0] to STOPS[1]
@@ -258,10 +274,12 @@ async def get_all_stop_times(vehicle_ids: List[str], df: Optional[pd.DataFrame] 
             stop_key = stops[i]
 
             # Find last time vehicle was at this stop (where stop_name matches)
-            at_stop = vehicle_df[vehicle_df['stop_name'] == stop_key]
+            at_stop = vehicle_df[vehicle_df["stop_name"] == stop_key]
             if not at_stop.empty:
                 last_at_stop = at_stop.iloc[-1]
-                stop_timestamp = pd.to_datetime(last_at_stop['timestamp']).to_pydatetime()
+                stop_timestamp = pd.to_datetime(
+                    last_at_stop["timestamp"]
+                ).to_pydatetime()
                 if stop_timestamp.tzinfo is None:
                     stop_timestamp = stop_timestamp.replace(tzinfo=timezone.utc)
                 stop_times.append((stop_key, stop_timestamp))
@@ -283,10 +301,14 @@ async def get_all_stop_times(vehicle_ids: List[str], df: Optional[pd.DataFrame] 
             polyline_idx_for_transition = i - 1
 
             # Load average travel time for this transition
-            avg_time = await load_average_travel_time(route, polyline_idx_for_transition)
+            avg_time = await load_average_travel_time(
+                route, polyline_idx_for_transition
+            )
 
             if avg_time is None:
-                logger.warning(f"Missing average travel time for {route} polyline {polyline_idx_for_transition}")
+                logger.warning(
+                    f"Missing average travel time for {route} polyline {polyline_idx_for_transition}"
+                )
                 # Skip remaining stops if we don't have complete data
                 break
 
@@ -299,8 +321,11 @@ async def get_all_stop_times(vehicle_ids: List[str], df: Optional[pd.DataFrame] 
 
     return results
 
+
 @timed
-async def predict_next_state(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None) -> Dict[str, Dict]:
+async def predict_next_state(
+    vehicle_ids: List[str], df: Optional[pd.DataFrame] = None
+) -> Dict[str, Dict]:
     """
     Predict next state (speed, timestamp) for vehicles using ARIMA.
     """
@@ -313,23 +338,23 @@ async def predict_next_state(vehicle_ids: List[str], df: Optional[pd.DataFrame] 
     # Load default ARIMA params (p=3, d=0, q=2)
     try:
         # Assuming we trained on 'speed_kmh'
-        arima_params = load_arima(p=3, d=0, q=2, value_column='speed_kmh')
+        arima_params = load_arima(p=3, d=0, q=2, value_column="speed_kmh")
     except FileNotFoundError:
         # Silently fail if no model, likely not trained yet
         return {}
     except Exception as e:
-        logger.error(f"Error loading ARIMA params: {e}")
+        # logger.warning(f"ARIMA prediction failed for {vehicle_id}: {e}")
         return {}
 
-    for vehicle_id, vehicle_df in target_df.groupby('vehicle_id'):
-        vehicle_df = vehicle_df.sort_values('timestamp')
+    for vehicle_id, vehicle_df in target_df.groupby("vehicle_id"):
+        vehicle_df = vehicle_df.sort_values("timestamp")
         if len(vehicle_df) < 5:
             continue
 
-        if 'speed_kmh' not in vehicle_df.columns:
+        if "speed_kmh" not in vehicle_df.columns:
             continue
 
-        speeds = vehicle_df['speed_kmh'].fillna(0).values
+        speeds = vehicle_df["speed_kmh"].fillna(0).values
 
         try:
             # Fit ARIMA on recent history (max 200 points) using warm start
@@ -339,7 +364,9 @@ async def predict_next_state(vehicle_ids: List[str], df: Optional[pd.DataFrame] 
                 # return average speed if not enough data
                 predicted_speed = np.array([float(np.mean(recent_speeds))])
             else:
-                model = fit_arima(recent_speeds, p=P, d=D, q=Q, start_params=arima_params['params'])
+                model = fit_arima(
+                    recent_speeds, p=P, d=D, q=Q, start_params=arima_params["params"]
+                )
 
                 # Predict next speed
                 forecast = model.predict(n_periods=1)
@@ -347,33 +374,36 @@ async def predict_next_state(vehicle_ids: List[str], df: Optional[pd.DataFrame] 
                 predicted_speed = max(0.0, predicted_speed)
 
             # Predict next timestamp
-            timestamps = vehicle_df['timestamp'].values
+            timestamps = vehicle_df["timestamp"].values
             last_ts = pd.to_datetime(timestamps[-1]).to_pydatetime()
             if last_ts.tzinfo is None:
                 last_ts = last_ts.replace(tzinfo=timezone.utc)
 
             if len(timestamps) >= 2:
-                deltas = np.diff(timestamps[-5:]).astype('timedelta64[s]').astype(int)
+                deltas = np.diff(timestamps[-5:]).astype("timedelta64[s]").astype(int)
                 avg_delta = np.mean(deltas)
-                avg_delta = min(max(avg_delta, 1), 60) # Clamp between 1s and 60s
+                avg_delta = min(max(avg_delta, 1), 60)  # Clamp between 1s and 60s
             else:
                 avg_delta = 5
 
             predicted_ts = last_ts + timedelta(seconds=float(avg_delta))
 
             results[vehicle_id] = {
-                'speed_kmh': predicted_speed,
-                'timestamp': predicted_ts
+                "speed_kmh": predicted_speed,
+                "timestamp": predicted_ts,
             }
 
         except Exception as e:
-            # logger.warning(f"ARIMA prediction failed for {vehicle_id}: {e}")
+            logger.warning(f"ARIMA prediction failed for {vehicle_id}: {e}")
             continue
 
     return results
 
+
 @timed
-async def save_predictions(etas: Dict[str, List[Tuple[str, datetime]]], next_states: Dict[str, Dict]):
+async def save_predictions(
+    etas: Dict[str, List[Tuple[str, datetime]]], next_states: Dict[str, Dict]
+):
     """Save predictions to database.
 
     Args:
@@ -388,12 +418,13 @@ async def save_predictions(etas: Dict[str, List[Tuple[str, datetime]]], next_sta
         # Save ETAs (as ISO format strings for JSON storage)
         for vid, stop_etas in etas.items():
             # Convert list of (stop_key, datetime) tuples to dict
-            etas_dict = {stop_key: eta_datetime.isoformat() for stop_key, eta_datetime in stop_etas}
+            etas_dict = {
+                stop_key: eta_datetime.isoformat()
+                for stop_key, eta_datetime in stop_etas
+            }
 
             new_eta = ETA(
-                vehicle_id=vid,
-                etas=etas_dict,
-                timestamp=datetime.now(timezone.utc)
+                vehicle_id=vid, etas=etas_dict, timestamp=datetime.now(timezone.utc)
             )
             session.add(new_eta)
 
@@ -401,14 +432,15 @@ async def save_predictions(etas: Dict[str, List[Tuple[str, datetime]]], next_sta
         for vid, state in next_states.items():
             new_loc = PredictedLocation(
                 vehicle_id=vid,
-                speed_kmh=state['speed_kmh'],
-                timestamp=state['timestamp']
+                speed_kmh=state["speed_kmh"],
+                timestamp=state["timestamp"],
             )
             session.add(new_loc)
 
         await session.commit()
         await soft_clear_namespace("etas")
         await soft_clear_namespace("velocities")
+
 
 @timed
 async def generate_and_save_predictions(vehicle_ids: List[str]):
@@ -427,8 +459,7 @@ async def generate_and_save_predictions(vehicle_ids: List[str]):
 
     # Run in parallel, passing the pre-loaded dataframe
     results = await asyncio.gather(
-        get_all_stop_times(vehicle_ids, df=df),
-        predict_next_state(vehicle_ids, df=df)
+        get_all_stop_times(vehicle_ids, df=df), predict_next_state(vehicle_ids, df=df)
     )
 
     etas = results[0]
