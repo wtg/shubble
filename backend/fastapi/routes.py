@@ -343,10 +343,12 @@ async def data_today(db: AsyncSession = Depends(get_db)):
     start_of_day = get_campus_start_of_day()
 
     # Query locations today
-    locations_today = get_vehicle_locations_in_time_range(start_of_day, now, db)
+    locations_today = await get_vehicle_locations_in_time_range(start_of_day, now, db)
 
     # Query events today
-    geofence_events_today = get_geofence_events_in_time_range(start_of_day, now, db)
+    geofence_events_today = await get_geofence_events_in_time_range(
+        start_of_day, now, db
+    )
 
     # Build response dict
     locations_today_dict = {}
@@ -410,7 +412,7 @@ async def data_historical(
         "announcements": [],
     }
 
-    vehicles = get_vehicles(db)
+    vehicles = await get_vehicles(db)
     vehicles_list = []
     for vehicle in vehicles:
         vehicles_list.append(
@@ -427,7 +429,7 @@ async def data_historical(
         )
     historical_events_dict["vehicles"] = vehicles_list
 
-    geofence_events = get_geofence_events_in_time_range(start_time, end_time, db)
+    geofence_events = await get_geofence_events_in_time_range(start_time, end_time, db)
     geofence_events_list = []
     for event in geofence_events:
         geofence_events_list.append(
@@ -443,7 +445,9 @@ async def data_historical(
             }
         )
 
-    vehicle_locations = get_vehicle_locations_in_time_range(start_time, end_time, db)
+    vehicle_locations = await get_vehicle_locations_in_time_range(
+        start_time, end_time, db
+    )
     vehicle_locations_list = []
     for location in vehicle_locations:
         vehicle_locations_list.append(
@@ -461,7 +465,7 @@ async def data_historical(
             }
         )
 
-    drivers = get_drivers(db)
+    drivers = await get_drivers(db)
     drivers_list = []
     for driver in drivers:
         drivers_list.append(
@@ -472,11 +476,11 @@ async def data_historical(
         )
     historical_events_dict["drivers"] = drivers_list
 
-    etas = get_etas_in_time_range(start_time, end_time, db)
+    etas = await get_etas_in_time_range(start_time, end_time, db)
     etas_list = []
     for eta in etas:
         stops_list = {}
-        for stop, eta_time in eta.stops_eta.items():
+        for stop, eta_time in eta.etas.items():
             stops_list[stop] = eta_time
         etas_list.append(
             {
@@ -487,7 +491,7 @@ async def data_historical(
         )
     historical_events_dict["etas"] = etas_list
 
-    announcements = get_announcements(start_time, end_time, db)
+    announcements = await get_announcements(start_time, end_time, db)
     announcements_list = []
     for announcement in announcements:
         announcements_list.append(
@@ -566,19 +570,6 @@ async def get_matched_shuttle_schedules(force_recompute: bool = False):
 @router.get("/api/announcements")
 @cache(soft_ttl=900, hard_ttl=3600, namespace="announcements")
 async def data_announcement(db: AsyncSession = Depends(get_db)):
-
-    # Query announcements that are active and not expired
-    now = datetime.now(timezone.utc)
-    announcements_query = (
-        select(Announcement)
-        .where(
-            and_(
-                Announcement.expires_at >= now,
-            )
-        )
-        # Order by most recent first
-        .order_by(Announcement.created_at.desc())
+    return await get_announcements(
+        datetime.now(timezone.utc), datetime.now(timezone.utc), db
     )
-    announcements_result = await db.execute(announcements_query)
-    announcements = announcements_result.scalars().all()
-    return announcements

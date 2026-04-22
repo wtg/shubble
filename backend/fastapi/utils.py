@@ -540,7 +540,7 @@ async def get_announcements(
         session_factory: Async session factory
 
     Returns:
-        List of Announcement ORM objects ordered by timestamp ascending
+        List of Announcement ORM objects ordered by created_at ascending
     """
     async with session_factory() as db:
         announcements_query = (
@@ -551,7 +551,7 @@ async def get_announcements(
                     Announcement.expires_at >= start_time,
                 )
             )
-            .order_by(Announcement.timestamp.asc())
+            .order_by(Announcement.created_at.asc())
         )
         announcements_result = await db.execute(announcements_query)
         announcements = announcements_result.scalars().all()
