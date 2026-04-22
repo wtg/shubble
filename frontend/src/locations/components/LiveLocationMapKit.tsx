@@ -88,7 +88,7 @@ export default function LiveLocationMapKit({
             current_stop: velocity?.current_stop,
           };
         }
-
+        
         setVehicles(combined);
       } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') return;

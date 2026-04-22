@@ -53,11 +53,7 @@ async def get_locations(response: Response, request: Request):
     results = await get_latest_vehicle_locations(request.app.state.session_factory)
 
     vehicle_ids = [loc["vehicle_id"] for loc in results]
-    
-    # Get current driver assignments for all vehicles in results
-    current_assignments = await get_current_driver_assignments(
-        vehicle_ids, request.app.state.session_factory
-    )
+    current_assignments = await get_current_driver_assignments(vehicle_ids, request.app.state.session_factory)
 
     # Format response
     response_data = {}
