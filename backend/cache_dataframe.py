@@ -19,7 +19,6 @@ from datetime import datetime, timezone
 import pandas as pd
 from sqlalchemy import select
 
-from backend.config import settings
 from backend.cache import soft_clear_namespace, get_redis
 from backend.database import get_db
 from backend.models import VehicleLocation

@@ -14,7 +14,6 @@ from ml.deploy.arima import load_arima
 from ml.training.train import fit_arima
 from backend.models import ETA, PredictedLocation
 from backend.database import get_db
-from backend.config import settings
 from backend.cache import cache, soft_clear_namespace
 from backend.function_timer import timed
 from ml.cache import get_polyline_dir
@@ -395,7 +394,7 @@ async def predict_next_state(
             }
 
         except Exception as e:
-            # logger.warning(f"ARIMA prediction failed for {vehicle_id}: {e}")
+            logger.warning(f"ARIMA prediction failed for {vehicle_id}: {e}")
             continue
 
     return results

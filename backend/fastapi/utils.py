@@ -2,7 +2,8 @@
 
 from sqlalchemy import func, and_, select
 from sqlalchemy.orm import selectinload
-from typing import Dict, Tuple, Optional, List, TypedDict, Any
+from typing import Dict, Tuple, Optional, List, TypedDict
+from datetime import datetime
 import pandas as pd
 
 from backend.cache import cache
@@ -409,14 +410,14 @@ async def get_vehicles(session_factory) -> List[Vehicle]:
 
 @timed
 async def get_geofence_events_in_time_range(
-    start_time: str, end_time: str, session_factory
+    start_time: datetime, end_time: datetime, session_factory
 ) -> List[GeofenceEvent]:
     """
     Get all geofence events within a specified time range.
 
     Args:
-        start_time: Start of time range (ISO format string)
-        end_time: End of time range (ISO format string)
+        start_time: Start of time range
+        end_time: End of time range
         session_factory: Async session factory
 
     Returns:
@@ -441,7 +442,7 @@ async def get_geofence_events_in_time_range(
 
 @timed
 async def get_vehicle_locations_in_time_range(
-    start_time: str, end_time: str, session_factory
+    start_time: datetime, end_time: datetime, session_factory
 ) -> List[VehicleLocation]:
     """
     Get all vehicle locations within a specified time range.
@@ -491,12 +492,9 @@ async def get_drivers(session_factory) -> List[Driver]:
         return drivers
 
 
-## figure out what driver vehicle assignment looks like.
-
-
 @timed
 async def get_etas_in_time_range(
-    start_time: str, end_time: str, session_factory
+    start_time: datetime, end_time: datetime, session_factory
 ) -> List[ETA]:
     """
     Get all ETA records within a specified time range.
@@ -529,7 +527,7 @@ async def get_etas_in_time_range(
 @timed
 @cache(soft_ttl=15, hard_ttl=300, lock_timeout=5.0, namespace="announcements")
 async def get_announcements(
-    start_time: str, end_time: str, session_factory
+    start_time: datetime, end_time: datetime, session_factory
 ) -> List[Announcement]:
     """
     Get all announcements within a specified time range.
