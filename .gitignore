@@ -18,8 +18,9 @@ venv/
 .planning/
 CLAUDE.md
 
-# Local tests (not yet integrated into CI)
-/tests/
+# Ad-hoc test harnesses kept local (not part of the pytest suite)
+/tests/simulation/
+/tests/screenshots/
 
 # Executed notebooks + generated plots
 ml/*_executed.ipynb
