@@ -108,7 +108,7 @@ def load_cached_csv(path: Path, description: str) -> Optional[pd.DataFrame]:
     logger.info(f"Loading {description} from {path}")
     df = pd.read_csv(path)
     if 'timestamp' in df.columns:
-        df['timestamp'] = pd.to_datetime(df['timestamp'], format='mixed')
+        df['timestamp'] = pd.to_datetime(df['timestamp'], format='mixed', utc=True)
     logger.info(f"Loaded {len(df)} records from cache")
     return df
 
