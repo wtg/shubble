@@ -20,6 +20,15 @@ from backend.config import settings
 from backend.database import Base
 
 # Import all models to ensure they're registered with Base
+from backend.models import (
+    Vehicle,
+    GeofenceEvent,
+    VehicleLocation,
+    Driver,
+    DriverVehicleAssignment,
+    ETA,
+    PredictedLocation,
+)
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

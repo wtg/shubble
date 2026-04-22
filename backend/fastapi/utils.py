@@ -448,8 +448,8 @@ async def get_vehicle_locations_in_time_range(
     Get all vehicle locations within a specified time range.
 
     Args:
-        start_time: Start of time range (ISO format string)
-        end_time: End of time range (ISO format string)
+        start_time: Start of time range
+        end_time: End of time range
         session_factory: Async session factory
 
     Returns:
@@ -500,8 +500,8 @@ async def get_etas_in_time_range(
     Get all ETA records within a specified time range.
 
     Args:
-        start_time: Start of time range (ISO format string)
-        end_time: End of time range (ISO format string)
+        start_time: Start of time range
+        end_time: End of time range
         session_factory: Async session factory
 
     Returns:
@@ -533,8 +533,8 @@ async def get_announcements(
     Get all announcements within a specified time range.
 
     Args:
-        start_time: Start of time range (ISO format string)
-        end_time: End of time range (ISO format string)
+        start_time: Start of time range
+        end_time: End of time range
         session_factory: Async session factory
 
     Returns:

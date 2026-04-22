@@ -343,7 +343,7 @@ async def predict_next_state(
         # Silently fail if no model, likely not trained yet
         return {}
     except Exception as e:
-        logger.error(f"Error loading ARIMA params: {e}")
+        # logger.warning(f"ARIMA prediction failed for {vehicle_id}: {e}")
         return {}
 
     for vehicle_id, vehicle_df in target_df.groupby("vehicle_id"):
