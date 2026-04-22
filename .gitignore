@@ -15,10 +15,11 @@ venv/
 
 # Claude Code / GSD workspace
 .claude/
+.planning/
+CLAUDE.md
 
-# Screenshot iteration artifacts
-tests/screenshots/iter_*.png
-tests/screenshots/output/
+# Local tests (not yet integrated into CI)
+/tests/
 
 # Executed notebooks + generated plots
 ml/*_executed.ipynb
