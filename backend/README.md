@@ -15,22 +15,26 @@ FastAPI backend for the Shubble shuttle tracking application.
 
 ```
 backend/
-├── __init__.py           # Package exports
-├── config.py             # Pydantic settings (env vars)
-├── database.py           # Async SQLAlchemy engine/session
-├── models.py             # ORM models (5 tables)
-├── utils.py              # Database query helpers
-├── time_utils.py         # Timezone utilities
-├── alembic.ini           # Alembic configuration
-│
-├── fastapi/              # FastAPI application
-│   ├── __init__.py       # App factory, CORS, Redis setup
-│   └── routes.py         # API endpoints
-│
-└── worker/               # Background worker
-    ├── __init__.py       # Package exports
-    ├── __main__.py       # Module entry point
-    └── worker.py         # GPS polling worker
+├── __init__.py             # Package exports
+├── config.py               # Pydantic settings (env vars)
+├── database.py             # Async SQLAlchemy engine/session
+├── models.py               # SQLAlchemy ORM models and table definitions
+├── utils.py                # General utility functions
+├── time_utils.py           # Timezone utilities
+├── cache_dataframe.py      # ML pipeline caching
+├── cache.py                # Custom Redis cache
+├── function_timer.py       # Execution time decorators
+├── alembic.ini             # Alembic configuration
+├── alembic/                # Alembic migration scripts
+├── fastapi/                # FastAPI application
+│   ├── __init__.py         # App factory, CORS, Redis setup
+│   ├── routes.py           # API endpoints (10 get, 1 post)
+│   └── utils.py            # 11 Data access functions / helpers, and their respective models
+└── worker/
+    ├── __init__.py         # Worker package
+    ├── __main__.py         # Worker entry point
+    ├── data.py             # Data prediction utils for worker
+    └── worker.py           # Async background worker for fetching vehicle data from Samsara API.
 ```
 
 ## API Endpoints
@@ -51,42 +55,55 @@ Returns the latest location for each shuttle currently inside the geofence.
 **Response Body:**
 ```json
 {
-  "vehicle_id": {
-    "name": "Shuttle 1",
-    "latitude": 42.7284,
-    "longitude": -73.6788,
-    "timestamp": "2025-01-15T12:00:00Z",
-    "heading_degrees": 180,
-    "speed_mph": 25,
-    "route_name": "East Route",
-    "polyline_index": 0,
-    "driver": {"id": "123", "name": "John Doe"},
-    "stop_times": {"stop_name": "2025-01-15T12:05:00Z"},
-    "is_at_stop": false,
-    "current_stop": null
-  }
+    "vehicle_id": {
+        "name": "Shuttle 1",
+        "latitude": 42.7284,
+        "longitude": -73.6788,
+        "timestamp": "2025-01-15T12:00:00Z",
+        "heading_degrees": 180,
+        "speed_mph": 25,
+        "is_ecu_speed": true,
+        "formatted_location": "1761 15th Street, City of Troy, NY, 12180",
+        "address_id": "1234567",
+        "address_name": "Address Name",
+        "license_plate": "RPI123",
+        "vin": "1FDFE4FS3KDC07453",
+        "asset_type": "vehicle",
+        "gateway_model": "VG54NAH",
+        "gateway_serial": "GATE-123-WAY",
+        "driver": {
+            "id": "52558508",
+            "name": "John, Doe"
+        }
+    }
 }
 ```
 
 ### Routes & Schedule
 
 ```
-GET /api/routes      # Route polylines, stops, colors
-GET /api/schedule    # Shuttle schedules
-GET /api/aggregated-schedule  # Compiled schedule data
+GET /api/etas                   Returns ETA information for each vehicle currently inside the geofence.
+GET /api/routes                 Returns route polylines, stops, and route colors.
+GET /api/schedule               Returns shuttle schedules.
+GET /api/aggregated-schedule    Returns compiled schedule data.
 ```
 
 ### Data
 
 ```
-GET /api/today       # All location data for today
-GET /api/matched-schedules  # ML-matched shuttle schedules
+GET /api/locations              Returns the latest location for each shuttle currently inside the geofence.
+GET /api/velocities             Returns the latest speed for each shuttle currently inside the geofence.
+GET /api/today                  Returns all location and geofence event data for today.
+GET /api/historical?start={timestamp}&end={timestamp}
+                                Returns historical shuttle location data for the specified time range.
+GET /api/matched-schedules      Returns ML-matched shuttle schedules.
+GET /api/announcements          Returns active system announcements.
 ```
 
 ### Webhooks
 
 ```
-POST /api/webhook    # Samsara geofence events
+POST /api/webhook               Receives Samsara geofence events.
 ```
 
 ## Database Schema
@@ -96,25 +113,49 @@ POST /api/webhook    # Samsara geofence events
 1. **vehicles** - Shuttle vehicle metadata
    - `id` (PK) - Samsara vehicle ID
    - `name`, `asset_type`, `license_plate`, `vin`
-   - `gateway_model`, `gateway_serial`
+   - `maintenance_id`, `gateway_model`, `gateway_serial`
 
 2. **vehicle_locations** - GPS location history
    - `id` (PK) - Auto-increment
-   - `vehicle_id` (FK), `timestamp`, `latitude`, `longitude`
-   - `heading_degrees`, `speed_mph`, `formatted_location`
+   - `vehicle_id` (FK), `name`, `timestamp`, `latitude`, `longitude`
+   - `heading_degrees`, `speed_mph`, `is_ecu_speed`, `formatted_location`
+   - `address_id`, `address_name`, `created_at`
+   - Index: `(vehicle_id, timestamp DESC)`
    - Unique constraint: `(vehicle_id, timestamp)`
 
 3. **geofence_events** - Entry/exit events
    - `id` (PK) - Samsara event ID
    - `vehicle_id` (FK), `event_type`, `event_time`
-   - `address_name`, `latitude`, `longitude`
+   - `address_name`, `address_formatted`, `latitude`, `longitude`
+   - `created_at`
+   - Index: `(vehicle_id, event_time)`
 
 4. **drivers** - Driver information
-   - `id` (PK), `name`
+   - `id` (PK) - Samsara driver ID
+   - `name`, `created_at`
 
 5. **driver_vehicle_assignments** - Driver-vehicle mapping
+   - `id` (PK) - Auto-increment
    - `driver_id` (FK), `vehicle_id` (FK)
    - `assignment_start`, `assignment_end`
+   - `created_at`
+
+6. **etas** - Estimated time of arrival data
+   - `id` (PK) - Auto-increment
+   - `vehicle_id` (FK), `etas` (JSON), `timestamp`
+   - `created_at`
+   - Index: `(vehicle_id, timestamp)`
+
+7. **predicted_locations** - ML-predicted shuttle locations
+   - `id` (PK) - Auto-increment
+   - `vehicle_id` (FK), `speed_kmh`, `timestamp`
+   - `created_at`
+   - Index: `(vehicle_id, timestamp)`
+
+8. **announcements** - System announcements
+   - `id` (PK) - Auto-increment
+   - `message`, `type`, `active`, `expires_at`
+   - `created_at`
 
 ### Migrations
 
