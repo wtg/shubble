@@ -67,7 +67,7 @@ services:
   locations_worker:
     build:
       context: .
-      dockerfile: docker/worker/Dockerfile.location_worker
+      dockerfile: docker/worker/Dockerfile.locations_worker
     extra_hosts:
       - "localhost:host-gateway"
     environment:
@@ -102,7 +102,6 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       DEPLOY_MODE: ${DEPLOY_MODE:-development}
-      API_KEY: ${API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
