@@ -281,10 +281,10 @@ export SAMSARA_API_URL=http://localhost:4000
          ▲
          │
 ┌─────────────────────────────────────────────────────────┐
-│  Background Worker                                      │
-│  - Polls Samsara API every 5 seconds                    │
-│  - Inserts new locations to database                    │
-│  - Handles geofence filtering                           │
+│  Background Worker                      |  ML Worker    │
+│  - Polls Samsara API every 5 seconds    |               │
+│  - Inserts new locations to database    |               │
+│  - Handles geofence filtering           |               │
 └─────────────────────────────────────────────────────────┘
          │
          ▼
