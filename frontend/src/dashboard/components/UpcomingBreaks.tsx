@@ -7,37 +7,34 @@ function formatTime(iso: string): string {
   return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 
-function formatLead(minutes: number): string {
-  if (minutes < 60) return `${Math.round(minutes)} min`;
+function likelihoodLabel(c: number): string {
+  if (c >= 0.6) return 'Likely';
+  if (c >= 0.3) return 'Possible';
+  return 'Occasional';
+}
+
+function likelihoodClass(c: number): string {
+  if (c >= 0.6) return 'likelihood-likely';
+  if (c >= 0.3) return 'likelihood-possible';
+  return 'likelihood-occasional';
+}
+
+/** Compact "in Xh Ym" / "in X min". Dropped if lead is tiny (< 1 min). */
+function leadLabel(minutes: number): string {
+  if (minutes < 1) return 'soon';
+  if (minutes < 60) return `in ${Math.round(minutes)} min`;
   const h = Math.floor(minutes / 60);
   const m = Math.round(minutes % 60);
-  return m ? `${h}h ${m}m` : `${h}h`;
+  return m ? `in ${h}h ${m}m` : `in ${h}h`;
 }
 
-function sourceLabel(p: BreakPrediction): string {
-  if (p.source.endsWith('-driver') || p.source === 'bimodal-mode-driver') {
-    return 'driver-matched';
-  }
-  switch (p.source) {
-    case 'scheduled-active':
-      return 'printed';
-    case 'bimodal-mode':
-      return 'learned cluster';
-    case 'discovered':
-      return 'discovered';
-    case 'scheduled-rare':
-      return 'rare slot';
-    default:
-      return p.source;
-  }
+interface UpcomingBreaksProps {
+  /** Filter predictions to runs whose name contains this substring
+   *  (e.g. "North" or "West"). Empty string or undefined = show all. */
+  routeFilter?: string;
 }
 
-function confidenceBar(c: number): string {
-  const filled = Math.round(c * 10);
-  return '█'.repeat(filled) + '░'.repeat(10 - filled);
-}
-
-export default function UpcomingBreaks() {
+export default function UpcomingBreaks({ routeFilter }: UpcomingBreaksProps = {}) {
   const { data, loading, error } = useBreakPredictions({
     lookaheadMin: 240,
     pollIntervalMs: 60_000,
@@ -61,20 +58,37 @@ export default function UpcomingBreaks() {
     );
   }
 
-  const preds = data?.predictions ?? [];
-  const reactive = data?.reactive_observed ?? [];
+  const allPreds = data?.predictions ?? [];
+  const allReactive = data?.reactive_observed ?? [];
+  // Route filter: substring match on p.run. Reactive entries have no run
+  // attribution yet, so they pass through unfiltered.
+  const preds = routeFilter
+    ? allPreds.filter((p) => p.run.includes(routeFilter))
+    : allPreds;
+  const reactive = routeFilter ? [] : allReactive;
 
   return (
     <div className="upcoming-breaks">
       <h3>
         Upcoming breaks
         <span className="upcoming-breaks-count">
-          {preds.length} next {data?.lookahead_min ?? 240} min
-          {data?.active_drivers_matched ? (
-            <> · {data.active_drivers_matched} drivers matched</>
-          ) : null}
+          {preds.length} in next {Math.round((data?.lookahead_min ?? 240) / 60)}h
         </span>
       </h3>
+
+      {data?.artifact_stale && (
+        <div
+          className="upcoming-breaks-stale-banner"
+          title={`Prediction model last trained ${data.artifact_age_days} days ago`}
+        >
+          Model is getting old — predictions may be less accurate.
+        </div>
+      )}
+      {data?.artifact_age_days === null && (
+        <div className="upcoming-breaks-stale-banner">
+          Prediction model not yet trained — only live detection available.
+        </div>
+      )}
 
       {reactive.length > 0 && (
         <div className="upcoming-breaks-happening-now">
@@ -107,29 +121,27 @@ export default function UpcomingBreaks() {
             <li key={`${p.run}-${p.predicted_start}-${idx}`} className="upcoming-break-card">
               <div className="upcoming-break-row-main">
                 <span className="upcoming-break-run">{p.run}</span>
-                <span className="upcoming-break-time">{formatTime(p.predicted_start)}</span>
+                <span className="upcoming-break-time">
+                  {formatTime(p.predicted_start)}
+                  <span className="upcoming-break-sigma">±{Math.round(p.sigma_min)} min</span>
+                </span>
               </div>
               <div className="upcoming-break-row-meta">
-                <span className="upcoming-break-lead">in {formatLead(p.lead_min)}</span>
-                <span className="upcoming-break-sigma">±{Math.round(p.sigma_min)}m</span>
                 <span
-                  className="upcoming-break-source"
-                  title={`Source: ${p.source}`}
+                  className={`upcoming-break-likelihood ${likelihoodClass(p.confidence)}`}
+                  title={`confidence ${Math.round(p.confidence * 100)}%`}
                 >
-                  {sourceLabel(p)}
+                  {likelihoodLabel(p.confidence)}
                 </span>
-                {p.db_verified === false && (
+                <span className="upcoming-break-lead">{leadLabel(p.lead_min)}</span>
+                {p.driver_id !== null && (
                   <span
-                    className="upcoming-break-unverified"
-                    title="Slot not found in live DB schedule — may be stale."
+                    className="upcoming-break-driver"
+                    title="Prediction narrowed using today's driver"
                   >
-                    ⚠ unverified
+                    driver-matched
                   </span>
                 )}
-              </div>
-              <div className="upcoming-break-conf" title={`confidence ${(p.confidence * 100).toFixed(0)}%`}>
-                <span className="upcoming-break-conf-bar">{confidenceBar(p.confidence)}</span>
-                <span className="upcoming-break-conf-pct">{Math.round(p.confidence * 100)}%</span>
               </div>
             </li>
           ))}

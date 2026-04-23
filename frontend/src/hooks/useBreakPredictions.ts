@@ -29,6 +29,8 @@ export interface BreakPredictionsResponse {
   lookahead_min: number;
   db_slots_count: number | null;
   active_drivers_matched: number;
+  artifact_age_days: number | null;  // null = artifact missing entirely
+  artifact_stale: boolean;           // true when age > 30 days
   n_predictions: number;
   predictions: BreakPrediction[];
   n_reactive_observed: number;

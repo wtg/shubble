@@ -5,7 +5,6 @@ import {
 import "./styles/Dashboard.css"
 import DataBoard from './components/DataBoard';
 import ShuttleRow from './components/ShuttleRow';
-import UpcomingBreaks from './components/UpcomingBreaks';
 import type { VehicleCombinedMap } from '../types/vehicleLocation';
 import config from '../utils/config';
 
@@ -78,7 +77,6 @@ export default function Data() {
           <div>
             {selectedShuttleID && shuttleData[selectedShuttleID] ? (
               <div className="main-content">
-                <UpcomingBreaks />
                 <DataBoard
                   title="Summary"
                   datatable={[["11:05 AM - NOW"], ["13 loops"], ["23 minutes of break time"]]}

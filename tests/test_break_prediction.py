@@ -181,7 +181,7 @@ async def test_predictions_route_handler_returns_expected_shape():
     )
     assert set(resp.keys()) == {
         "generated_at", "lookahead_min", "db_slots_count",
-        "active_drivers_matched",
+        "active_drivers_matched", "artifact_age_days", "artifact_stale",
         "n_predictions", "predictions",
         "n_reactive_observed", "reactive_observed",
     }

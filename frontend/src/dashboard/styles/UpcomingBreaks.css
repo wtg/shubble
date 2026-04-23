@@ -122,6 +122,46 @@
   font-variant-numeric: tabular-nums;
 }
 
+.upcoming-breaks-stale-banner {
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  background: color-mix(in srgb, var(--warning-fg, #f5a623) 10%, transparent);
+  border-left: 3px solid var(--warning-fg, #f5a623);
+  color: var(--warning-fg, #f5a623);
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.upcoming-break-likelihood {
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.likelihood-likely {
+  background: color-mix(in srgb, #2ea043 20%, transparent);
+  color: #3fb950;
+}
+.likelihood-possible {
+  background: color-mix(in srgb, #4a9eff 18%, transparent);
+  color: #4a9eff;
+}
+.likelihood-occasional {
+  background: color-mix(in srgb, #8b949e 18%, transparent);
+  color: #8b949e;
+}
+
+.upcoming-break-driver {
+  font-size: 10px;
+  color: var(--accent, #4a9eff);
+  border: 1px solid color-mix(in srgb, var(--accent, #4a9eff) 40%, transparent);
+  border-radius: 10px;
+  padding: 0 6px;
+}
+
 .upcoming-breaks-happening-now {
   margin-bottom: 12px;
   padding-bottom: 10px;

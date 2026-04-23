@@ -442,6 +442,11 @@ async def run_worker():
     # on pathological hangs.
     CYCLE_TIMEOUT_SEC = 90
 
+    # Prediction-outcome resolver runs once every N cycles (not every 5s —
+    # the work is O(logged predictions with expired windows)).
+    _PREDICTION_RESOLVE_EVERY_CYCLES = 60  # ≈ once every 5 minutes at interval=5s
+    _resolve_counter = {"n": 0}
+
     async def _do_cycle():
         current_vehicle_ids = await get_vehicles_in_geofence(session_factory)
         results = await asyncio.gather(
@@ -453,6 +458,21 @@ async def run_worker():
             logger.info(f"Triggering ML cache update for {len(updated_vehicles)} vehicles")
             await update_today_dataframe()
             await generate_and_save_predictions(updated_vehicles)
+
+        _resolve_counter["n"] += 1
+        if _resolve_counter["n"] % _PREDICTION_RESOLVE_EVERY_CYCLES == 0:
+            from backend.fastapi.break_detection import resolve_prediction_outcomes
+            from backend.config import settings as _settings
+            from datetime import datetime as _dt, timezone as _tz
+            try:
+                async with session_factory() as db:
+                    n = await resolve_prediction_outcomes(
+                        db, _settings.CAMPUS_TZ, _dt.now(_tz.utc),
+                    )
+                if n:
+                    logger.info(f"Resolved {n} prediction outcomes")
+            except Exception as e:
+                logger.warning(f"resolve_prediction_outcomes cycle failed: {e}")
 
     try:
         async for _ in ticker(interval):

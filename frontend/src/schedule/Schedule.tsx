@@ -13,6 +13,7 @@ import {
   type StopETADetails,
 } from '../hooks/useTrips';
 import { useClosestStop } from '../hooks/useClosestStop';
+import UpcomingBreaks from '../dashboard/components/UpcomingBreaks';
 
 const aggregatedSchedule: AggregatedScheduleType = rawAggregatedSchedule as unknown as AggregatedScheduleType;
 const routeData = rawRouteData as unknown as ShuttleRouteData;
@@ -852,6 +853,13 @@ export default function Schedule({
         </div>
       )}
 
+
+      {/* Upcoming-break predictions for the currently-selected route. Only
+          shown for the live day so the panel doesn't confuse students
+          browsing Saturday/Sunday schedules mid-week. */}
+      {isToday && (
+        <UpcomingBreaks routeFilter={safeSelectedRoute.includes('North') ? 'North' : 'West'} />
+      )}
 
       <div className="timeline-container">
         <div className="timeline-content">

@@ -580,6 +580,7 @@ async def data_today(db: AsyncSession = Depends(get_db)):
 
 @router.get("/api/predictions")
 @timed
+@cache(soft_ttl=30, hard_ttl=120, lock_timeout=2.0, namespace="predictions")
 async def get_break_predictions(
     request: Request,
     lookahead_min: int = 180,
@@ -604,6 +605,7 @@ async def get_break_predictions(
     """
     from backend.fastapi.break_detection import (
         _fetch_today_db_schedule, _fetch_today_run_drivers, predict_on_break,
+        artifact_age_days, log_prediction_outcomes,
     )
     from backend.utils import get_vehicles_in_geofence
 
@@ -655,16 +657,45 @@ async def get_break_predictions(
     except Exception as e:
         logger.warning(f"reactive-path fusion failed; predictions-only: {e}")
 
+    # Fire-and-forget: log each emission for continuous-accuracy tracking.
+    # Idempotent via the (run, predicted_start) unique constraint, and the
+    # helper swallows its own errors so a DB write can never fail the
+    # response. Only fires on cache miss (we're inside the @cache-wrapped
+    # function body) so duplicate logs aren't a concern.
+    try:
+        await log_prediction_outcomes(preds, db)
+    except Exception as e:
+        logger.warning(f"prediction logging failed: {e}")
+
+    age = artifact_age_days()
     return {
         "generated_at": now.isoformat(),
         "lookahead_min": lookahead_min,
         "db_slots_count": len(db_slots) if db_slots is not None else None,
         "active_drivers_matched": len(active_drivers) if active_drivers else 0,
+        "artifact_age_days": round(age, 1) if age is not None else None,
+        "artifact_stale": age is not None and age > 30,
         "n_predictions": len(preds),
         "predictions": preds,
         "n_reactive_observed": len(reactive_observed),
         "reactive_observed": reactive_observed,
     }
+
+
+@router.get("/api/predictions/accuracy")
+@timed
+async def get_prediction_accuracy(
+    days: int = 7,
+    db: AsyncSession = Depends(get_db),
+):
+    """Rolling %ahead over the last `days` days, from prediction_outcomes.
+
+    Returns None if no resolved rows yet. The resolver runs from the worker
+    cadence — see break_detection.resolve_prediction_outcomes.
+    """
+    from backend.fastapi.break_detection import rolling_accuracy
+    acc = await rolling_accuracy(db, days=days)
+    return {"days": days, "accuracy": acc}
 
 
 @router.get("/api/routes")

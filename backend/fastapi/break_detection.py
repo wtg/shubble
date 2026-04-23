@@ -325,6 +325,20 @@ _priors_cache: Optional[dict] = None  # {(day_type, run, "HH:MM"): prior_entry}
 _effective_cache: Optional[dict] = None  # {(day_type, run): [entry, ...]}
 
 
+def artifact_age_days() -> Optional[float]:
+    """Days since the effective-schedule artifact was last written.
+
+    Used by /api/predictions to surface a "model is getting stale" signal in
+    the UI. Returns None if the artifact is missing (different degraded state).
+    Threshold for UI warning: >30 days means re-train recommended.
+    """
+    if not _EFFECTIVE_JSON.exists():
+        return None
+    import os as _os
+    mtime = _EFFECTIVE_JSON.stat().st_mtime
+    return (datetime.now(timezone.utc).timestamp() - mtime) / 86400.0
+
+
 def _load_forecast_artifacts() -> tuple[dict, dict]:
     """Load and cache priors + effective schedule from shared/. Returns
     ({(dt, run, "HH:MM"): prior}, {(dt, run): [entries]})."""
@@ -660,3 +674,176 @@ def predict_upcoming_breaks(
 
     results.sort(key=lambda r: r["predicted_start"])
     return results
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Continuous accuracy monitoring.
+#   - log_prediction_outcomes() inserts fresh predictions into the
+#     prediction_outcomes table. Unique-constraint-safe on re-insert.
+#   - resolve_prediction_outcomes() back-fills actual_start/matched for
+#     rows whose window has ended.
+#   - rolling_accuracy() returns %ahead over the last N days.
+# Called by a worker cadence job; the endpoint itself doesn't touch the
+# logging path so a DB write failure can never break /api/predictions.
+# ─────────────────────────────────────────────────────────────────────
+
+async def log_prediction_outcomes(
+    predictions: List[Dict],
+    db_session,
+) -> int:
+    """Insert one prediction_outcomes row per prediction. Idempotent via
+    (run, predicted_start) unique constraint. Returns rows actually inserted.
+    """
+    from backend.models import PredictionOutcome
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    if not predictions:
+        return 0
+
+    rows = []
+    for p in predictions:
+        try:
+            ps = datetime.fromisoformat(p["predicted_start"])
+            pe = datetime.fromisoformat(p["predicted_end"])
+        except (ValueError, KeyError, TypeError):
+            continue
+        rows.append({
+            "run": p["run"],
+            "predicted_start": ps,
+            "predicted_end": pe,
+            "confidence": float(p.get("confidence", 0.0)),
+            "source": str(p.get("source", "unknown")),
+            "driver_id": p.get("driver_id"),
+        })
+    if not rows:
+        return 0
+
+    try:
+        stmt = pg_insert(PredictionOutcome).values(rows).on_conflict_do_nothing(
+            constraint="uq_prediction_outcomes_run_pred_start",
+        )
+        result = await db_session.execute(stmt)
+        await db_session.commit()
+        return result.rowcount or 0
+    except Exception as e:
+        logger.warning(f"log_prediction_outcomes failed: {e!r}")
+        try:
+            await db_session.rollback()
+        except Exception:
+            pass
+        return 0
+
+
+async def resolve_prediction_outcomes(
+    db_session, campus_tz, now_utc: datetime, grace_min: int = 30,
+) -> int:
+    """Fill in actual_start / matched for predictions whose window ended
+    at least grace_min ago. A match = any Union-gap ≥ 30 min whose start
+    falls within ±30 min of predicted_start. Returns rows resolved.
+    """
+    from sqlalchemy import select as _select, update as _update
+    from backend.models import PredictionOutcome, VehicleLocation
+
+    cutoff = now_utc - timedelta(minutes=grace_min)
+    try:
+        q = _select(PredictionOutcome).where(
+            PredictionOutcome.matched.is_(None),
+            PredictionOutcome.predicted_end < cutoff,
+        )
+        pending = (await db_session.execute(q)).scalars().all()
+    except Exception as e:
+        logger.warning(f"resolve_prediction_outcomes fetch failed: {e!r}")
+        return 0
+
+    if not pending:
+        return 0
+
+    resolved = 0
+    for row in pending:
+        ps = row.predicted_start
+        window_start = ps - timedelta(minutes=30)
+        window_end = ps + timedelta(minutes=30 + 45)  # typical break length
+        try:
+            vq = (
+                _select(
+                    VehicleLocation.vehicle_id,
+                    VehicleLocation.timestamp,
+                    VehicleLocation.latitude,
+                    VehicleLocation.longitude,
+                )
+                .where(
+                    VehicleLocation.timestamp >= window_start - timedelta(minutes=30),
+                    VehicleLocation.timestamp <= window_end + timedelta(minutes=30),
+                )
+                .order_by(VehicleLocation.vehicle_id, VehicleLocation.timestamp)
+            )
+            pings = (await db_session.execute(vq)).all()
+        except Exception as e:
+            logger.warning(f"resolve: pings fetch failed for {row.run}: {e!r}")
+            continue
+
+        actual: Optional[datetime] = None
+        by_vid: Dict[str, List[datetime]] = {}
+        for vid, ts, lat, lon in pings:
+            if _haversine_m_scalar(float(lat), float(lon), UNION_LAT, UNION_LON) <= UNION_RADIUS_M:
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                by_vid.setdefault(str(vid), []).append(ts)
+        for vid, visits in by_vid.items():
+            compressed = _compress_dwells(visits)
+            for i in range(1, len(compressed)):
+                gap = (compressed[i] - compressed[i-1]).total_seconds() / 60.0
+                if gap < 30:
+                    continue
+                break_start = compressed[i-1]
+                if abs((break_start - ps).total_seconds() / 60.0) <= 30.0:
+                    actual = break_start
+                    break
+            if actual:
+                break
+
+        row.actual_start = actual
+        row.matched = actual is not None
+        row.resolved_at = now_utc
+        resolved += 1
+
+    try:
+        await db_session.commit()
+    except Exception as e:
+        logger.warning(f"resolve_prediction_outcomes commit failed: {e!r}")
+        try:
+            await db_session.rollback()
+        except Exception:
+            pass
+        return 0
+    return resolved
+
+
+async def rolling_accuracy(db_session, days: int = 7) -> Optional[Dict]:
+    """Return {n, matched, ahead_pct, window_days} over the last `days`.
+    Only considers resolved rows. Returns None if no resolved rows yet.
+    """
+    from sqlalchemy import select as _select
+    from backend.models import PredictionOutcome
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    try:
+        q = _select(PredictionOutcome).where(
+            PredictionOutcome.resolved_at.isnot(None),
+            PredictionOutcome.resolved_at >= cutoff,
+        )
+        items = (await db_session.execute(q)).scalars().all()
+    except Exception as e:
+        logger.warning(f"rolling_accuracy failed: {e!r}")
+        return None
+
+    n = len(items)
+    if n == 0:
+        return None
+    matched = sum(1 for r in items if r.matched)
+    return {
+        "n": n,
+        "matched": matched,
+        "ahead_pct": round(matched / n, 3),
+        "window_days": days,
+    }

@@ -153,6 +153,39 @@ class PredictedLocation(Base):
     def __repr__(self):
         return f"<PredictedLocation {self.vehicle_id} @ {self.timestamp} - {self.speed_kmh} km/h>"
 
+class PredictionOutcome(Base):
+    """One row per predicted break emission. Populated by a worker job that
+    diffs /api/predictions against actual observed breaks (Union-gap ≥ 30 min)
+    after the predicted window has elapsed. Enables continuous accuracy
+    monitoring — if rolling %ahead drops below threshold, retrain is overdue.
+
+    Nullable `actual_start` lets us insert rows at predict-time and fill in
+    outcome later, or insert rows post-hoc. The matcher job keys on
+    (run, predicted_start) so the same prediction isn't double-logged.
+    """
+    __tablename__ = "prediction_outcomes"
+    __table_args__ = (
+        Index("ix_prediction_outcomes_run_predicted_start", "run", "predicted_start"),
+        UniqueConstraint("run", "predicted_start", name="uq_prediction_outcomes_run_pred_start"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run: Mapped[str] = mapped_column(String, nullable=False)  # e.g. "West-1 (223/229)"
+    predicted_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    predicted_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    source: Mapped[str] = mapped_column(String, nullable=False)  # scheduled-active | bimodal-mode | discovered | ...
+    driver_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    actual_start: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Matched = |actual_start - predicted_start| <= 30 min. NULL until outcome resolved.
+    matched: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    def __repr__(self):
+        return f"<PredictionOutcome {self.run} @ {self.predicted_start} matched={self.matched}>"
+
+
 class Announcement(Base):
     __tablename__ = "announcements"
 
