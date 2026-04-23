@@ -1,0 +1,267 @@
+{
+  "M-F|West-3 (232/239)": [
+    {
+      "src": "scheduled-active",
+      "printed_start": "13:35",
+      "effective_start": "13:18",
+      "n_observed": 40,
+      "n_days": 65,
+      "take_rate": 0.6153846153846154,
+      "effective_mean_min": 798.1537500000001,
+      "effective_sigma_min": 17.80563756210531
+    }
+  ],
+  "M-F|West-1 (223/229)": [
+    {
+      "src": "scheduled-active",
+      "printed_start": "11:10",
+      "effective_start": "11:18",
+      "n_observed": 40,
+      "n_days": 63,
+      "take_rate": 0.6349206349206349,
+      "effective_mean_min": 678.3308333333333,
+      "effective_sigma_min": 30.274174580453522,
+      "modes": [
+        {
+          "mean_min": 660.51091954023,
+          "sigma_min": 6.259446923075412,
+          "n": 29
+        },
+        {
+          "mean_min": 725.3106060606061,
+          "sigma_min": 13.610711899844535,
+          "n": 11
+        }
+      ]
+    },
+    {
+      "src": "scheduled-active",
+      "printed_start": "18:55",
+      "effective_start": "18:59",
+      "n_observed": 16,
+      "n_days": 63,
+      "take_rate": 0.25396825396825395,
+      "effective_mean_min": 1139.6864583333333,
+      "effective_sigma_min": 26.296079409632693,
+      "modes": [
+        {
+          "mean_min": 1127.3461538461538,
+          "sigma_min": 5.848570406979076,
+          "n": 13
+        },
+        {
+          "mean_min": 1193.1611111111113,
+          "sigma_min": 4.500726964599874,
+          "n": 3
+        }
+      ]
+    }
+  ],
+  "M-F|West-2 (224/234)": [
+    {
+      "src": "scheduled-active",
+      "printed_start": "11:45",
+      "effective_start": "12:01",
+      "n_observed": 33,
+      "n_days": 63,
+      "take_rate": 0.5238095238095238,
+      "effective_mean_min": 721.8727272727273,
+      "effective_sigma_min": 32.56909588920297,
+      "modes": [
+        {
+          "mean_min": 695.5710526315789,
+          "sigma_min": 3.067414297240275,
+          "n": 19
+        },
+        {
+          "mean_min": 757.5678571428571,
+          "sigma_min": 16.57034962449509,
+          "n": 14
+        }
+      ]
+    },
+    {
+      "src": "discovered",
+      "printed_start": null,
+      "effective_start": "18:44",
+      "n_observed": 10,
+      "n_days": 63,
+      "take_rate": 0.15873015873015872,
+      "effective_mean_min": 1124.3,
+      "effective_sigma_min": 4.9
+    }
+  ],
+  "M-F|North-1 (221/227)": [
+    {
+      "src": "scheduled-active",
+      "printed_start": "13:00",
+      "effective_start": "12:47",
+      "n_observed": 38,
+      "n_days": 64,
+      "take_rate": 0.59375,
+      "effective_mean_min": 767.2929824561402,
+      "effective_sigma_min": 20.7595108308304
+    },
+    {
+      "src": "scheduled-rare",
+      "printed_start": "13:20",
+      "n_observed": 0,
+      "n_days": 64,
+      "take_rate": 0.0
+    },
+    {
+      "src": "discovered",
+      "printed_start": null,
+      "effective_start": "10:57",
+      "n_observed": 10,
+      "n_days": 64,
+      "take_rate": 0.15625,
+      "effective_mean_min": 657.4,
+      "effective_sigma_min": 5.043808085167396
+    },
+    {
+      "src": "discovered",
+      "printed_start": null,
+      "effective_start": "18:50",
+      "n_observed": 18,
+      "n_days": 64,
+      "take_rate": 0.28125,
+      "effective_mean_min": 1130.7777777777778,
+      "effective_sigma_min": 1.90191586318041
+    },
+    {
+      "src": "discovered",
+      "printed_start": null,
+      "effective_start": "19:49",
+      "n_observed": 3,
+      "n_days": 64,
+      "take_rate": 0.046875,
+      "effective_mean_min": 1189.0,
+      "effective_sigma_min": 0.816496580927726
+    }
+  ],
+  "M-F|North-2 (222/228)": [
+    {
+      "src": "scheduled-active",
+      "printed_start": "12:30",
+      "effective_start": "12:15",
+      "n_observed": 43,
+      "n_days": 61,
+      "take_rate": 0.7049180327868853,
+      "effective_mean_min": 735.0875968992248,
+      "effective_sigma_min": 18.960211668777546,
+      "modes": [
+        {
+          "mean_min": 705.2016666666666,
+          "sigma_min": 2.541515842519526,
+          "n": 10
+        },
+        {
+          "mean_min": 744.1439393939393,
+          "sigma_min": 10.66742486113888,
+          "n": 33
+        }
+      ]
+    },
+    {
+      "src": "scheduled-rare",
+      "printed_start": "12:50",
+      "n_observed": 0,
+      "n_days": 61,
+      "take_rate": 0.0
+    },
+    {
+      "src": "scheduled-rare",
+      "printed_start": "19:00",
+      "effective_start": "19:06",
+      "n_observed": 9,
+      "n_days": 61,
+      "take_rate": 0.14754098360655737,
+      "effective_mean_min": 1146.9,
+      "effective_sigma_min": 30.592144759523716
+    },
+    {
+      "src": "scheduled-rare",
+      "printed_start": "19:20",
+      "n_observed": 0,
+      "n_days": 61,
+      "take_rate": 0.0
+    }
+  ],
+  "Sat|West-AM": [
+    {
+      "src": "scheduled-active",
+      "printed_start": "12:20",
+      "effective_start": "12:20",
+      "n_observed": 7,
+      "n_days": 11,
+      "take_rate": 0.6363636363636364,
+      "effective_mean_min": 740.1071428571429,
+      "effective_sigma_min": 13.647300032824859
+    },
+    {
+      "src": "scheduled-rare",
+      "printed_start": "12:40",
+      "n_observed": 0,
+      "n_days": 11,
+      "take_rate": 0.0
+    }
+  ],
+  "Sat|North-AM": [
+    {
+      "src": "scheduled-active",
+      "printed_start": "12:20",
+      "effective_start": "12:19",
+      "n_observed": 8,
+      "n_days": 12,
+      "take_rate": 0.6666666666666666,
+      "effective_mean_min": 739.4125,
+      "effective_sigma_min": 18.788670770055955
+    },
+    {
+      "src": "scheduled-rare",
+      "printed_start": "12:40",
+      "n_observed": 0,
+      "n_days": 12,
+      "take_rate": 0.0
+    }
+  ],
+  "Sun|North-AM": [
+    {
+      "src": "scheduled-active",
+      "printed_start": "12:20",
+      "effective_start": "12:08",
+      "n_observed": 12,
+      "n_days": 13,
+      "take_rate": 0.9230769230769231,
+      "effective_mean_min": 728.8069444444445,
+      "effective_sigma_min": 5.1274608289551304
+    },
+    {
+      "src": "scheduled-rare",
+      "printed_start": "12:40",
+      "n_observed": 0,
+      "n_days": 13,
+      "take_rate": 0.0
+    }
+  ],
+  "Sun|West-AM": [
+    {
+      "src": "scheduled-active",
+      "printed_start": "12:20",
+      "effective_start": "12:11",
+      "n_observed": 10,
+      "n_days": 13,
+      "take_rate": 0.7692307692307693,
+      "effective_mean_min": 731.7666666666667,
+      "effective_sigma_min": 2.204099715429298
+    },
+    {
+      "src": "scheduled-rare",
+      "printed_start": "12:40",
+      "n_observed": 0,
+      "n_days": 13,
+      "take_rate": 0.0
+    }
+  ]
+}

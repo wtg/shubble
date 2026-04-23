@@ -33,7 +33,7 @@ from backend.fastapi.utils import (
     _load_today_gap_windows,
     _in_schedule_gap,
 )
-from backend.fastapi.break_detection import predict_on_break
+from backend.fastapi.break_detection import predict_on_break, predict_upcoming_breaks
 from shared.stops import Stops
 
 logger = logging.getLogger(__name__)
@@ -576,6 +576,29 @@ async def data_today(db: AsyncSession = Depends(get_db)):
                 vehicle_entry["exit"] = geofence_event.event_time
 
     return locations_today_dict
+
+
+@router.get("/api/predictions")
+@timed
+async def get_break_predictions(lookahead_min: int = 180):
+    """Upcoming break predictions for today's active runs.
+
+    Uses the offline-trained effective schedule + priors at
+    shared/break_priors.json / shared/break_effective_schedule.json
+    (built by .planning/debug/predictive_layers.py). Returns entries
+    with a non-negative lead_min up to `lookahead_min` (default 180).
+    """
+    now = dev_now(timezone.utc)
+    preds = predict_upcoming_breaks(
+        now_utc=now, campus_tz=settings.CAMPUS_TZ, lookahead_min=lookahead_min,
+    )
+    return {
+        "generated_at": now.isoformat(),
+        "lookahead_min": lookahead_min,
+        "n_predictions": len(preds),
+        "predictions": preds,
+    }
+
 
 @router.get("/api/routes")
 @timed

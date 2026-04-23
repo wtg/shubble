@@ -47,31 +47,32 @@ def _utc(hh: int, mm: int, ss: int = 0) -> datetime:
 class TestCUSUM:
     def test_fires_when_gap_exceeds_floor(self):
         # 4 Union visits at 10-min intervals → mu ≈ 10 min.
-        # Adaptive threshold = 10+1+5 = 16, but floor is 20.
-        # Elapsed = 21 min > 20 floor → fires.
+        # Adaptive threshold = 10+1+5 = 16, but floor is 18 (recalibrated
+        # on pooled Jul-25 + Feb-Apr-26 data).
+        # Elapsed = 19 min > 18 floor → fires.
         visits = [_utc(11, 0), _utc(11, 10), _utc(11, 20), _utc(11, 30)]
-        fires, mu, elapsed = _cusum_fires(visits, _utc(11, 51))
+        fires, mu, elapsed = _cusum_fires(visits, _utc(11, 49))
         assert fires is True
         assert 9 <= mu <= 11
 
     def test_does_not_fire_within_floor(self):
-        # Same visits, elapsed = 19 min < 20 floor → doesn't fire.
+        # Same visits, elapsed = 17 min < 18 floor → doesn't fire.
         visits = [_utc(11, 0), _utc(11, 10), _utc(11, 20), _utc(11, 30)]
-        fires, mu, elapsed = _cusum_fires(visits, _utc(11, 49))
+        fires, mu, elapsed = _cusum_fires(visits, _utc(11, 47))
         assert fires is False
 
     def test_uses_default_mu_with_few_visits(self):
         # Only 2 visits (below CUSUM_MIN_VISITS=3). Uses default mu=12.
-        # Adaptive = 12+1+5 = 18, floor = 20. Elapsed = 21 > 20 → fires.
+        # Adaptive = 12+1+5 = 18, floor = 18. Elapsed = 19 > 18 → fires.
         visits = [_utc(11, 0), _utc(11, 10)]
-        fires, mu, elapsed = _cusum_fires(visits, _utc(11, 31))
+        fires, mu, elapsed = _cusum_fires(visits, _utc(11, 29))
         assert fires is True
         assert mu == CUSUM_DEFAULT_MU_MIN
 
     def test_default_mu_no_fire_within_floor(self):
-        # Elapsed = 19 < floor 20 → no fire.
+        # Elapsed = 17 < floor 18 → no fire.
         visits = [_utc(11, 0), _utc(11, 10)]
-        fires, _, _ = _cusum_fires(visits, _utc(11, 29))
+        fires, _, _ = _cusum_fires(visits, _utc(11, 27))
         assert fires is False
 
     def test_excludes_break_gaps_from_mu(self):

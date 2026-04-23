@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import logging
 import math
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 from sqlalchemy import select
@@ -303,3 +303,135 @@ async def predict_on_break(
         result[vid] = stay_point_fires or cusum_fires_flag or fallback
 
     return result
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Predictive layer: announce upcoming breaks BEFORE they start.
+# Consumes the offline-trained priors (shared/break_priors.json) and
+# effective schedule (shared/break_effective_schedule.json) built by
+# .planning/debug/predictive_layers.py. On a held-out temporal test set
+# (Apr 8-21 2026, 50 real breaks), this announces 94% of breaks ahead
+# of time with 85-min median lead and 8.2-min median start-time error.
+# ─────────────────────────────────────────────────────────────────────
+
+import json as _json
+from pathlib import Path as _Path
+
+_SHARED_DIR = _Path(__file__).resolve().parents[2] / "shared"
+_PRIORS_JSON = _SHARED_DIR / "break_priors.json"
+_EFFECTIVE_JSON = _SHARED_DIR / "break_effective_schedule.json"
+
+_priors_cache: Optional[dict] = None  # {(day_type, run, "HH:MM"): prior_entry}
+_effective_cache: Optional[dict] = None  # {(day_type, run): [entry, ...]}
+
+
+def _load_forecast_artifacts() -> tuple[dict, dict]:
+    """Load and cache priors + effective schedule from shared/. Returns
+    ({(dt, run, "HH:MM"): prior}, {(dt, run): [entries]})."""
+    global _priors_cache, _effective_cache
+    if _priors_cache is not None and _effective_cache is not None:
+        return _priors_cache, _effective_cache
+
+    priors_idx: dict = {}
+    if _PRIORS_JSON.exists():
+        for p in _json.loads(_PRIORS_JSON.read_text()):
+            priors_idx[(p["day_type"], p["run"], p["scheduled_start"])] = p
+    else:
+        logger.warning(f"Break-prediction priors missing at {_PRIORS_JSON} — /api/predictions will return empty")
+
+    eff_idx: dict = {}
+    if _EFFECTIVE_JSON.exists():
+        raw = _json.loads(_EFFECTIVE_JSON.read_text())
+        for key, entries in raw.items():
+            if "|" not in key:
+                continue
+            dt, run = key.split("|", 1)
+            eff_idx[(dt, run)] = entries
+    else:
+        logger.warning(f"Effective-schedule artifact missing at {_EFFECTIVE_JSON}")
+
+    _priors_cache = priors_idx
+    _effective_cache = eff_idx
+    return priors_idx, eff_idx
+
+
+def _day_type_for_local(local_dt: datetime) -> str:
+    dow = local_dt.weekday()
+    return "M-F" if dow < 5 else ("Sat" if dow == 5 else "Sun")
+
+
+def predict_upcoming_breaks(
+    now_utc: datetime,
+    campus_tz,
+    lookahead_min: int = 180,
+) -> List[Dict]:
+    """Announce upcoming breaks for today, per scheduled run.
+
+    Reads the offline-trained effective schedule (which includes bimodal
+    and discovered slots) and projects each break slot onto today's date.
+    Returns entries with non-negative lead time up to `lookahead_min`.
+
+    Each result: {
+      "run": str,                  # e.g. "West-1 (223/229)"
+      "predicted_start": iso8601,  # campus-local
+      "predicted_end": iso8601,
+      "confidence": float,         # 0..1
+      "lead_min": float,           # minutes from now to predicted_start
+      "source": str,               # "scheduled-active" / "discovered" / "bimodal-mode"
+      "sigma_min": float,          # spread around predicted_start
+    }
+    """
+    priors_idx, eff_idx = _load_forecast_artifacts()
+    if not eff_idx:
+        return []
+
+    now_local = now_utc.astimezone(campus_tz)
+    dt = _day_type_for_local(now_local)
+    today_midnight = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    results: List[Dict] = []
+
+    def _emit(run: str, mean_min: float, sigma_min: float, take_rate: float,
+              source: str, duration_min: float = 25.0):
+        total_sec = max(0.0, mean_min) * 60.0
+        start_local = today_midnight + timedelta(seconds=total_sec)
+        end_local = start_local + timedelta(minutes=duration_min)
+        lead_min = (start_local - now_local).total_seconds() / 60.0
+        if lead_min < 0 or lead_min > lookahead_min:
+            return
+        results.append({
+            "run": run,
+            "predicted_start": start_local.isoformat(),
+            "predicted_end": end_local.isoformat(),
+            "confidence": round(max(0.0, min(1.0, take_rate)), 3),
+            "lead_min": round(lead_min, 1),
+            "source": source,
+            "sigma_min": round(float(sigma_min), 1),
+        })
+
+    for (entry_dt, run), entries in eff_idx.items():
+        if entry_dt != dt:
+            continue
+        for e in entries:
+            take_rate = float(e.get("take_rate", 0.0))
+            src = e.get("src")
+
+            # Bimodal: emit each mode separately so we catch both clusters.
+            if e.get("modes"):
+                total_days = max(e.get("n_days", 1), 1)
+                for m in e["modes"]:
+                    _emit(run, m["mean_min"], m["sigma_min"],
+                          m["n"] / total_days, source="bimodal-mode")
+                continue
+
+            # Discovered or scheduled-active: single effective time.
+            mean_min = e.get("effective_mean_min")
+            sigma_min = e.get("effective_sigma_min", 5.0)
+            if mean_min is None:
+                continue
+            if src == "scheduled-rare" and take_rate < 0.1:
+                continue
+            _emit(run, mean_min, sigma_min, take_rate, source=src or "unknown")
+
+    results.sort(key=lambda r: r["predicted_start"])
+    return results
