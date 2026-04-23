@@ -11,6 +11,8 @@ type MapKitCanvasProps = {
   setSelectedRoute?: (route: string | null) => void;
   isFullscreen?: boolean;
   onMapReady?: (map: mapkit.Map) => void;
+  /** Set of "ROUTE:STOP_KEY" identifiers for stops that are currently inactive */
+  inactiveStops?: Set<string>;
 };
 
 async function generateRoutePolylines(updatedRouteData: ShuttleRouteData) {
@@ -100,7 +102,7 @@ async function generateRoutePolylines(updatedRouteData: ShuttleRouteData) {
 
 // @ts-expect-error selectedRoutes is never used
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-export default function MapKitCanvas({ routeData, generateRoutes = false, selectedRoute, setSelectedRoute, isFullscreen = false, onMapReady }: MapKitCanvasProps) {
+export default function MapKitCanvas({ routeData, generateRoutes = false, selectedRoute, setSelectedRoute, isFullscreen = false, onMapReady, inactiveStops }: MapKitCanvasProps) {
   const mapRef = useRef(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [map, setMap] = useState<(mapkit.Map | null)>(null);
@@ -307,18 +309,26 @@ export default function MapKitCanvas({ routeData, generateRoutes = false, select
       for (const stopKey of thisRouteData.STOPS) {
         const stopData = thisRouteData[stopKey] as ShuttleStopData;
         const stopCoordinate = new mapkit.Coordinate(...(stopData.COORDINATES));
+        const isInactive = inactiveStops?.has(`${route}:${stopKey}`) ?? false;
         // add stop overlay (circle)
         const stopOverlay = new mapkit.CircleOverlay(
           stopCoordinate,
           circleWidth,
           {
             style: new mapkit.Style(
-              {
-                strokeColor: '#000000',
-                fillColor: '#FFFFFF', // White fill by default
-                fillOpacity: 0.1,
-                lineWidth: 2,
-              }
+              isInactive
+                ? {
+                    strokeColor: '#aaaaaa',
+                    fillColor: '#cccccc',
+                    fillOpacity: 0.08,
+                    lineWidth: 1,
+                  }
+                : {
+                    strokeColor: '#000000',
+                    fillColor: '#FFFFFF', // White fill by default
+                    fillOpacity: 0.1,
+                    lineWidth: 2,
+                  }
             )
           }
         );
@@ -326,6 +336,7 @@ export default function MapKitCanvas({ routeData, generateRoutes = false, select
         stopOverlay.routeKey = route;
         stopOverlay.stopKey = stopKey;
         stopOverlay.stopName = stopData.NAME;
+        stopOverlay.isInactive = isInactive;
         // cast circle overlay to generic overlay for adding to map
         overlays.push(stopOverlay as mapkit.Overlay);
       }
@@ -369,6 +380,39 @@ export default function MapKitCanvas({ routeData, generateRoutes = false, select
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, routeData]);
+
+  // Re-style stop overlays when inactiveStops changes (e.g. on the next clock minute)
+  useEffect(() => {
+    if (!map) return;
+
+    for (const overlay of map.overlays) {
+      if (!(overlay instanceof mapkit.CircleOverlay)) continue;
+      if (!overlay.stopKey || !overlay.routeKey) continue;
+
+      const key = `${overlay.routeKey}:${overlay.stopKey}`;
+      const isInactive = inactiveStops?.has(key) ?? false;
+
+      // Skip if the inactive state hasn't changed
+      if (overlay.isInactive === isInactive) continue;
+      overlay.isInactive = isInactive;
+
+      if (isInactive) {
+        overlay.style = new mapkit.Style({
+          strokeColor: '#aaaaaa',
+          fillColor: '#cccccc',
+          fillOpacity: 0.08,
+          lineWidth: 1,
+        });
+      } else {
+        overlay.style = new mapkit.Style({
+          strokeColor: '#000000',
+          fillColor: '#FFFFFF',
+          fillOpacity: 0.1,
+          lineWidth: 2,
+        });
+      }
+    }
+  }, [map, inactiveStops]);
 
   return (
     <div
