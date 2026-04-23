@@ -13,8 +13,13 @@ Run:
   # Against production DB (requires DATABASE_URL in .env):
   python -m ml.extract_break_data
 
-  # Against the historical CSV (no DB needed):
+  # Against the default historical CSV (no DB needed):
   python -m ml.extract_break_data --csv
+
+  # Pool multiple CSV exports (old + new data):
+  python -m ml.extract_break_data --csv \
+    ml/cache/shared/locations_raw.csv \
+    ml/cache/shared/shubble-data-04-2026.csv
 """
 from __future__ import annotations
 
@@ -138,21 +143,49 @@ async def _fetch_from_db(
     return df
 
 
-def _load_from_csv() -> pd.DataFrame:
-    csv_path = Path(__file__).parent / "cache" / "shared" / "locations_raw.csv"
-    df = pd.read_csv(csv_path, parse_dates=["timestamp"])
-    df["vehicle_id"] = df["vehicle_id"].astype(str)
+def _load_from_csv(paths: List[Path]) -> pd.DataFrame:
+    """Load one or more location CSVs, pool, and filter to service hours.
 
-    df["ts_utc"] = df["timestamp"].dt.tz_localize("UTC")
-    df["ts_local"] = df["ts_utc"].dt.tz_convert(CAMPUS_TZ)
+    Handles two Samsara export shapes:
+      - Old (4 cols): vehicle_id, latitude, longitude, timestamp (naive UTC)
+      - New (13 cols): adds id, name, heading_degrees, speed_mph,
+        is_ecu_speed, formatted_location, address_id, address_name,
+        created_at (timestamp tz-aware, e.g. `-05:00`)
 
-    # Filter to weekdays + service hours to match DB query
+    Speed columns are never read — velocity values in the Samsara CSV
+    are unreliable (see feedback memory). Only vehicle_id, latitude,
+    longitude, and timestamp are retained.
+    """
+    frames = []
+    for path in paths:
+        df = pd.read_csv(path)
+        df["vehicle_id"] = df["vehicle_id"].astype(str)
+
+        # utc=True normalizes mixed offsets (e.g. new export crosses the
+        # EST->EDT DST boundary with both `-05` and `-04` rows) into a
+        # single tz-aware UTC datetime64 column. parse_dates in read_csv
+        # returns object dtype for mixed-offset inputs, breaking .dt.
+        df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True, format="mixed")
+
+        df = df[["vehicle_id", "latitude", "longitude", "timestamp"]]
+        frames.append(df)
+        logger.info(f"Loaded {len(df):,} rows from {path.name}")
+
+    combined = pd.concat(frames, ignore_index=True)
+
+    before = len(combined)
+    combined = combined.drop_duplicates(subset=["vehicle_id", "timestamp"])
+    dropped = before - len(combined)
+    if dropped:
+        logger.info(f"Deduped {dropped:,} overlapping rows across inputs")
+
+    ts_local = combined["timestamp"].dt.tz_convert(CAMPUS_TZ)
     mask = (
-        (df["ts_local"].dt.weekday < 5)
-        & (df["ts_local"].dt.hour >= SERVICE_START_HOUR)
-        & (df["ts_local"].dt.hour <= SERVICE_END_HOUR)
+        (ts_local.dt.weekday < 5)
+        & (ts_local.dt.hour >= SERVICE_START_HOUR)
+        & (ts_local.dt.hour <= SERVICE_END_HOUR)
     )
-    return df.loc[mask, ["vehicle_id", "latitude", "longitude", "timestamp"]].copy()
+    return combined.loc[mask].copy()
 
 
 # --─ Analysis --------------------------------------------------------
@@ -382,8 +415,10 @@ Examples:
 Known semester presets: {", ".join(SEMESTER_PRESETS.keys())}
 """,
     )
-    parser.add_argument("--csv", action="store_true",
-                        help="Use ml/cache/shared/locations_raw.csv instead of DB")
+    parser.add_argument("--csv", nargs="*", metavar="PATH", default=None,
+                        help="Analyze CSV(s) instead of DB. Pass multiple "
+                             "paths to pool. With no paths, defaults to "
+                             "ml/cache/shared/locations_raw.csv.")
     parser.add_argument("--all", action="store_true",
                         help="Pull ALL rows in the DB (no date bounds)")
     parser.add_argument("--days", type=int,
@@ -400,8 +435,12 @@ Known semester presets: {", ".join(SEMESTER_PRESETS.keys())}
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
-    if args.csv:
-        df = _load_from_csv()
+    if args.csv is not None:
+        if args.csv:
+            paths = [Path(p) for p in args.csv]
+        else:
+            paths = [Path(__file__).parent / "cache" / "shared" / "locations_raw.csv"]
+        df = _load_from_csv(paths)
         analyze(df)
         return
 

@@ -58,10 +58,11 @@ CUSUM_SLACK_MIN = 1.0
 CUSUM_THRESHOLD_MIN = 5.0
 # Absolute floor (minutes): CUSUM never fires below this regardless of
 # personal mu. Prevents false positives from fast shuttles hitting a
-# single slow loop. Calibrated via ml/extract_break_data.py:
-# P97 of normal inter-visit intervals = 16.7min + 2min margin = ~19.
-# Rerun `python -m ml.extract_break_data` to recalibrate per semester.
-CUSUM_MIN_FIRE_MIN = 19.0
+# single slow loop. Calibrated via ml/extract_break_data.py on pooled
+# Jul-2025 + Feb-Apr-2026 data (1.47M pings, 25 vehicles, 100 days):
+# P97 of normal inter-visit intervals = 16.4min + 2min margin = ~18.
+# Rerun `python -m ml.extract_break_data --csv <paths...>` to recalibrate.
+CUSUM_MIN_FIRE_MIN = 18.0
 # Default assumed loop time (minutes) before a shuttle has enough
 # observations. Matches the all-weekday median inter-visit interval.
 CUSUM_DEFAULT_MU_MIN = 12.0
