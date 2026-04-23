@@ -580,21 +580,30 @@ async def data_today(db: AsyncSession = Depends(get_db)):
 
 @router.get("/api/predictions")
 @timed
-async def get_break_predictions(lookahead_min: int = 180):
+async def get_break_predictions(
+    lookahead_min: int = 180,
+    db: AsyncSession = Depends(get_db),
+):
     """Upcoming break predictions for today's active runs.
 
     Uses the offline-trained effective schedule + priors at
     shared/break_priors.json / shared/break_effective_schedule.json
-    (built by .planning/debug/predictive_layers.py). Returns entries
-    with a non-negative lead_min up to `lookahead_min` (default 180).
+    (built by .planning/debug/predictive_layers.py). Cross-references
+    each prediction against the live schedule tables in the DB
+    (BusSchedule/RouteToBusSchedule/DaySchedule) and sets db_verified
+    on each prediction so a schedule drift surfaces without retraining.
     """
+    from backend.fastapi.break_detection import _fetch_today_db_schedule
     now = dev_now(timezone.utc)
+    db_slots = await _fetch_today_db_schedule(db, settings.CAMPUS_TZ, now)
     preds = predict_upcoming_breaks(
-        now_utc=now, campus_tz=settings.CAMPUS_TZ, lookahead_min=lookahead_min,
+        now_utc=now, campus_tz=settings.CAMPUS_TZ,
+        lookahead_min=lookahead_min, db_slots=db_slots,
     )
     return {
         "generated_at": now.isoformat(),
         "lookahead_min": lookahead_min,
+        "db_slots_count": len(db_slots) if db_slots is not None else None,
         "n_predictions": len(preds),
         "predictions": preds,
     }

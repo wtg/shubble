@@ -360,10 +360,62 @@ def _day_type_for_local(local_dt: datetime) -> str:
     return "M-F" if dow < 5 else ("Sat" if dow == 5 else "Sun")
 
 
+async def _fetch_today_db_schedule(
+    db_session, campus_tz, now_utc: datetime,
+) -> Optional[set]:
+    """Return set of (day_type, run_label, "HH:MM") for today's schedule from DB.
+
+    The DB's DaySchedule/BusSchedule/RouteToBusSchedule tables are the
+    forward-compatible source of truth for printed schedules (Issue #315).
+    We cross-reference them against the JSON artifact so a schedule change
+    pushed to the DB surfaces as `db_verified=False` in predictions until
+    the offline pipeline is retrained.
+
+    Returns None (not an empty set) when the DB is unreachable or empty,
+    so callers can distinguish "no check performed" from "no slots found".
+    """
+    from sqlalchemy import select as _select
+    from backend.models import (
+        DaySchedule, BusSchedule, RouteToBusSchedule, BusScheduleToDaySchedule,
+    )
+    from sqlalchemy.orm import selectinload
+
+    now_local = now_utc.astimezone(campus_tz)
+    day_name = _day_type_for_local(now_local)
+
+    try:
+        q = (
+            _select(DaySchedule)
+            .where(DaySchedule.name == day_name)
+            .options(
+                selectinload(DaySchedule.bus_schedule_to_day_schedule)
+                .selectinload(BusScheduleToDaySchedule.bus_schedule)
+                .selectinload(BusSchedule.route_to_bus_schedules)
+            )
+        )
+        rows = (await db_session.execute(q)).scalars().all()
+    except Exception as e:
+        logger.warning(f"DB schedule fetch failed ({e!r}); predictions won't carry db_verified flag")
+        return None
+
+    out: set = set()
+    for day in rows:
+        for mapping in day.bus_schedule_to_day_schedule:
+            bs = mapping.bus_schedule
+            for rbs in bs.route_to_bus_schedules:
+                hhmm = rbs.time.strftime("%H:%M")
+                out.add((day.name, bs.name, hhmm))
+
+    if not out:
+        return None
+    return out
+
+
 def predict_upcoming_breaks(
     now_utc: datetime,
     campus_tz,
     lookahead_min: int = 180,
+    db_slots: Optional[set] = None,
 ) -> List[Dict]:
     """Announce upcoming breaks for today, per scheduled run.
 
@@ -392,13 +444,17 @@ def predict_upcoming_breaks(
     results: List[Dict] = []
 
     def _emit(run: str, mean_min: float, sigma_min: float, take_rate: float,
-              source: str, duration_min: float = 25.0):
+              source: str, duration_min: float = 25.0,
+              printed_start: Optional[str] = None):
         total_sec = max(0.0, mean_min) * 60.0
         start_local = today_midnight + timedelta(seconds=total_sec)
         end_local = start_local + timedelta(minutes=duration_min)
         lead_min = (start_local - now_local).total_seconds() / 60.0
         if lead_min < 0 or lead_min > lookahead_min:
             return
+        db_verified: Optional[bool] = None
+        if db_slots is not None and printed_start:
+            db_verified = (dt, run, printed_start) in db_slots
         results.append({
             "run": run,
             "predicted_start": start_local.isoformat(),
@@ -407,6 +463,7 @@ def predict_upcoming_breaks(
             "lead_min": round(lead_min, 1),
             "source": source,
             "sigma_min": round(float(sigma_min), 1),
+            "db_verified": db_verified,
         })
 
     for (entry_dt, run), entries in eff_idx.items():
@@ -415,13 +472,16 @@ def predict_upcoming_breaks(
         for e in entries:
             take_rate = float(e.get("take_rate", 0.0))
             src = e.get("src")
+            printed_start = e.get("printed_start")  # "HH:MM" or None
 
             # Bimodal: emit each mode separately so we catch both clusters.
+            # All modes inherit the parent entry's printed_start for db_verified.
             if e.get("modes"):
                 total_days = max(e.get("n_days", 1), 1)
                 for m in e["modes"]:
                     _emit(run, m["mean_min"], m["sigma_min"],
-                          m["n"] / total_days, source="bimodal-mode")
+                          m["n"] / total_days, source="bimodal-mode",
+                          printed_start=printed_start)
                 continue
 
             # Discovered or scheduled-active: single effective time.
@@ -431,7 +491,8 @@ def predict_upcoming_breaks(
                 continue
             if src == "scheduled-rare" and take_rate < 0.1:
                 continue
-            _emit(run, mean_min, sigma_min, take_rate, source=src or "unknown")
+            _emit(run, mean_min, sigma_min, take_rate,
+                  source=src or "unknown", printed_start=printed_start)
 
     results.sort(key=lambda r: r["predicted_start"])
     return results

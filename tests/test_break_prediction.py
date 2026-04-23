@@ -142,18 +142,33 @@ def test_predict_upcoming_breaks_returns_empty_after_all_slots():
                     reason="predictive_layers.py export not yet run; artifacts missing")
 @pytest.mark.asyncio
 async def test_predictions_route_handler_returns_expected_shape():
-    """Integration: call the /api/predictions handler directly, verify response shape."""
+    """Integration: call the /api/predictions handler directly, verify response shape.
+
+    Uses a mock DB session that raises on execute() so the handler's graceful
+    fallback kicks in and `db_slots_count` is None.
+    """
     from backend.fastapi import break_detection
     from backend.fastapi.routes import get_break_predictions
 
     break_detection._priors_cache = None
     break_detection._effective_cache = None
 
-    resp = await get_break_predictions(lookahead_min=180)
-    assert set(resp.keys()) == {"generated_at", "lookahead_min", "n_predictions", "predictions"}
+    class _FailingDB:
+        async def execute(self, *_args, **_kwargs):
+            raise RuntimeError("mock db unavailable")
+
+    resp = await get_break_predictions(lookahead_min=180, db=_FailingDB())
+    assert set(resp.keys()) == {
+        "generated_at", "lookahead_min", "db_slots_count",
+        "n_predictions", "predictions",
+    }
     assert resp["lookahead_min"] == 180
     assert resp["n_predictions"] == len(resp["predictions"])
+    assert resp["db_slots_count"] is None  # DB failed → skip verification
     assert isinstance(resp["generated_at"], str)
+    # With no DB, db_verified should be None on every prediction
+    for p in resp["predictions"]:
+        assert p.get("db_verified") is None
 
 
 def test_predict_upcoming_breaks_graceful_without_artifacts(tmp_path, monkeypatch):
