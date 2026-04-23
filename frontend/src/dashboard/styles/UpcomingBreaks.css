@@ -122,6 +122,25 @@
   font-variant-numeric: tabular-nums;
 }
 
+.upcoming-breaks-happening-now {
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--border-subtle, #2a2a2a);
+}
+
+.upcoming-breaks-happening-now h4 {
+  margin: 0 0 6px 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--warning-fg, #f5a623);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.upcoming-break-card.reactive {
+  border-left-color: var(--warning-fg, #f5a623);
+}
+
 .upcoming-breaks-updated {
   margin: 10px 0 0 0;
   font-size: 10px;

@@ -15,6 +15,9 @@ function formatLead(minutes: number): string {
 }
 
 function sourceLabel(p: BreakPrediction): string {
+  if (p.source.endsWith('-driver') || p.source === 'bimodal-mode-driver') {
+    return 'driver-matched';
+  }
   switch (p.source) {
     case 'scheduled-active':
       return 'printed';
@@ -59,6 +62,7 @@ export default function UpcomingBreaks() {
   }
 
   const preds = data?.predictions ?? [];
+  const reactive = data?.reactive_observed ?? [];
 
   return (
     <div className="upcoming-breaks">
@@ -66,8 +70,32 @@ export default function UpcomingBreaks() {
         Upcoming breaks
         <span className="upcoming-breaks-count">
           {preds.length} next {data?.lookahead_min ?? 240} min
+          {data?.active_drivers_matched ? (
+            <> · {data.active_drivers_matched} drivers matched</>
+          ) : null}
         </span>
       </h3>
+
+      {reactive.length > 0 && (
+        <div className="upcoming-breaks-happening-now">
+          <h4>Happening now</h4>
+          <ul className="upcoming-breaks-list">
+            {reactive.map((r) => (
+              <li key={`reactive-${r.vehicle_id}-${r.observed_at}`} className="upcoming-break-card reactive">
+                <div className="upcoming-break-row-main">
+                  <span className="upcoming-break-run">Shuttle {r.vehicle_id}</span>
+                  <span className="upcoming-break-time">on break</span>
+                </div>
+                <div className="upcoming-break-row-meta">
+                  <span className="upcoming-break-source" title="Detected in real time (no prior prediction)">
+                    reactive-observed
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {preds.length === 0 ? (
         <p className="upcoming-breaks-empty">

@@ -11,17 +11,28 @@ export interface BreakPrediction {
   predicted_end: string;       // ISO, campus-local
   confidence: number;          // 0..1
   lead_min: number;            // minutes from now to predicted_start
-  source: string;              // "scheduled-active" | "discovered" | "bimodal-mode" | ...
+  source: string;              // scheduled-active | discovered | bimodal-mode | bimodal-mode-driver | *-driver | ...
   sigma_min: number;           // spread (minutes)
   db_verified: boolean | null; // null = DB check skipped
+  driver_id: number | null;    // non-null when driver override applied
+}
+
+export interface ReactiveObserved {
+  vehicle_id: string;
+  observed_at: string;         // ISO
+  lead_min: number;            // always 0 — happening now
+  source: 'reactive-observed';
 }
 
 export interface BreakPredictionsResponse {
   generated_at: string;
   lookahead_min: number;
   db_slots_count: number | null;
+  active_drivers_matched: number;
   n_predictions: number;
   predictions: BreakPrediction[];
+  n_reactive_observed: number;
+  reactive_observed: ReactiveObserved[];
 }
 
 interface UseBreakPredictionsOpts {

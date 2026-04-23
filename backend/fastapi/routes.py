@@ -581,31 +581,89 @@ async def data_today(db: AsyncSession = Depends(get_db)):
 @router.get("/api/predictions")
 @timed
 async def get_break_predictions(
+    request: Request,
     lookahead_min: int = 180,
     db: AsyncSession = Depends(get_db),
 ):
-    """Upcoming break predictions for today's active runs.
+    """Upcoming break predictions for today's active runs, fused with the
+    reactive detector for breaks that are happening *now* but weren't
+    forecast.
 
-    Uses the offline-trained effective schedule + priors at
-    shared/break_priors.json / shared/break_effective_schedule.json
-    (built by .planning/debug/predictive_layers.py). Cross-references
-    each prediction against the live schedule tables in the DB
-    (BusSchedule/RouteToBusSchedule/DaySchedule) and sets db_verified
-    on each prediction so a schedule drift surfaces without retraining.
+    Sources:
+      1. Predictive stack (offline-trained, `shared/break_*.json`):
+         announces future breaks from the effective schedule.
+      2. Reactive detector (`predict_on_break`): catches breaks whose
+         schedule pattern we didn't learn — stay-point >=5min off-Union,
+         CUSUM excess over personal μ, or 40-min hard fallback. These
+         fire *during* the break (lead_min ≈ 0) but close the "silent miss"
+         gap on the 94% predictive recall.
+
+    A reactive fire only surfaces here if no predictive entry already
+    covers the same time window (±30 min of now), so the response stays
+    de-duplicated.
     """
-    from backend.fastapi.break_detection import _fetch_today_db_schedule
+    from backend.fastapi.break_detection import (
+        _fetch_today_db_schedule, _fetch_today_run_drivers, predict_on_break,
+    )
+    from backend.utils import get_vehicles_in_geofence
+
+    session_factory = request.app.state.session_factory
     now = dev_now(timezone.utc)
     db_slots = await _fetch_today_db_schedule(db, settings.CAMPUS_TZ, now)
+
+    # Driver-aware: query today's active driver_vehicle_assignments + run
+    # Hungarian on morning pings → {run_label: driver_id}. Lets predict_upcoming
+    # pick the single bimodal mode the active driver actually uses, and
+    # override slot-level mean/sigma with per-driver stats when confident.
+    # Returns None if any step lacks data; predictions fall back gracefully.
+    try:
+        active_drivers = await _fetch_today_run_drivers(db, settings.CAMPUS_TZ, now)
+    except Exception as e:
+        logger.warning(f"driver-aware lookup failed; predictions without driver override: {e}")
+        active_drivers = None
+
     preds = predict_upcoming_breaks(
         now_utc=now, campus_tz=settings.CAMPUS_TZ,
         lookahead_min=lookahead_min, db_slots=db_slots,
+        active_drivers=active_drivers,
     )
+
+    # Reactive fusion: add entries for breaks happening now that have no
+    # matching predictive entry within ±30 min. Guarded behind a try
+    # so a reactive-path failure doesn't break the predictive response.
+    reactive_observed: list = []
+    try:
+        active_vids = list(await get_vehicles_in_geofence(session_factory))
+        if active_vids:
+            fires = await predict_on_break(active_vids, session_factory, settings.CAMPUS_TZ)
+            now_local = now.astimezone(settings.CAMPUS_TZ)
+            for vid, on_break in fires.items():
+                if not on_break:
+                    continue
+                # Is there already a predictive entry within ±30 min of now?
+                covered = any(
+                    abs((datetime.fromisoformat(p["predicted_start"]) - now_local).total_seconds() / 60.0) <= 30.0
+                    for p in preds
+                )
+                if not covered:
+                    reactive_observed.append({
+                        "vehicle_id": vid,
+                        "observed_at": now.isoformat(),
+                        "lead_min": 0.0,  # happening now, not forecast
+                        "source": "reactive-observed",
+                    })
+    except Exception as e:
+        logger.warning(f"reactive-path fusion failed; predictions-only: {e}")
+
     return {
         "generated_at": now.isoformat(),
         "lookahead_min": lookahead_min,
         "db_slots_count": len(db_slots) if db_slots is not None else None,
+        "active_drivers_matched": len(active_drivers) if active_drivers else 0,
         "n_predictions": len(preds),
         "predictions": preds,
+        "n_reactive_observed": len(reactive_observed),
+        "reactive_observed": reactive_observed,
     }
 
 

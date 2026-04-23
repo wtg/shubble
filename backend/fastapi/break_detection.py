@@ -411,11 +411,141 @@ async def _fetch_today_db_schedule(
     return out
 
 
+async def _fetch_today_run_drivers(
+    db_session, campus_tz, now_utc: datetime,
+) -> Optional[Dict[str, int]]:
+    """Return {run_label: driver_id} for vehicles currently on shift.
+
+    Steps:
+      1. Query driver_vehicle_assignments for rows active right now.
+      2. Query today's morning Union visits for those vehicles and
+         Hungarian-assign vehicle→run using the printed schedule from DB.
+      3. Compose.
+
+    Any step failing → return None so the caller falls back to plain
+    (no driver override) predictions. The bimodal emitter still catches
+    both modes in that case, just without UI de-dup.
+    """
+    from sqlalchemy import select as _select
+    from backend.models import DriverVehicleAssignment, VehicleLocation
+
+    now_local = now_utc.astimezone(campus_tz)
+
+    try:
+        q = _select(DriverVehicleAssignment).where(
+            DriverVehicleAssignment.assignment_start <= now_utc,
+            (DriverVehicleAssignment.assignment_end.is_(None))
+            | (DriverVehicleAssignment.assignment_end >= now_utc),
+        )
+        rows = (await db_session.execute(q)).scalars().all()
+    except Exception as e:
+        logger.warning(f"driver_vehicle_assignments fetch failed ({e!r}); driver-aware off")
+        return None
+
+    vid_to_driver: Dict[str, int] = {}
+    for r in rows:
+        try:
+            vid_to_driver[str(r.vehicle_id)] = int(r.driver_id)
+        except (TypeError, ValueError):
+            continue
+    if not vid_to_driver:
+        return None
+
+    day_start_utc = now_local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+    try:
+        pings_q = (
+            _select(
+                VehicleLocation.vehicle_id,
+                VehicleLocation.timestamp,
+                VehicleLocation.latitude,
+                VehicleLocation.longitude,
+            )
+            .where(
+                VehicleLocation.vehicle_id.in_(list(vid_to_driver.keys())),
+                VehicleLocation.timestamp >= day_start_utc,
+                VehicleLocation.timestamp <= now_utc,
+            )
+            .order_by(VehicleLocation.vehicle_id, VehicleLocation.timestamp)
+        )
+        ping_rows = (await db_session.execute(pings_q)).all()
+    except Exception as e:
+        logger.warning(f"morning pings fetch failed ({e!r}); driver-aware off")
+        return None
+    if not ping_rows:
+        return None
+
+    db_slots = await _fetch_today_db_schedule(db_session, campus_tz, now_utc)
+    if not db_slots:
+        return None
+
+    run_morning_times: Dict[str, List[int]] = {}
+    for (_dt, run, hhmm) in db_slots:
+        try:
+            h, m = hhmm.split(":")
+            minute = int(h) * 60 + int(m)
+        except ValueError:
+            continue
+        if 7 * 60 <= minute < 12 * 60:
+            run_morning_times.setdefault(run, []).append(minute)
+    if not run_morning_times:
+        return None
+
+    by_vehicle: Dict[str, List[datetime]] = {vid: [] for vid in vid_to_driver}
+    for vid, ts, lat, lon in ping_rows:
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        if _haversine_m_scalar(float(lat), float(lon), UNION_LAT, UNION_LON) > UNION_RADIUS_M:
+            continue
+        ts_local = ts.astimezone(campus_tz)
+        if not (7 <= ts_local.hour < 12):
+            continue
+        by_vehicle.setdefault(str(vid), []).append(ts_local)
+
+    vehicles = [vid for vid, visits in by_vehicle.items() if len(_compress_dwells(visits)) >= 2]
+    if not vehicles:
+        return None
+
+    import numpy as _np
+    from backend.matching import hungarian_assign
+
+    run_labels = list(run_morning_times.keys())
+    n_v, n_r = len(vehicles), len(run_labels)
+    cost = _np.full((n_v, n_r), 1e6)
+    for i, vid in enumerate(vehicles):
+        v_times = _compress_dwells(by_vehicle[vid])
+        v_minutes = [t.hour * 60 + t.minute for t in v_times]
+        for j, run in enumerate(run_labels):
+            sched = run_morning_times[run]
+            if len(sched) < 2 or len(v_minutes) < 2:
+                continue
+            offsets = [min(abs(v - s) for v in v_minutes) for s in sched]
+            cost[i, j] = float(_np.mean(offsets))
+
+    row_ind, col_ind = hungarian_assign(cost, pad_square=True, pad_penalty=1e6)
+
+    vid_to_run: Dict[str, str] = {}
+    for r_idx, c_idx in zip(row_ind, col_ind):
+        if r_idx >= n_v or c_idx >= n_r:
+            continue
+        if cost[r_idx, c_idx] >= 25.0:
+            continue
+        vid_to_run[vehicles[r_idx]] = run_labels[c_idx]
+
+    run_drivers: Dict[str, int] = {}
+    for vid, run in vid_to_run.items():
+        drv = vid_to_driver.get(vid)
+        if drv is not None:
+            run_drivers[run] = drv
+
+    return run_drivers or None
+
+
 def predict_upcoming_breaks(
     now_utc: datetime,
     campus_tz,
     lookahead_min: int = 180,
     db_slots: Optional[set] = None,
+    active_drivers: Optional[Dict[str, int]] = None,
 ) -> List[Dict]:
     """Announce upcoming breaks for today, per scheduled run.
 
@@ -445,7 +575,8 @@ def predict_upcoming_breaks(
 
     def _emit(run: str, mean_min: float, sigma_min: float, take_rate: float,
               source: str, duration_min: float = 25.0,
-              printed_start: Optional[str] = None):
+              printed_start: Optional[str] = None,
+              driver_id: Optional[int] = None):
         total_sec = max(0.0, mean_min) * 60.0
         start_local = today_midnight + timedelta(seconds=total_sec)
         end_local = start_local + timedelta(minutes=duration_min)
@@ -464,24 +595,41 @@ def predict_upcoming_breaks(
             "source": source,
             "sigma_min": round(float(sigma_min), 1),
             "db_verified": db_verified,
+            "driver_id": driver_id,
         })
 
     for (entry_dt, run), entries in eff_idx.items():
         if entry_dt != dt:
             continue
+
+        # Driver-aware de-dup: if we know today's driver for this run, and
+        # the bimodal modes carry a `drivers` list, emit only the mode whose
+        # drivers include the active driver. If driver_stats has the driver
+        # with enough observations, also override mean/sigma/take_rate.
+        active_driver = active_drivers.get(run) if active_drivers else None
+
         for e in entries:
             take_rate = float(e.get("take_rate", 0.0))
             src = e.get("src")
             printed_start = e.get("printed_start")  # "HH:MM" or None
 
-            # Bimodal: emit each mode separately so we catch both clusters.
-            # All modes inherit the parent entry's printed_start for db_verified.
+            # Bimodal: normally emit both modes. When today's driver is known
+            # and cleanly belongs to one mode's drivers list, emit only that.
             if e.get("modes"):
                 total_days = max(e.get("n_days", 1), 1)
-                for m in e["modes"]:
+                modes_to_emit = e["modes"]
+                source_label = "bimodal-mode"
+                if active_driver is not None:
+                    matching = [m for m in e["modes"]
+                                if active_driver in (m.get("drivers") or [])]
+                    if len(matching) == 1:
+                        modes_to_emit = matching
+                        source_label = "bimodal-mode-driver"
+                for m in modes_to_emit:
                     _emit(run, m["mean_min"], m["sigma_min"],
-                          m["n"] / total_days, source="bimodal-mode",
-                          printed_start=printed_start)
+                          m["n"] / total_days, source=source_label,
+                          printed_start=printed_start,
+                          driver_id=active_driver if source_label == "bimodal-mode-driver" else None)
                 continue
 
             # Discovered or scheduled-active: single effective time.
@@ -491,8 +639,24 @@ def predict_upcoming_breaks(
                 continue
             if src == "scheduled-rare" and take_rate < 0.1:
                 continue
+
+            emit_source = src or "unknown"
+            emit_driver_id = None
+            # Per-driver stats override the slot-level mean when n>=2.
+            if active_driver is not None and e.get("driver_stats"):
+                # driver_stats keys are strings in the JSON artifact.
+                drv_stats = (e["driver_stats"].get(str(active_driver))
+                             or e["driver_stats"].get(active_driver))
+                if drv_stats and drv_stats.get("n", 0) >= 2:
+                    mean_min = drv_stats["mean_min"]
+                    sigma_min = max(drv_stats.get("sigma_min", 5.0), 2.0)
+                    take_rate = drv_stats["take_rate"]
+                    emit_source = f"{src}-driver" if src else "driver"
+                    emit_driver_id = active_driver
+
             _emit(run, mean_min, sigma_min, take_rate,
-                  source=src or "unknown", printed_start=printed_start)
+                  source=emit_source, printed_start=printed_start,
+                  driver_id=emit_driver_id)
 
     results.sort(key=lambda r: r["predicted_start"])
     return results
