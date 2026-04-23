@@ -265,27 +265,27 @@ export SAMSARA_API_URL=http://localhost:4000
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  FastAPI Backend                                        │
+│    FastAPI Backend                                      │
 │  - Async request handling                               │
 │  - Redis caching layer                                  │
 │  - SQLAlchemy ORM                                       │
 └─────────────────────────────────────────────────────────┘
-         │                              │
-         ▼                              ▼
-┌─────────────────┐          ┌─────────────────┐
-│  PostgreSQL     │          │  Redis          │
-│  - Locations    │          │  - Cache        │
-│  - Events       │          │  - Sessions     │
-│  - Vehicles     │          │                 │
-└─────────────────┘          └─────────────────┘
-         ▲
-         │
-┌─────────────────────────────────────────────────────────┐
-│  Background Worker                      |  ML Worker    │
-│  - Polls Samsara API every 5 seconds    |               │
-│  - Inserts new locations to database    |               │
-│  - Handles geofence filtering           |               │
-└─────────────────────────────────────────────────────────┘
+         │                                             │
+         ▼                                             ▼
+┌─────────────────┐                           ┌─────────────────┐
+│  PostgreSQL     │                           │  Redis          │
+│  - Locations    │                           │  - Cache        │
+│  - Events       │                           │  - Sessions     │
+│  - Vehicles     │                           │                 │
+└─────────────────┘                           └─────────────────┘
+         ▲                                          ▲          │
+         │                                          │          ▼
+┌───────────────────────────────────────┐        ┌──────────────────────────────────────┐
+│  Locations Worker                     │        │  ML Worker                           │
+│  - Polls Samsara API every 5 seconds  │        │  - Update dataframe for current day  │
+│  - Inserts new locations to database  │        │  - Generate predictions for ETA and  │
+│  - Handles geofence filtering         │        │    velocities                        │
+└───────────────────────────────────────┘        └──────────────────────────────────────┘
          │
          ▼
 ┌─────────────────────────────────────────────────────────┐
