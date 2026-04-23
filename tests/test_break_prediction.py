@@ -138,6 +138,24 @@ def test_predict_upcoming_breaks_returns_empty_after_all_slots():
     assert all(p["lead_min"] >= 0 for p in preds)
 
 
+@pytest.mark.skipif(not _artifacts_present(),
+                    reason="predictive_layers.py export not yet run; artifacts missing")
+@pytest.mark.asyncio
+async def test_predictions_route_handler_returns_expected_shape():
+    """Integration: call the /api/predictions handler directly, verify response shape."""
+    from backend.fastapi import break_detection
+    from backend.fastapi.routes import get_break_predictions
+
+    break_detection._priors_cache = None
+    break_detection._effective_cache = None
+
+    resp = await get_break_predictions(lookahead_min=180)
+    assert set(resp.keys()) == {"generated_at", "lookahead_min", "n_predictions", "predictions"}
+    assert resp["lookahead_min"] == 180
+    assert resp["n_predictions"] == len(resp["predictions"])
+    assert isinstance(resp["generated_at"], str)
+
+
 def test_predict_upcoming_breaks_graceful_without_artifacts(tmp_path, monkeypatch):
     """If artifacts are missing, endpoint returns [] without raising."""
     from backend.fastapi import break_detection
