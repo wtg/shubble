@@ -160,6 +160,8 @@ class Schedule:
 
             logs = shuttle_groups.get(shuttle)
             if logs is None or logs.empty:
+                # Cost for missing data (arbitrary)
+                W[i] = 1000.0
                 continue
 
             for j, (_, stops) in enumerate(sched_flat):
@@ -170,6 +172,8 @@ class Schedule:
                     stop_logs = logs[logs['route_name'] == stop_name]
 
                     if stop_logs.empty():
+                        # Cost for missing stops (arbitrary)
+                        mse += 1000.0
                         continue
 
                     # Calculate time difference between closest time to the scheduled time where shuttle was at stop   
