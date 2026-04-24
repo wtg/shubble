@@ -44,7 +44,7 @@ services:
       - "localhost:host-gateway"
     environment:
       FRONTEND_URLS: ${FRONTEND_URLS:-http://localhost:3000}
-      DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql://shubble:shubble@postgres:5432/shubble}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://shubble:shubble@postgres:5432/shubble}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       DEBUG: ${DEBUG:-true}
       LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -73,7 +73,7 @@ services:
     extra_hosts:
       - "localhost:host-gateway"
     environment:
-      DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql://shubble:shubble@postgres:5432/shubble}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://shubble:shubble@postgres:5432/shubble}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       DEBUG: ${DEBUG:-true}
       LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -97,7 +97,7 @@ services:
     extra_hosts:
       - "localhost:host-gateway"
     environment:
-      DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql://shubble:shubble@postgres:5432/shubble}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://shubble:shubble@postgres:5432/shubble}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       DEPLOY_MODE: ${DEPLOY_MODE:-development}
@@ -146,7 +146,7 @@ services:
       - "localhost:host-gateway"
     environment:
       TEST_FRONTEND_URL: ${TEST_FRONTEND_URL:-http://localhost:5174}
-      DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql://shubble:shubble@postgres:5432/shubble}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://shubble:shubble@postgres:5432/shubble}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       DEBUG: ${DEBUG:-true}
       LOG_LEVEL: ${LOG_LEVEL:-info}
