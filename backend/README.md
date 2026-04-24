@@ -166,8 +166,11 @@ The backend uses two workers: the locations worker and ML worker. The locations 
 The locations worker polls the Samsara API for GPS data and stores it in the database.
 
 ```bash
-# Run worker
+# Run locations worker on host
 uv run python -m backend.locations_worker.locations_worker
+
+# Run locations worker on Docker
+docker compose --profile backend up locations_worker
 
 # Worker behavior:
 # - Polls every 5 seconds
@@ -181,9 +184,11 @@ uv run python -m backend.locations_worker.locations_worker
 The ML worker reads location data from database, runs route matching and ETA predictions, and writes results to the database.
 
 ```bash
-# Run worker
-
+# Run ML worker on host
 uv run python -m backend.ml_worker.ml_worker
+
+# Run ML worker on Docker 
+docker compose --profile backend up ml_worker
 
 # Worker behavior:
 # - Runs every 5 seconds
