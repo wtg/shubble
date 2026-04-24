@@ -196,6 +196,20 @@ docker compose --profile backend up ml_worker
 # - Predicts vehicle speed with ARIMA
 ```
 
+### Running both workers together
+
+```bash
+# Run both on host
+
+uv run python -m backend.locations_worker.locations_worker
+# In a separate terminal
+uv run python -m backend.ml_worker.ml_worker
+
+# Run both in Docker
+docker compose --profile backend up locations_worker ml_worker
+
+```
+
 ## Docker
 
 ### Development
