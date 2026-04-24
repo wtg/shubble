@@ -1,4 +1,4 @@
-# Development Backend Dockerfile for Shubble FastAPI
+# Worker Dockerfile for Shubble Background Location Poller
 FROM python:3.13-slim
 
 # Install uv for fast dependency management
@@ -10,7 +10,7 @@ WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 
 # Copy dependency files first (for layer caching)
-# Install dependencies without the project itself
+# Install dependencies without ML group, without the project itself
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
@@ -19,22 +19,18 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Copy application code
 COPY backend/ ./backend/
 COPY shared/ ./shared/
-COPY ml/ ./ml/
-COPY pyproject.toml uv.lock shubble.py ./
+COPY pyproject.toml uv.lock ./
 
-# Sync again to install the project (validates lockfile)
+# Sync again to install the project (validates lockfile, non-editable for production)
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev
+    uv sync --locked --no-dev --no-editable
 
 # Create non-root user
 RUN useradd -m -u 1000 shubble && chown -R shubble:shubble /app
 USER shubble
 
-EXPOSE 8000
+# Use the virtual environment directly (faster cold start than uv run)
+ENV PATH="/app/.venv/bin:$PATH"
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD python -c "import httpx; httpx.get('http://localhost:8000/api/locations', timeout=5.0)"
-
-# Run database migrations and start uvicorn with hot reload
-CMD ["sh", "-c", "uv run alembic -c backend/alembic.ini upgrade head && uv run uvicorn shubble:app --host 0.0.0.0 --port 8000 --reload --log-level $(echo ${LOG_LEVEL:-info} | tr '[:upper:]' '[:lower:]')"]
+# Run worker
+CMD ["python", "-m", "backend.locations_worker.locations_worker"]

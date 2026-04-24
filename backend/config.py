@@ -1,10 +1,13 @@
 """Configuration using Pydantic BaseSettings."""
 import base64
+import logging
+from datetime import datetime, time
 from typing import Optional
 from zoneinfo import ZoneInfo
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+logger = logging.getLogger(__name__)
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
@@ -41,6 +44,8 @@ class Settings(BaseSettings):
     # Shubble settings
     CAMPUS_TZ: ZoneInfo = ZoneInfo("America/New_York")
 
+    DAY_START: time = time(0, 0, 0)  # Default to midnight, can be overridden in .env
+
     @field_validator("DATABASE_URL")
     @classmethod
     def fix_database_url(cls, v: str) -> str:
@@ -48,12 +53,25 @@ class Settings(BaseSettings):
         if v.startswith("postgres://"):
             return v.replace("postgres://", "postgresql://", 1)
         return v
+    
+    @field_validator("DAY_START", mode="before")
+    @classmethod
+    def parse_day_start(cls, v: str | time) -> time:
+        """Parse DAY_START from env into a datetime.time object."""
+        if isinstance(v, time):
+            return v
+        try:
+            return datetime.strptime(v, "%H:%M:%S").time()
+        except ValueError as exc:
+            logger.error(f"Invalid DAY_START format: {v}. Expected HH:MM:SS. Error: {exc}")
+            return time(0, 0, 0)  # Default to midnight if parsing fails
 
     @property
     def samsara_secret_decoded(self) -> Optional[bytes]:
         """Decode base64 Samsara secret."""
         if self.SAMSARA_SECRET:
             return base64.b64decode(self.SAMSARA_SECRET.encode("utf-8"))
+        # None causes the caller to skip signature verification entirely, not accept unsigned requests
         return None
 
     def get_log_level(self, component: str = "default") -> str:

@@ -13,12 +13,9 @@ from backend.cache import init_cache, close_cache, soft_clear_namespace
 from backend.database import create_async_db_engine, create_session_factory
 from backend.models import VehicleLocation, Driver, DriverVehicleAssignment
 from backend.utils import get_vehicles_in_geofence
-from backend.function_timer import timed
-from backend.worker.data import generate_and_save_predictions
-from backend.cache_dataframe import update_today_dataframe
 
 # Logging config for Worker
-worker_log_level = settings.get_log_level("worker")
+worker_log_level = settings.get_log_level("locations-worker")
 numeric_level = logging._nameToLevel.get(worker_log_level.upper(), logging.INFO)
 logging.basicConfig(
     level=numeric_level,
@@ -27,8 +24,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.info(f"Worker logging level: {worker_log_level}")
 
-
-@timed
 async def update_locations(session_factory):
     """
     Fetches and updates vehicle locations for vehicles currently in the geofence.
@@ -63,8 +58,8 @@ async def update_locations(session_factory):
         async with httpx.AsyncClient(timeout=30.0) as client:
             has_next_page = True
             after_token = None
-            new_records_added = 0
-            inserted_vehicle_ids = []
+            total_records_added = 0
+            updated_vehicle_ids: set[str] = set()
 
             while has_next_page:
                 # Add pagination token if present
@@ -88,73 +83,72 @@ async def update_locations(session_factory):
                     has_next_page = True
                 after_token = pagination.get("endCursor", after_token)
 
-                async with session_factory() as session:
-                    values_to_insert = []
-                    
-                    for vehicle in data.get("data", []):
-                        # Process each vehicle's GPS data
-                        vehicle_id = vehicle.get("id")
-                        vehicle_name = vehicle.get("name")
-                        gps = vehicle.get("gps")
+                # Build batch of rows for this page
+                values_to_insert = []
 
-                        if not vehicle_id or not gps:
-                            continue
+                for vehicle in data.get("data", []):
+                    vehicle_id = vehicle.get("id")
+                    vehicle_name = vehicle.get("name")
+                    gps = vehicle.get("gps")
 
-                        timestamp_str = gps.get("time")
-                        if not timestamp_str:
-                            continue
+                    if not vehicle_id or not gps:
+                        continue
 
-                        # Convert ISO 8601 string to datetime
-                        timestamp = datetime.fromisoformat(
-                            timestamp_str.replace("Z", "+00:00")
-                        )
+                    timestamp_str = gps.get("time")
+                    if not timestamp_str:
+                        continue
 
-                        values_to_insert.append({
-                            "vehicle_id": vehicle_id,
-                            "timestamp": timestamp,
-                            "name": vehicle_name,
-                            "latitude": gps.get("latitude"),
-                            "longitude": gps.get("longitude"),
-                            "heading_degrees": gps.get("headingDegrees"),
-                            "speed_mph": gps.get("speedMilesPerHour"),
-                            "is_ecu_speed": gps.get("isEcuSpeed", False),
-                            "formatted_location": gps.get("reverseGeo", {}).get(
-                                "formattedLocation"
-                            ),
-                            "address_id": gps.get("address", {}).get("id"),
-                            "address_name": gps.get("address", {}).get("name"),
-                        })
+                    timestamp = datetime.fromisoformat(
+                        timestamp_str.replace("Z", "+00:00")
+                    )
 
-                    if values_to_insert:
-                        # Use PostgreSQL bulk upsert with ON CONFLICT DO NOTHING and RETURNING
+                    values_to_insert.append({
+                        "vehicle_id": vehicle_id,
+                        "timestamp": timestamp,
+                        "name": vehicle_name,
+                        "latitude": gps.get("latitude"),
+                        "longitude": gps.get("longitude"),
+                        "heading_degrees": gps.get("headingDegrees"),
+                        "speed_mph": gps.get("speedMilesPerHour"),
+                        "is_ecu_speed": gps.get("isEcuSpeed", False),
+                        "formatted_location": gps.get("reverseGeo", {}).get(
+                            "formattedLocation"
+                        ),
+                        "address_id": gps.get("address", {}).get("id"),
+                        "address_name": gps.get("address", {}).get("name"),
+                    })
+
+                if values_to_insert:
+                    async with session_factory() as session:
+                        # Bulk upsert with ON CONFLICT DO NOTHING; RETURNING vehicle_id
+                        # to identify which vehicles actually had new rows inserted
                         insert_stmt = postgresql.insert(VehicleLocation).values(values_to_insert)
-                        # ON CONFLICT on the composite index (vehicle_id, timestamp) DO NOTHING
                         insert_stmt = insert_stmt.on_conflict_do_nothing(
                             index_elements=["vehicle_id", "timestamp"]
                         )
-                        # RETURNING vehicle_id to track which vehicles were actually updated
                         insert_stmt = insert_stmt.returning(VehicleLocation.vehicle_id)
 
                         result = await session.execute(insert_stmt)
-                        batch_inserted_ids = result.scalars().all()
-                        
-                        new_records_added += len(batch_inserted_ids)
-                        inserted_vehicle_ids.extend(batch_inserted_ids)
+                        page_inserted_ids: list[str] = result.scalars().all()
+                        page_records_added = len(page_inserted_ids)
 
-                    # Only commit if we actually added new records
-                    if new_records_added > 0:
-                        await session.commit()
-                        logger.info(
-                            f"Updated locations for {len(current_vehicle_ids)} vehicles - {new_records_added} new records"
-                        )
-                        # Invalidate cache for locations
-                        await soft_clear_namespace("locations")
-                    else:
-                        logger.info(
-                            f"No new location data for {len(current_vehicle_ids)} vehicles"
-                        )
+                        if page_records_added > 0:
+                            await session.commit()
+                            total_records_added += page_records_added
+                            updated_vehicle_ids.update(page_inserted_ids)
+                            logger.info(
+                                f"Updated locations for {len(current_vehicle_ids)} vehicles - {page_records_added} new records"
+                            )
+                            # Invalidate cache for locations and ML values
+                            await soft_clear_namespace("locations")
+                            await soft_clear_namespace("etas")
+                            await soft_clear_namespace("velocities")
+                        else:
+                            logger.info(
+                                f"No new location data for {len(current_vehicle_ids)} vehicles"
+                            )
 
-            return inserted_vehicle_ids
+            return list(updated_vehicle_ids)
 
     except httpx.HTTPError as e:
         logger.error(f"Failed to fetch locations: {e}")
@@ -164,7 +158,6 @@ async def update_locations(session_factory):
         return []
 
 
-@timed
 async def update_driver_assignments(session_factory, vehicle_ids):
     """
     Fetches and updates driver-vehicle assignments for vehicles currently in the geofence.
@@ -297,7 +290,7 @@ async def update_driver_assignments(session_factory, vehicle_ids):
         logger.exception(f"Unexpected error in update_driver_assignments: {e}")
 
 
-async def run_worker():
+async def run_locations_worker():
     """Main worker loop that runs continuously."""
     logger.info("Async worker started...")
 
@@ -313,6 +306,18 @@ async def run_worker():
     except Exception as e:
         logger.error(f"Failed to initialize Redis cache: {e}")
         # Continue without cache
+
+    # Refreshes cache to prevent stale data when worker restarts
+    logger.info("Start up cache")
+    try:
+        current_vehicle_ids = await get_vehicles_in_geofence(session_factory)
+        await asyncio.gather(
+            update_locations(session_factory),
+            update_driver_assignments(session_factory, list(current_vehicle_ids))
+        )
+        logger.info("Start up cache complete")
+    except Exception as e:
+        logger.exception("Startup cache failed (worker will continue): ", e)
 
     # Worker interval in seconds
     interval = 5
@@ -339,19 +344,10 @@ async def run_worker():
                 current_vehicle_ids = await get_vehicles_in_geofence(session_factory)
 
                 # Update locations and driver assignments in parallel
-                results = await asyncio.gather(
+                await asyncio.gather(
                     update_locations(session_factory),
                     update_driver_assignments(session_factory, current_vehicle_ids),
                 )
-
-                # If locations were updated, refresh the ML data cache
-                updated_vehicles = results[0]
-                if updated_vehicles:
-                    logger.info(f"Triggering ML cache update for {len(updated_vehicles)} vehicles")
-                    await update_today_dataframe()
-
-                    # Generate predictions
-                    await generate_and_save_predictions(updated_vehicles)
 
             except Exception as e:
                 logger.exception(f"Error in worker loop: {e}")
@@ -363,6 +359,5 @@ async def run_worker():
         await db_engine.dispose()
         logger.info("Database connections closed")
 
-
 if __name__ == "__main__":
-    asyncio.run(run_worker())
+    asyncio.run(run_locations_worker())
