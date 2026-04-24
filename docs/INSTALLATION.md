@@ -157,9 +157,14 @@ brew install uv
    uv run uvicorn shubble:app --host 0.0.0.0 --port 8000 --reload
    ```
 
-6. **Start the worker (in a separate terminal):**
+6. **Start the locations worker (in a separate terminal):**
    ```bash
-   uv run python -m backend.worker
+   uv run python -m backend.locations_worker.locations_worker
+   ```
+
+7. **Start the ML worker (in a separate terminal):**
+   ```bash
+   uv run python -m backend.ml_worker.ml_worker
    ```
 
 ### Frontend Setup
@@ -240,7 +245,7 @@ docker compose up postgres redis
 uv run uvicorn shubble:app --host 0.0.0.0 --port 8000 --reload
 
 # Terminal 3: Run worker on host
-uv run python -m backend.worker
+uv run python -m backend.locations_worker.locations_worker
 
 # Terminal 4 (optional): Run frontend in Docker
 docker compose --profile frontend up

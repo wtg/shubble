@@ -1,4 +1,4 @@
-# Worker Dockerfile for Shubble Background Location Poller
+# Worker Dockerfile for Shubble ML worker
 FROM python:3.13-slim
 
 # Install uv for fast dependency management
