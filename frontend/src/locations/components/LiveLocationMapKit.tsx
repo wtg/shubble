@@ -79,6 +79,7 @@ export default function LiveLocationMapKit({
             ...location,
             route_name: velocity?.route_name ?? null,
             polyline_index: velocity?.polyline_index ?? null,
+            segment_index: velocity?.segment_index ?? null,
             predicted_location: velocity && velocity.speed_kmh !== null && velocity.timestamp !== null ? {
               speed_kmh: velocity.speed_kmh,
               timestamp: velocity.timestamp
@@ -87,7 +88,7 @@ export default function LiveLocationMapKit({
             current_stop: velocity?.current_stop,
           };
         }
-
+        
         setVehicles(combined);
       } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') return;

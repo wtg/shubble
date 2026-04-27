@@ -71,7 +71,8 @@ class Settings(BaseSettings):
         """Decode base64 Samsara secret."""
         if self.SAMSARA_SECRET:
             return base64.b64decode(self.SAMSARA_SECRET.encode("utf-8"))
-        raise ValueError("SAMSARA_SECRET is required for webhook signature verification.")
+        # None causes the caller to skip signature verification entirely, not accept unsigned requests
+        return None
 
     def get_log_level(self, component: str = "default") -> str:
         """

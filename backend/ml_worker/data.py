@@ -88,7 +88,7 @@ async def predict_eta(vehicle_ids: List[str], df: Optional[pd.DataFrame] = None)
 
     # Group by vehicle and prepare batches
     sequence_length = 10
-    input_columns = ['latitude', 'longitude', 'speed_kmh']
+    input_columns = ['latitude', 'longitude', 'speed_kmh', 'dist_to_end']
 
     batches: Dict[Tuple[str, int], List[Tuple[str, np.ndarray, datetime]]] = {}
 
