@@ -217,8 +217,10 @@ def clean_closest_route(
     # Work on a copy
     df_clean = df.copy()
 
-    # Find indices where route is NaN
-    nan_mask = df_clean[route_column].isna()
+    # Find indices where route or polyline_idx is NaN.
+    # The latter covers stop-boundary rows where get_closest_point returned a route
+    # but None for polyline (ambiguity between two consecutive polylines of the same route).
+    nan_mask = df_clean[route_column].isna() | df_clean[polyline_idx_column].isna()
     # Get positional indices of NaNs
     nan_indices = np.where(nan_mask)[0]
     total_nans = len(nan_indices)
