@@ -4,7 +4,13 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
   server: {
-    port: 3000
+    port: 3000,
+    proxy: {
+      '/api': {
+        target: process.env.BACKEND_URL || 'http://localhost:8000',
+        changeOrigin: true,
+      }
+    }
   },
   plugins: [
     react(),

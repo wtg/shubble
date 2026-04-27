@@ -29,7 +29,7 @@ export async function loadConfig(): Promise<Config> {
         config = {
             isStaging,
             isDev: isStaging,
-            apiBaseUrl: json.apiBaseUrl || 'http://localhost:8000',
+            apiBaseUrl: json.apiBaseUrl ?? '',
             mapkitKey: json.mapkitKey || '',
             staticETAs: json.staticETAs === true || json.staticETAs === 'true'
         };
@@ -38,7 +38,7 @@ export async function loadConfig(): Promise<Config> {
         config = {
             isStaging: true,
             isDev: true,
-            apiBaseUrl: 'http://localhost:8000',
+            apiBaseUrl: '',
             mapkitKey: import.meta.env.VITE_MAPKIT_KEY as string || '',
             staticETAs: import.meta.env.VITE_STATIC_ETAS === 'true'
         };

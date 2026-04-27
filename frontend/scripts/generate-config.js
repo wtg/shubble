@@ -27,7 +27,7 @@ try {
 }
 
 const config = {
-  apiBaseUrl: process.env.BACKEND_URL || 'http://localhost:8000',
+  apiBaseUrl: '',
   deployMode: process.env.DEPLOY_MODE || 'development',
   mapkitKey: process.env.MAPKIT_KEY || '',
   staticETAs: process.env.STATIC_ETAS === 'true'
