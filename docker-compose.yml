@@ -64,6 +64,32 @@ services:
     profiles:
       - backend
 
+  admin:
+    build:
+      context: .
+      dockerfile: docker/admin/Dockerfile.admin
+    ports:
+      - "${ADMIN_PORT:-8001}:8001"
+    extra_hosts:
+      - "localhost:host-gateway"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://shubble:shubble@postgres:5432/shubble}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      DEBUG: ${DEBUG:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DEPLOY_MODE: ${DEPLOY_MODE:-development}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - ./backend:/app/backend
+      - ./shared:/app/shared
+    profiles:
+      - backend
+
   locations_worker:
     build:
       context: .

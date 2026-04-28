@@ -19,13 +19,11 @@ class Vehicle(Base):
     gateway_serial: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     # Relationships
-    # lazy="raise" prevents accidental N+1 queries. Use explicit
-    # selectinload()/joinedload() in queries that need related objects.
-    geofence_events: Mapped[list["GeofenceEvent"]] = relationship(back_populates="vehicle", lazy="raise")
-    locations: Mapped[list["VehicleLocation"]] = relationship(back_populates="vehicle", lazy="raise")
-    driver_assignments: Mapped[list["DriverVehicleAssignment"]] = relationship(back_populates="vehicle", lazy="raise")
-    etas: Mapped[list["ETA"]] = relationship(back_populates="vehicle", lazy="raise")
-    predicted_locations: Mapped[list["PredictedLocation"]] = relationship(back_populates="vehicle", lazy="raise")
+    geofence_events: Mapped[list["GeofenceEvent"]] = relationship(back_populates="vehicle", lazy="select")
+    locations: Mapped[list["VehicleLocation"]] = relationship(back_populates="vehicle", lazy="select")
+    driver_assignments: Mapped[list["DriverVehicleAssignment"]] = relationship(back_populates="vehicle", lazy="select")
+    etas: Mapped[list["ETA"]] = relationship(back_populates="vehicle", lazy="select")
+    predicted_locations: Mapped[list["PredictedLocation"]] = relationship(back_populates="vehicle", lazy="select")
 
     def __repr__(self):
         return f"<Vehicle {self.id} - {self.name}>"
