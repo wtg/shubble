@@ -160,21 +160,32 @@ class Schedule:
 
             logs = shuttle_groups.get(shuttle)
             if logs is None or logs.empty:
-                W[i] = 1  # No data for shuttle
+                # Cost for missing data (arbitrary)
+                W[i] = 1000.0
                 continue
 
-            log_pairs = set(zip(logs['route_name'], logs['minute']))
-
             for j, (_, stops) in enumerate(sched_flat):
-                # Build schedule pairs
-                sched_pairs = {(stop_name, time_stamp) for time_stamp, stop_name in stops}
 
-                # Compute matches
-                matches = len(log_pairs & sched_pairs)
+                mse = 0.0
 
-                # Cost = 0 means perfect match, 1 means no match
-                cost = 1 - (matches / len(stops))
-                W[i, j] = cost
+                for sched_time, stop_name in stops:
+                    stop_logs = logs[logs['route_name'] == stop_name]
+
+                    if stop_logs.empty():
+                        # Cost for missing stops (arbitrary)
+                        mse += 1000.0
+                        continue
+
+                    # Calculate time difference between closest time to the scheduled time where shuttle was at stop   
+                    difference = (stop_logs['timestamp'] - sched_time).dt.total_seconds() / 60.0
+
+                    # Take square of difference so poor matching has a greater cost
+                    sq_error = (difference.abs() ** 2).min()
+
+                    # Add error for each stop along route to find total
+                    mse += sq_error
+
+                W[i, j] = mse    
 
         # Hungarian algorithm
         row, col = linear_sum_assignment(W)
