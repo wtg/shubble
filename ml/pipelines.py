@@ -77,7 +77,7 @@ from ml.cache import (
     get_cache_path, load_cached_csv, save_csv,
     ARIMA_CACHE_DIR, LSTM_CACHE_DIR,
     RAW_CSV, PREPROCESSED_CSV,
-    get_polyline_dir
+    get_polyline_dir, get_polyline_dir_velocity
 )
 
 
@@ -508,6 +508,77 @@ def eta_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
     return df
 
 
+def next_speed_pipeline(df: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
+    """
+    Next Speed Pipeline: Stops -> Add next_speed_kmh.
+
+    This pipeline prepares data for velocity predictions by:
+    1. Loading stops data (if not provided)
+    2. Based on speed_kmh column, calculate the next speed by shifting 
+    the speed_kmh column up by 1 (-1) within each segment. 
+    3. Creates a new column 'next_speed_kmh', which serves as the 
+    target variable for velocity prediction models.
+
+    Args:
+        df: Optional DataFrame (with stops). If None, runs stops_pipeline.
+        next_speed: Re-compute next_speed_kmh
+        stops: Re-compute stops preprocessing
+        segment: Re-run segmentation
+        preprocess: Re-run preprocessing
+        load: Re-load from database
+
+    Note:
+        Pipeline hierarchy is applied externally via apply_pipeline_hierarchy().
+        This function only checks its own 'next_speed' flag.
+
+    Returns:
+        DataFrame with added column: 'next_speed_kmh'
+    """
+    next_speed = kwargs.get('next_speed', False)
+    cache = kwargs.get('cache', True)
+
+    # Extract segmentation parameters (with defaults)
+    max_timedelta = kwargs.get('max_timedelta', 30)
+    max_distance = kwargs.get('max_distance', 0.005)
+    min_segment_length = kwargs.get('min_segment_length', 3)
+    window_size = kwargs.get('window_size', 5)
+
+    # Get parameterized cache path
+    cache_path = get_cache_path(
+        'next_speed_data',
+        max_timedelta=max_timedelta,
+        max_distance=max_distance,
+        min_segment_length=min_segment_length,
+        window_size=window_size
+    )
+
+    # Try to load from cache (only if caching is enabled)
+    if not next_speed and cache:
+        cached_df = load_cached_csv(cache_path, "Next speed data")
+        if cached_df is not None:
+            return cached_df
+
+    logger.info("="*70)
+    logger.info("ETA PIPELINE")
+    logger.info("="*70)
+
+    # Step 1: Get stops data
+    if df is None:
+        df = stops_pipeline(**kwargs)
+
+    # Step 2: Shift speed_kmh column up 1 (-1) within each segment
+    logger.info("Step 1/1: Computing next_speed_kmh (shift -1 within each segment)...")
+    df = df.copy()
+    df['next_speed_kmh'] = df.groupby('segment_id')['speed_kmh'].shift(-1)
+    computed = df['next_speed_kmh'].notna().sum()
+    logger.info(f"  ✓ {computed} target values computed ({len(df) - computed} NaN boundary rows)")
+
+    # Save to cache if caching is enabled
+    if cache:
+        save_csv(df, cache_path, "ETA data")
+    return df
+
+
 # ============================================================================
 # SPLIT PIPELINE
 # ============================================================================
@@ -665,7 +736,7 @@ def split_by_polyline_pipeline(df: pd.DataFrame = None, **kwargs) -> dict[tuple[
 
 
 # ============================================================================
-# LSTM PIPELINE
+# LSTM PIPELINE(S)
 # ============================================================================
 
 def lstm_pipeline(
@@ -894,6 +965,239 @@ def lstm_pipeline(
         logger.info(f"    → {polyline_dir}/")
 
     return polyline_models
+
+
+def lstm_velocity_pipeline(
+    input_columns: list[str] = ['latitude', 'longitude', 'speed_kmh'],
+    output_columns: list[str] = ['next_speed_kmh'],
+    sequence_length: int = 10,
+    hidden_size: int = 50,
+    num_layers: int = 2,
+    dropout: float = 0.1,
+    epochs: int = 20,
+    batch_size: int = 64,
+    test_ratio: float = 0.2,
+    random_seed: int = 42,
+    verbose: bool = True,
+    train: bool = True,
+    limit_polylines: int = None,
+    **kwargs
+) -> dict[tuple[str, int], tuple]:
+    """
+    LSTM Velocity Pipeline: Stops Pipeline -> Add next_speed_kmh -> 
+    Split by Polyline -> Train per Polyline -> Evaluate.
+
+    This pipeline mirrors lstm_pipeline but...:
+    1. Runs stops pipeline (segment, add stops, add ETAs, add polyline distances, filter)
+    2. Skips eta_pipeline and computes next_speed_kmh (speed_kmh shifted -1 within each segment)
+    as the prediction target before splitting. 
+    3. Splits data by (route, polyline_index) combinations
+    4. For each polyline: split train/test, train LSTM, evaluate
+    5. Saves all data to ml/cache/lstm/<route>_<polyline_idx>/:
+       - data.csv: Full polyline data
+       - train.csv: Training split
+       - test.csv: Test split
+       - model.pth: Trained LSTM model
+
+    Args:
+        input_columns: Features to use for prediction
+        output_columns: Targets to predict
+        sequence_length: Length of input sequences
+        hidden_size: LSTM hidden size
+        num_layers: Number of LSTM layers
+        dropout: LSTM dropout
+        epochs: Training epochs
+        batch_size: Batch size
+        test_ratio: Train/test split ratio
+        random_seed: Random seed
+        verbose: Whether to print progress
+        train: Retrain models
+        limit_polylines: Optional limit on number of polylines to process
+        stops: Re-compute stops preprocessing
+        segment: Re-run segmentation
+        preprocess: Re-run preprocessing
+        load: Re-load from database
+
+    Note:
+        Pipeline hierarchy is applied externally via apply_pipeline_hierarchy().
+        This function only checks its own 'train' flag for model training.
+
+    Returns:
+        Dictionary mapping (route, polyline_idx) to (model, results) tuples
+    """
+    from ml.training.train import train_lstm, segmented_train_test_split
+    from ml.evaluation.evaluate import evaluate_lstm
+    from ml.models.lstm import LSTMModel
+
+    logger.info("="*70)
+    logger.info("LSTM VELOCITY PIPELINE (PER-POLYLINE TRAINING)")
+    logger.info("="*70)
+
+    # Step 1: Get stops data (segmented, stops added, polyline distances)
+    if kwargs['min_segment_length'] is None:
+        kwargs['min_segment_length'] = 3
+
+    stops_df = stops_pipeline(**kwargs)
+
+    # Step 2: Add ETAs (filter rows after stop, calculate ETAs)
+    next_speed_df = next_speed_pipeline(df=stops_df, **kwargs)
+
+    # Step 3: Split by polyline
+    polyline_dfs = split_by_polyline_pipeline(df=next_speed_df)
+
+    # Limit polylines if requested
+    if limit_polylines:
+        logger.info(f"\nLimiting to {limit_polylines} polylines...")
+        polyline_keys = sorted(polyline_dfs.keys())[:limit_polylines]
+        polyline_dfs = {k: polyline_dfs[k] for k in polyline_keys}
+        logger.info(f"  ✓ Processing {len(polyline_dfs)} polylines")
+
+    # Store results for each polyline
+    polyline_models = {}
+
+    # Step 3: Process each polyline
+    for polyline_key, df in sorted(polyline_dfs.items()):
+        route_name, polyline_idx = polyline_key
+
+        logger.info("\n" + "="*70)
+        logger.info(f"POLYLINE: {route_name} - Segment {polyline_idx}")
+        logger.info("="*70)
+        logger.info(f"  Data points: {len(df)}")
+        logger.info(f"  Segments: {df['segment_id'].nunique()}")
+        logger.info(f"  Next speeds calculated: {df['next_speed_kmh'].notna().sum()}")
+
+        # Check if we have enough segments
+        if df['segment_id'].nunique() < 2:
+            logger.info(f"  ⚠ Only {df['segment_id'].nunique()} segment(s) - skipping this polyline")
+            continue
+
+        # Create polyline-specific directory
+        polyline_dir = get_polyline_dir_velocity(route_name, polyline_idx)
+        polyline_dir.mkdir(parents=True, exist_ok=True)
+
+        # Define paths for this polyline
+        polyline_data_path = polyline_dir / "data.csv"
+        train_path = polyline_dir / "train.csv"
+        test_path = polyline_dir / "test.csv"
+        model_path = polyline_dir / "model.pth"
+        scaler_path = polyline_dir / "scaler.pkl"
+
+        # Save polyline data
+        logger.info(f"\nSaving polyline data to {polyline_dir}/")
+        save_csv(df, polyline_data_path, "polyline data")
+
+        # 1. Split into train/test
+        logger.info(f"\n1. Splitting into train/test (ratio: {test_ratio:.1%})...")
+        train_df, test_df = segmented_train_test_split(
+            df,
+            test_ratio=test_ratio,
+            random_seed=random_seed,
+            timestamp_column='timestamp',
+            segment_column='segment_id'
+        )
+        logger.info(f"  ✓ Train: {train_df['segment_id'].nunique()} segments, {len(train_df)} points")
+        logger.info(f"  ✓ Test:  {test_df['segment_id'].nunique()} segments, {len(test_df)} points")
+
+        # Save train/test splits
+        save_csv(train_df, train_path, "train data")
+        save_csv(test_df, test_path, "test data")
+
+        # 2. Clean data
+        logger.info("\n2. Cleaning data...")
+        def clean_df(df_input, name="data"):
+            if 'speed_kmh' in df_input.columns:
+                df_input['speed_kmh'] = df_input['speed_kmh'].fillna(0)
+            req_cols = [c for c in input_columns + output_columns if c in df_input.columns]
+            initial = len(df_input)
+            df_output = df_input.dropna(subset=req_cols)
+            if len(df_output) < initial:
+                logger.info(f"  ✓ Dropped {initial - len(df_output)} rows with missing values in {name}")
+            return df_output
+
+        train_df = clean_df(train_df, "train set")
+        test_df = clean_df(test_df, "test set")
+
+        if len(train_df) == 0 or len(test_df) == 0:
+            logger.info(f"  ⚠ Insufficient data after cleaning - skipping this polyline")
+            continue
+
+        # 3. Train or load model
+        if train or not model_path.exists():
+            logger.info("\n3. TRAINING MODEL")
+            logger.info(f"  Architecture: {num_layers} layers, {hidden_size} hidden units, seq_len={sequence_length}")
+
+            try:
+                model = train_lstm(
+                    train_df,
+                    input_columns=input_columns,
+                    output_columns=output_columns,
+                    sequence_length=sequence_length,
+                    hidden_size=hidden_size,
+                    num_layers=num_layers,
+                    dropout=dropout,
+                    epochs=epochs,
+                    batch_size=batch_size,
+                    segment_column='segment_id',
+                    verbose=verbose
+                )
+
+                logger.info(f"\n  Saving model to {model_path}...")
+                model.save(model_path, scaler_path=str(scaler_path))
+                logger.info("  ✓ Model trained and saved")
+            except Exception as e:
+                logger.info(f"  ✗ Training failed: {e}")
+                continue
+        else:
+            logger.info(f"\n3. LOADING CACHED MODEL")
+            logger.info(f"  Loading from {model_path}...")
+
+            input_size = len(input_columns)
+            output_size = len(output_columns)
+            model = LSTMModel(
+                input_size=input_size,
+                hidden_size=hidden_size,
+                num_layers=num_layers,
+                output_size=output_size,
+                dropout=dropout
+            )
+            model.load(model_path, scaler_path=str(scaler_path))
+            logger.info(f"  ✓ Loaded LSTM model")
+
+        # 4. Evaluate
+        logger.info("\n4. MODEL EVALUATION")
+
+        try:
+            results = evaluate_lstm(
+                model,
+                test_df,
+                input_columns=input_columns,
+                output_columns=output_columns,
+                sequence_length=sequence_length,
+                segment_column='segment_id'
+            )
+
+            logger.info(f"  Test predictions: {results['num_predictions']}")
+            logger.info(f"  Test MSE: {results['mse']:.4f}")
+            logger.info(f"  Test RMSE: {results['rmse']:.4f}")
+            logger.info(f"  Test MAE: {results['mae']:.4f}")
+
+            # Store model and results
+            polyline_models[polyline_key] = (model, results)
+        except Exception as e:
+            logger.info(f"  ✗ Evaluation failed: {e}")
+            continue
+
+    # Summary
+    logger.info("\n" + "="*70)
+    logger.info("PIPELINE SUMMARY")
+    logger.info("="*70)
+    logger.info(f"Successfully trained {len(polyline_models)} models:")
+    for (route, idx), (model, results) in sorted(polyline_models.items()):
+        polyline_dir = get_polyline_dir_velocity(route, idx)
+        logger.info(f"  {route} seg {idx}: RMSE={results['rmse']:.4f}, MAE={results['mae']:.4f}")
+        logger.info(f"    → {polyline_dir}/")
+
+    return polyline_models    
 
 
 # ============================================================================
@@ -1191,6 +1495,22 @@ if __name__ == "__main__":
     lstm_parser.add_argument("--limit-polylines", type=int, default=None)
     lstm_parser.add_argument("--window-size", type=int, default=5, help="Window size for cleaning NaN routes")
 
+    # LSTM Velocity Pipeline
+    lstm_velocity_parser = subparsers.add_parser("lstm_velocity", help="Run LSTM velocity pipeline (per-polyline training)")
+    lstm_velocity_parser.add_argument("--epochs", type=int, default=20)
+    lstm_velocity_parser.add_argument("--batch-size", type=int, default=64)
+    lstm_velocity_parser.add_argument("--hidden-size", type=int, default=50)
+    lstm_velocity_parser.add_argument("--num-layers", type=int, default=2)
+    lstm_velocity_parser.add_argument("--seq-len", type=int, default=10, dest="sequence_length")
+    lstm_velocity_parser.add_argument("--train", action="store_true", help="Re-train models")
+    lstm_velocity_parser.add_argument("--stops", action="store_true", help="Re-run stops processing (triggers train)")
+    lstm_velocity_parser.add_argument("--segment", action="store_true", help="Re-run segmentation (triggers stops + train)")
+    lstm_velocity_parser.add_argument("--preprocess", action="store_true", help="Re-run preprocessing (triggers all downstream stages)")
+    lstm_velocity_parser.add_argument("--load", action="store_true", help="Re-load data from database")
+    lstm_velocity_parser.add_argument("--limit-polylines", type=int, default=None)
+    lstm_velocity_parser.add_argument("--min-segment-length", type=int, default=None)
+    lstm_velocity_parser.add_argument("--window-size", type=int, default=5, help="Window size for cleaning NaN routes")
+
     # ARIMA Pipeline
     arima_parser = subparsers.add_parser("arima", help="Run ARIMA pipeline")
     arima_parser.add_argument("--split", action="store_true", help="Re-run train/test split (triggers train + fit)")
@@ -1241,6 +1561,15 @@ if __name__ == "__main__":
             logger.info(f"  Average RMSE: {avg_rmse:.4f}, Average MAE: {avg_mae:.4f}")
         else:
             logger.info("\n✗ No models were trained successfully.")
+    elif args.pipeline == "lstm_velocity":
+        polyline_models = lstm_velocity_pipeline(**kwargs)
+        if polyline_models:
+            avg_rmse = sum(r['rmse'] for _, r in polyline_models.values()) / len(polyline_models)
+            avg_mae  = sum(r['mae']  for _, r in polyline_models.values()) / len(polyline_models)
+            logger.info(f"\n✓ Velocity LSTM complete. Trained {len(polyline_models)} models.")
+            logger.info(f"  Average RMSE: {avg_rmse:.4f}, Average MAE: {avg_mae:.4f}")
+        else:
+            logger.info("\n✗ No models trained successfully.")
     elif args.pipeline == "arima":
         results = arima_pipeline(**kwargs)
         if results:

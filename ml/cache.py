@@ -19,9 +19,10 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 SHARED_CACHE_DIR = CACHE_DIR / "shared"
 ARIMA_CACHE_DIR = CACHE_DIR / "arima"
 LSTM_CACHE_DIR = CACHE_DIR / "lstm"
+LSTM_VELOCITY_CACHE_DIR = CACHE_DIR / "lstm_velocity"
 
 # Create subdirectories
-for cache_dir in [SHARED_CACHE_DIR, ARIMA_CACHE_DIR, LSTM_CACHE_DIR]:
+for cache_dir in [SHARED_CACHE_DIR, ARIMA_CACHE_DIR, LSTM_CACHE_DIR, LSTM_VELOCITY_CACHE_DIR]:
     cache_dir.mkdir(parents=True, exist_ok=True)
 
 # Shared pipeline caches (used by all pipelines)
@@ -98,6 +99,26 @@ def get_polyline_dir(route: str, idx: int) -> Path:
         raise ValueError(f"Polyline index must be an integer, got: {idx}")
     safe_route = route.replace(' ', '_').replace('/', '_')
     return LSTM_CACHE_DIR / f"{safe_route}_{idx}"
+
+
+def get_polyline_dir_velocity(route: str, idx: int) -> Path:
+    """
+    Get directory for a specific route and polyline index. 
+    Same as above but for velocity LSTM models.
+
+    Args:
+        route: Route name
+        idx: Polyline index
+
+    Returns:
+        Path to the polyline directory
+    """
+    try:
+        idx = int(idx)
+    except ValueError:
+        raise ValueError(f"Polyline index must be an integer, got: {idx}")
+    safe_route = route.replace(' ', '_').replace('/', '_')
+    return LSTM_VELOCITY_CACHE_DIR / f"{safe_route}_{idx}"
 
 
 def load_cached_csv(path: Path, description: str) -> Optional[pd.DataFrame]:
