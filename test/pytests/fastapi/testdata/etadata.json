@@ -1,3 +1,4 @@
 {
-  "eta1": { "vehicle_id": "v1", "timestamp": "2024-04-01T08:10:00Z", "etas": [ { "stop_id": "s1", "eta": "2024-04-01T08:15:00Z" } ] }
+  "eta1": { "vehicle_id": "v1", "timestamp": "2024-04-01T08:10:00Z", "etas": [ { "stop_id": "s1", "eta": "2024-04-01T08:15:00Z" } ] },
+  "eta2": { "vehicle_id": "v2", "timestamp": "2024-04-01T08:06:00Z", "etas": [ { "stop_id": "s2", "eta": "2024-04-01T08:20:00Z" } ] }
 }
