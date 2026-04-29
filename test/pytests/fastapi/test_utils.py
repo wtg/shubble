@@ -2,23 +2,14 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime
 from sqlalchemy import literal_column, select
-# from the db utils.py import 
 from backend.fastapi.utils import get_latest_vehicle_locations, VehicleLocationDict
-# Testing 2 utils first
 from backend.fastapi.utils import (
-    get_latest_vehicle_locations, # DONE
-    VehicleLocationDict, #DONE
-    VehicleInfoDict, # DONE
-    get_current_driver_assignments, #DONE
-    get_latest_etas, # DONE
-    get_latest_velocities # DONE
-    # make mock data in database
-    # use get_locatest
-
-
-    # assert
-    # continue tests with empty, write read, write write read getting latest
-    # no write read
+    get_latest_vehicle_locations,
+    VehicleLocationDict,
+    VehicleInfoDict,
+    get_current_driver_assignments,
+    get_latest_etas,
+    get_latest_velocities
 )
 
 # Fixture loader to build rows/expected from JSON files
@@ -31,9 +22,7 @@ from test.pytests.fastapi.fixture_loader import (
     load_expected_vehicles,
 )
 
-# Mimics the async context manager of SQLAlchemy session factory
-# we need support for __aenter and __aexit
-# __aenter__ returns mock db
+# Mimics the async context manager of SQLAlchemy session factory used in utils functions, but returns a mock DB instead of a real session.
 class AsyncSessionContextManager:
     def __init__(self, db_mock):
         self.db_mock = db_mock
@@ -72,15 +61,7 @@ def make_geofence():
     return mock_query
 
 
-# class VehicleInfoDict(TypedDict):
-#     license_plate: Optional[str]
-#     vin: Optional[str]
-#     asset_type: str
-#     gateway_model: Optional[str]
-#     gateway_serial: Optional[str]
-
 # Pass parameters to make_vehicle() to create different vehicles for testing or basic default
-# DONE
 def make_vehicle(
     license_plate="ABC123",
     vin="VIN456",
@@ -128,7 +109,6 @@ def make_location(
     loc.vehicle = vehicle if vehicle is not None else make_vehicle()
     return loc
 
-
 # TEST - Location tests
 # fed into test_get_latest_vehicle_locations pytest
 LOCATION_CASES = []
@@ -144,6 +124,10 @@ for vid, info in expected_map.items():
         return lambda: [r for r in rows_snapshot if r.vehicle_id == v]
 
     Driver_Cases.append(pytest.param([vid], make_factory(), {vid: info}, id=f"driver_{vid}"))
+
+# Above are legacy test cases, new system uses testdata folder which holds json files for each utility tested
+# insert test cases in xyz.json, view fixture_loader.py for how they are loaded and built into test cases, and then add test function below that uses the cases
+# results are stored in the expected folder as xyz.json and loaded in fixture_loader.py for assertion in test function below
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("v_ids, rows_factory, expected", Driver_Cases)
