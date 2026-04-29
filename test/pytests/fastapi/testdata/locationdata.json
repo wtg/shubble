@@ -1,0 +1,4 @@
+{
+  "loc1": { "vehicle_id": "v1", "timestamp": "2024-04-01T08:00:00Z", "latitude": 42.7301, "longitude": -73.6788, "heading": 90.0, "speed": 30.0, "address": "RPI Campus" },
+  "loc2": { "vehicle_id": "v2", "timestamp": "2024-04-01T08:05:00Z", "latitude": 42.7290, "longitude": -73.6790, "heading": 180.0, "speed": 20.0, "address": "Downtown" }
+}

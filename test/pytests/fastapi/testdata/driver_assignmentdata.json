@@ -1,0 +1,4 @@
+{
+  "assign1": { "driver_id": "d1", "vehicle_id": "v1", "assignment_start": "2024-04-01T08:00:00Z", "assignment_end": null },
+  "assign2": { "driver_id": "d2", "vehicle_id": "v2", "assignment_start": "2024-04-01T09:00:00Z", "assignment_end": "2024-04-01T17:00:00Z" }
+}

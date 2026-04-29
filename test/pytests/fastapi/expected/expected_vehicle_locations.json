@@ -1,0 +1,20 @@
+[
+  {
+    "vehicle_id": "v1",
+    "timestamp": "2024-04-01T08:00:00Z",
+    "latitude": 42.7301,
+    "longitude": -73.6788,
+    "heading": 90.0,
+    "speed": 30.0,
+    "address": "RPI Campus"
+  },
+  {
+    "vehicle_id": "v2",
+    "timestamp": "2024-04-01T08:05:00Z",
+    "latitude": 42.729,
+    "longitude": -73.679,
+    "heading": 180.0,
+    "speed": 20.0,
+    "address": "Downtown"
+  }
+]

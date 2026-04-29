@@ -1,0 +1,4 @@
+{
+  "v1_pred": { "vehicle_id": "v1", "timestamp": "2024-04-01T08:00:00Z", "speed_kmh": 48.3 },
+  "v2_pred": { "vehicle_id": "v2", "timestamp": "2024-04-01T08:05:00Z", "speed_kmh": 32.0 }
+}

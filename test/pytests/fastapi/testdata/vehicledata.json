@@ -1,0 +1,37 @@
+{
+  "v1": {
+    "license_plate": "ABC123",
+    "vin": "VIN001",
+    "asset_type": "shuttle",
+    "gateway_model": "GatewayX",
+    "gateway_serial": "SER001"
+  },
+  "v2": {
+    "license_plate": "XYZ321",
+    "vin": "VIN002",
+    "asset_type": "shuttle",
+    "gateway_model": "GatewayX",
+    "gateway_serial": "SER002"
+  },
+  "v3": {
+    "license_plate": "LMN456",
+    "vin": "VIN003",
+    "asset_type": "shuttle",
+    "gateway_model": "GatewayY",
+    "gateway_serial": "SER003"
+  },
+  "v4": {
+    "license_plate": "QRS789",
+    "vin": "VIN004",
+    "asset_type": "shuttle",
+    "gateway_model": "GatewayY",
+    "gateway_serial": "SER004"
+  },
+  "v5": {
+    "license_plate": "TUV111",
+    "vin": "VIN005",
+    "asset_type": "shuttle",
+    "gateway_model": "GatewayZ",
+    "gateway_serial": "SER005"
+  }
+}
