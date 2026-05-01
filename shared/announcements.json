@@ -20,6 +20,13 @@
             "type": "warning",
             "active": true,
             "expiresAt": "2026-1-31T23:59:59"
+        },
+        {
+            "id": "no-afternoon",
+            "message": "No shuttles will run starting at 1pm today. We apologize for the inconvenience.",
+            "type": "warning",
+            "active": true,
+            "expiresAt": "2026-5-1T23:59:59"
         }
     ]
 }
